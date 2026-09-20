@@ -250,14 +250,14 @@ function DomainRowItem({ row }: { row: DomainRow }) {
             after the CNAMEs go live.
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full text-left text-[11.5px]">
+            <table className="w-full min-w-max text-left text-[11.5px]">
               <thead>
                 <tr className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">
-                  <th className="w-14 py-1 pr-2 font-normal">type</th>
-                  <th className="py-1 pr-3 font-normal">name</th>
-                  <th className="py-1 pr-3 font-normal">value</th>
-                  <th className="w-16 py-1 pr-2 text-right font-normal">priority</th>
-                  <th className="w-40 py-1 font-normal">purpose</th>
+                  <th className="w-12 py-1 pr-2 font-normal">type</th>
+                  <th className="py-1 pr-4 font-normal">name</th>
+                  <th className="py-1 pr-4 font-normal">value</th>
+                  <th className="w-10 py-1 pr-3 text-right font-normal">prio</th>
+                  <th className="w-36 py-1 font-normal">purpose</th>
                 </tr>
               </thead>
               <tbody>
@@ -266,13 +266,13 @@ function DomainRowItem({ row }: { row: DomainRow }) {
                     key={`${record.kind}-${record.name}-${record.value}`}
                     className="border-t align-top"
                   >
-                    <td className="w-14 py-1.5 pr-2 font-mono text-muted-foreground">
+                    <td className="w-12 py-1.5 pr-2 font-mono text-muted-foreground">
                       {record.kind}
                     </td>
-                    <td className="py-1.5 pr-3">
+                    <td className="whitespace-nowrap py-1.5 pr-4">
                       <CopyCell value={relativeName(record.name, row.name)} copy={record.name} />
                     </td>
-                    <td className="py-1.5 pr-3">
+                    <td className="whitespace-nowrap py-1.5 pr-4">
                       {record.informational ? (
                         <span className="px-1 py-0.5 text-muted-foreground italic">
                           {record.value}
@@ -281,10 +281,10 @@ function DomainRowItem({ row }: { row: DomainRow }) {
                         <CopyCell value={record.value} />
                       )}
                     </td>
-                    <td className="w-16 py-1.5 pr-2 text-right font-mono text-muted-foreground">
+                    <td className="w-10 py-1.5 pr-3 text-right font-mono text-muted-foreground">
                       {record.priority ?? "—"}
                     </td>
-                    <td className="w-40 py-1.5 text-muted-foreground">
+                    <td className="w-36 whitespace-nowrap py-1.5 text-muted-foreground">
                       {record.purpose}
                       {!record.required && (
                         <span className="text-muted-foreground/60"> (optional)</span>
@@ -318,13 +318,13 @@ function CopyCell({ value, copy }: { value: string; copy?: string }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="group flex w-full items-start gap-1.5 rounded-[3px] px-1 py-0.5 text-left font-mono hover:bg-accent"
+      className="group inline-flex max-w-full items-center gap-1.5 rounded-[3px] px-1 py-0.5 text-left font-mono hover:bg-accent"
     >
-      <span className="min-w-0 break-all">{value}</span>
+      <span className="truncate">{value}</span>
       {copied ? (
-        <Check className="mt-0.5 size-3 shrink-0 text-ok" />
+        <Check className="size-3 shrink-0 text-ok" />
       ) : (
-        <Copy className="mt-0.5 size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+        <Copy className="size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
       )}
     </button>
   );

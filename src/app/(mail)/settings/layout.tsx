@@ -8,7 +8,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
 
   return (
     <div className="h-dvh overflow-y-auto bg-background">
-      <div className="mx-auto max-w-5xl p-5">
+      <div className="mx-auto max-w-6xl p-5">
         <div className="flex items-center gap-2.5 pb-4">
           <Link
             href="/mail/all/inbox"
