@@ -163,9 +163,10 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
     <div
       className={cn(
         "overlay-shadow fixed z-50 flex flex-col overflow-hidden rounded-xl border bg-card",
+        // On a phone the composer is the screen; on a desktop it docks bottom-right.
         expanded
-          ? "inset-6"
-          : "right-5 bottom-0 h-[32rem] w-[min(40rem,calc(100vw-2.5rem))] rounded-b-none",
+          ? "inset-2 sm:inset-6"
+          : "inset-x-0 bottom-0 h-[min(32rem,100dvh)] rounded-b-none sm:inset-x-auto sm:right-5 sm:w-[min(40rem,calc(100vw-2.5rem))]",
       )}
     >
       <header className="flex h-9 shrink-0 items-center gap-2 border-b bg-muted/60 pr-1 pl-3">

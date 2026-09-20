@@ -74,6 +74,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       threadCount={items.length}
       user={{ name: user.name, email: user.email }}
       openSubject={detail?.subject || undefined}
+      threadOpen={Boolean(detail)}
       list={
         <ThreadList
           items={items}

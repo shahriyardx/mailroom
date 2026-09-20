@@ -14,6 +14,7 @@ import {
 } from "@/server/actions";
 import {
   Archive,
+  ArrowLeft,
   ChevronDown,
   Download,
   Forward,
@@ -25,6 +26,7 @@ import {
   Star,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { useComposer } from "./composer-provider";
@@ -106,6 +108,16 @@ export function ThreadView({ thread, backHref }: Props) {
   return (
     <section className="flex h-full min-w-0 flex-col bg-card">
       <header className="flex h-10 shrink-0 items-center gap-0.5 border-b px-2">
+        {/* On a narrow screen the conversation covers the list, so it needs a
+            way back that a wide screen does not. */}
+        <Link
+          href={backHref}
+          aria-label="Back to the list"
+          className="mr-1 rounded-lg p-1.5 text-muted-foreground hover:bg-accent hover:text-foreground lg:hidden"
+        >
+          <ArrowLeft className="size-4" />
+        </Link>
+
         <Action
           label="Archive"
           onClick={() => run(() => moveThreadsAction([thread.id], "archive"), true)}

@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
+import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
@@ -32,6 +33,7 @@ import {
   Layers,
   LogOut,
   Mails,
+  Menu,
   Moon,
   PenLine,
   Search,
@@ -70,6 +72,8 @@ interface Props {
   list: React.ReactNode;
   children: React.ReactNode;
   openSubject?: string;
+  /** True when a conversation is open, which takes over the screen on mobile. */
+  threadOpen?: boolean;
 }
 
 export function MailShell({
@@ -83,6 +87,7 @@ export function MailShell({
   list,
   children,
   openSubject,
+  threadOpen = false,
 }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -152,6 +157,11 @@ export function MailShell({
     return [...map.entries()].sort(([a], [b]) => a.localeCompare(b));
   }, [mailboxes]);
 
+  const [navOpen, setNavOpen] = useState(false);
+
+  // biome-ignore lint/correctness/useExhaustiveDependencies: close the drawer on navigation
+  useEffect(() => setNavOpen(false), [pathname, params]);
+
   const activeKey = scopeKey(scope);
   const unreadOnly = params.get("unread") === "1";
   const searchValue = params.get("q") ?? "";
@@ -174,170 +184,60 @@ export function MailShell({
       {/* ---------------------------------------------------------------- */}
       {/* Navigation: everything you can switch between, named, in one list */}
       {/* ---------------------------------------------------------------- */}
+      {/* Fixed on a wide screen, a drawer on a narrow one. Same markup. */}
       <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
-        <div className="flex h-14 shrink-0 items-center gap-2 px-4">
-          <span className="grid size-7 place-items-center rounded-xl bg-primary text-primary-foreground">
-            <Mails className="size-4" />
-          </span>
-          <span className="font-heading text-[15px] tracking-[-0.02em]">
-            <span className="font-semibold">post</span>
-            <span className="text-muted-foreground"> mail</span>
-          </span>
-        </div>
-
-        <div className="px-3 pb-3">
-          <Button
-            className="h-10 w-full justify-center gap-2 rounded-full font-medium text-[13px]"
-            onClick={() => composer.open()}
-          >
-            <PenLine className="size-4" />
-            Compose
-          </Button>
-        </div>
-
-        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
-          <p className="eyebrow px-2 pt-2 pb-1.5">menu</p>
-          <ul className="space-y-0.5">
-            {FOLDERS.map((item) => {
-              const Icon = FOLDER_ICONS[item];
-              const count = counts.folders[item] ?? 0;
-              const active = folder === item && !activeLabel;
-              return (
-                <li key={item}>
-                  <NavRow href={scopeHref(scope, item)} active={active}>
-                    <Icon className="size-4 shrink-0" />
-                    <span className="flex-1 truncate">{FOLDER_LABELS[item]}</span>
-                    {count > 0 && (
-                      <span
-                        className={cn(
-                          "shrink-0 font-mono text-[10.5px] tabular-nums",
-                          active ? "text-primary" : "text-muted-foreground",
-                        )}
-                      >
-                        {count}
-                      </span>
-                    )}
-                  </NavRow>
-                </li>
-              );
-            })}
-          </ul>
-
-          <p className="eyebrow px-2 pt-5 pb-1.5">mailboxes</p>
-          <ul className="space-y-0.5">
-            <li>
-              <NavRow href={scopeHref({ kind: "all" }, folder)} active={activeKey === "all"}>
-                <Layers className="size-4 shrink-0" />
-                <span className="flex-1 truncate">All mail</span>
-              </NavRow>
-            </li>
-            {domains.map(([domain, boxes]) => (
-              <DomainBranch
-                key={domain}
-                domain={domain}
-                boxes={boxes}
-                folder={folder}
-                activeKey={activeKey}
-                unread={counts.mailboxes}
-              />
-            ))}
-            {mailboxes.length === 0 && (
-              <li className="px-2 py-1.5 text-[12px] text-muted-foreground">
-                None yet.{" "}
-                <Link href="/settings/mailboxes" className="text-primary hover:underline">
-                  Add one
-                </Link>
-              </li>
-            )}
-          </ul>
-
-          {labels.length > 0 && (
-            <>
-              <p className="eyebrow px-2 pt-5 pb-1.5">labels</p>
-              <ul className="space-y-0.5">
-                {labels.map((item) => (
-                  <li key={item.id}>
-                    <NavRow
-                      href={`${scopeHref(scope, "inbox")}?label=${item.id}`}
-                      active={activeLabel === item.id}
-                    >
-                      <Tag className="size-4 shrink-0" style={{ color: item.color }} />
-                      <span className="flex-1 truncate">{item.name}</span>
-                    </NavRow>
-                  </li>
-                ))}
-              </ul>
-            </>
-          )}
-        </nav>
-
-        <div className="flex shrink-0 items-center gap-1 border-t px-2 py-2">
-          <ThemeToggle />
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  size="icon"
-                  className="size-8 rounded-lg text-muted-foreground"
-                  nativeButton={false}
-                  render={<Link href="/settings" />}
-                >
-                  <Settings className="size-4" />
-                </Button>
-              }
-            />
-            <TooltipContent side="top" className="font-mono text-[11px]">
-              Settings
-            </TooltipContent>
-          </Tooltip>
-
-          <DropdownMenu>
-            <DropdownMenuTrigger
-              render={
-                <Button
-                  variant="ghost"
-                  className="ml-auto h-8 min-w-0 gap-2 rounded-full px-1.5 pr-3"
-                >
-                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary font-mono text-[10px] font-semibold text-secondary-foreground">
-                    {initialsOf(user.name || user.email)}
-                  </span>
-                  <span className="truncate text-[12px]">{user.name}</span>
-                </Button>
-              }
-            />
-            <DropdownMenuContent side="top" align="end" className="w-56">
-              <DropdownMenuGroup>
-                <DropdownMenuLabel className="font-normal">
-                  <p className="truncate font-medium text-[13px]">{user.name}</p>
-                  <p className="truncate font-mono text-[11px] text-muted-foreground">
-                    {user.email}
-                  </p>
-                </DropdownMenuLabel>
-              </DropdownMenuGroup>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem render={<Link href="/settings" />}>
-                <Settings /> Settings
-              </DropdownMenuItem>
-              <DropdownMenuItem
-                onClick={async () => {
-                  await authClient.signOut();
-                  router.push("/sign-in");
-                  router.refresh();
-                }}
-              >
-                <LogOut /> Sign out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
-        </div>
+        <NavPanel
+          folder={folder}
+          scope={scope}
+          activeKey={activeKey}
+          activeLabel={activeLabel}
+          counts={counts}
+          domains={domains}
+          mailboxes={mailboxes}
+          labels={labels}
+          user={user}
+          composer={composer}
+          router={router}
+        />
       </aside>
+
+      <Sheet open={navOpen} onOpenChange={setNavOpen}>
+        <SheetContent
+          side="left"
+          className="flex w-[17rem] flex-col gap-0 bg-sidebar p-0 sm:max-w-[17rem]"
+        >
+          <SheetTitle className="sr-only">Navigation</SheetTitle>
+          <NavPanel
+            folder={folder}
+            scope={scope}
+            activeKey={activeKey}
+            activeLabel={activeLabel}
+            counts={counts}
+            domains={domains}
+            mailboxes={mailboxes}
+            labels={labels}
+            user={user}
+            composer={composer}
+            router={router}
+          />
+        </SheetContent>
+      </Sheet>
 
       {/* ---------------------------------------------------------------- */}
       {/* Work area: search on top, list beside the open conversation      */}
       {/* ---------------------------------------------------------------- */}
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+        <header className="flex h-14 shrink-0 items-center gap-2 border-b px-3 sm:gap-3 sm:px-4">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-9 shrink-0 rounded-lg md:hidden"
+            onClick={() => setNavOpen(true)}
+            aria-label="Open navigation"
+          >
+            <Menu className="size-4" />
+          </Button>
+
           <SearchField defaultValue={searchValue} onCommit={(value) => setParam("q", value)} />
 
           {searchValue && (
@@ -367,11 +267,18 @@ export function MailShell({
         </header>
 
         <div className="flex min-h-0 flex-1">
-          <section className="flex w-full min-w-0 flex-col border-r lg:w-[27rem] lg:shrink-0">
+          <section
+            className={cn(
+              "w-full min-w-0 flex-col border-r lg:flex lg:w-[27rem] lg:shrink-0",
+              threadOpen ? "hidden" : "flex",
+            )}
+          >
             <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
           </section>
 
-          <section className="hidden min-w-0 flex-1 flex-col lg:flex">
+          <section
+            className={cn("min-w-0 flex-1 flex-col lg:flex", threadOpen ? "flex" : "hidden")}
+          >
             {openSubject && (
               <div className="flex h-9 shrink-0 items-center border-b px-4">
                 <p className="truncate text-[12.5px] text-muted-foreground">{openSubject}</p>
@@ -393,6 +300,191 @@ export function MailShell({
         </footer>
       </div>
     </div>
+  );
+}
+
+function NavPanel({
+  folder,
+  scope,
+  activeKey,
+  activeLabel,
+  counts,
+  domains,
+  mailboxes,
+  labels,
+  user,
+  composer,
+  router,
+}: {
+  folder: ViewFolder;
+  scope: Scope;
+  activeKey: string;
+  activeLabel: string | null;
+  counts: { folders: Record<string, number>; mailboxes: Record<string, number> };
+  domains: [string, Mailbox[]][];
+  mailboxes: Mailbox[];
+  labels: LabelRow[];
+  user: { name: string; email: string };
+  composer: ReturnType<typeof useComposer>;
+  router: ReturnType<typeof useRouter>;
+}) {
+  return (
+    <>
+      <div className="flex h-14 shrink-0 items-center gap-2 px-4">
+        <span className="grid size-7 place-items-center rounded-xl bg-primary text-primary-foreground">
+          <Mails className="size-4" />
+        </span>
+        <span className="font-heading text-[15px] tracking-[-0.02em]">
+          <span className="font-semibold">post</span>
+          <span className="text-muted-foreground"> mail</span>
+        </span>
+      </div>
+
+      <div className="px-3 pb-3">
+        <Button
+          className="h-10 w-full justify-center gap-2 rounded-full font-medium text-[13px]"
+          onClick={() => composer.open()}
+        >
+          <PenLine className="size-4" />
+          Compose
+        </Button>
+      </div>
+
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+        <p className="eyebrow px-2 pt-2 pb-1.5">menu</p>
+        <ul className="space-y-0.5">
+          {FOLDERS.map((item) => {
+            const Icon = FOLDER_ICONS[item];
+            const count = counts.folders[item] ?? 0;
+            const active = folder === item && !activeLabel;
+            return (
+              <li key={item}>
+                <NavRow href={scopeHref(scope, item)} active={active}>
+                  <Icon className="size-4 shrink-0" />
+                  <span className="flex-1 truncate">{FOLDER_LABELS[item]}</span>
+                  {count > 0 && (
+                    <span
+                      className={cn(
+                        "shrink-0 font-mono text-[10.5px] tabular-nums",
+                        active ? "text-primary" : "text-muted-foreground",
+                      )}
+                    >
+                      {count}
+                    </span>
+                  )}
+                </NavRow>
+              </li>
+            );
+          })}
+        </ul>
+
+        <p className="eyebrow px-2 pt-5 pb-1.5">mailboxes</p>
+        <ul className="space-y-0.5">
+          <li>
+            <NavRow href={scopeHref({ kind: "all" }, folder)} active={activeKey === "all"}>
+              <Layers className="size-4 shrink-0" />
+              <span className="flex-1 truncate">All mail</span>
+            </NavRow>
+          </li>
+          {domains.map(([domain, boxes]) => (
+            <DomainBranch
+              key={domain}
+              domain={domain}
+              boxes={boxes}
+              folder={folder}
+              activeKey={activeKey}
+              unread={counts.mailboxes}
+            />
+          ))}
+          {mailboxes.length === 0 && (
+            <li className="px-2 py-1.5 text-[12px] text-muted-foreground">
+              None yet.{" "}
+              <Link href="/settings/mailboxes" className="text-primary hover:underline">
+                Add one
+              </Link>
+            </li>
+          )}
+        </ul>
+
+        {labels.length > 0 && (
+          <>
+            <p className="eyebrow px-2 pt-5 pb-1.5">labels</p>
+            <ul className="space-y-0.5">
+              {labels.map((item) => (
+                <li key={item.id}>
+                  <NavRow
+                    href={`${scopeHref(scope, "inbox")}?label=${item.id}`}
+                    active={activeLabel === item.id}
+                  >
+                    <Tag className="size-4 shrink-0" style={{ color: item.color }} />
+                    <span className="flex-1 truncate">{item.name}</span>
+                  </NavRow>
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+      </nav>
+
+      <div className="flex shrink-0 items-center gap-1 border-t px-2 py-2">
+        <ThemeToggle />
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon"
+                className="size-8 rounded-lg text-muted-foreground"
+                nativeButton={false}
+                render={<Link href="/settings" />}
+              >
+                <Settings className="size-4" />
+              </Button>
+            }
+          />
+          <TooltipContent side="top" className="font-mono text-[11px]">
+            Settings
+          </TooltipContent>
+        </Tooltip>
+
+        <DropdownMenu>
+          <DropdownMenuTrigger
+            render={
+              <Button
+                variant="ghost"
+                className="ml-auto h-8 min-w-0 gap-2 rounded-full px-1.5 pr-3"
+              >
+                <span className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary font-mono text-[10px] font-semibold text-secondary-foreground">
+                  {initialsOf(user.name || user.email)}
+                </span>
+                <span className="truncate text-[12px]">{user.name}</span>
+              </Button>
+            }
+          />
+          <DropdownMenuContent side="top" align="end" className="w-56">
+            <DropdownMenuGroup>
+              <DropdownMenuLabel className="font-normal">
+                <p className="truncate font-medium text-[13px]">{user.name}</p>
+                <p className="truncate font-mono text-[11px] text-muted-foreground">{user.email}</p>
+              </DropdownMenuLabel>
+            </DropdownMenuGroup>
+            <DropdownMenuSeparator />
+            <DropdownMenuItem render={<Link href="/settings" />}>
+              <Settings /> Settings
+            </DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async () => {
+                await authClient.signOut();
+                router.push("/sign-in");
+                router.refresh();
+              }}
+            >
+              <LogOut /> Sign out
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </div>
+    </>
   );
 }
 
