@@ -100,7 +100,7 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
   return (
     <div>
       {prepared.blockedImages > 0 && !showImages && (
-        <div className="mb-2 flex items-center gap-2 rounded-sm border border-warn/40 bg-warn/10 px-2.5 py-1.5">
+        <div className="mb-2 flex items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-2.5 py-1.5">
           <ImageOff className="size-3.5 shrink-0 text-warn" />
           <span className="text-[11.5px] text-muted-foreground">
             {prepared.blockedImages} remote {prepared.blockedImages === 1 ? "image" : "images"}{" "}
@@ -109,7 +109,7 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
           <button
             type="button"
             onClick={() => setShowImages(true)}
-            className="ml-auto rounded-sm border bg-card px-2 py-0.5 font-mono text-[10px] hover:bg-accent"
+            className="ml-auto rounded-xl border bg-card px-2 py-0.5 font-mono text-[10px] hover:bg-accent"
           >
             Show images
           </button>

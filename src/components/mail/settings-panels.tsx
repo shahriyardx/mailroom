@@ -88,7 +88,7 @@ export function MailboxPanel({
       description="One row per address you send from or receive at. No limit."
       meta={`${mailboxes.length} active`}
     >
-      <div className="divide-y rounded-sm border">
+      <div className="divide-y rounded-xl border">
         {mailboxes.map((box) => (
           <MailboxRow
             key={box.id}
@@ -106,7 +106,7 @@ export function MailboxPanel({
         )}
       </div>
 
-      <div className="mt-3 rounded-sm border bg-muted/40 p-3">
+      <div className="mt-3 rounded-xl border bg-muted/40 p-3">
         <p className="eyebrow mb-2.5">Add mailbox</p>
         <div className="grid gap-2.5 sm:grid-cols-[1fr_1fr_auto]">
           <div className="space-y-1">
@@ -153,7 +153,7 @@ export function MailboxPanel({
                   type="button"
                   onClick={() => setColor(item)}
                   className={cn(
-                    "size-5 rounded-[3px] ring-offset-2 ring-offset-background transition",
+                    "size-5 rounded-lg ring-offset-2 ring-offset-background transition",
                     color === item && "ring-2 ring-ring",
                   )}
                   style={{ background: item }}
@@ -204,7 +204,7 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
   return (
     <div>
       <div className="flex items-center gap-2.5 px-3 py-2">
-        <span className="size-2 shrink-0 rounded-[2px]" style={{ background: mailbox.color }} />
+        <span className="size-2 shrink-0 rounded-md" style={{ background: mailbox.color }} />
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-[12.5px]">{mailbox.address}</p>
           <p className="truncate text-[11.5px] text-muted-foreground">{mailbox.displayName}</p>
@@ -253,7 +253,7 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 rounded-sm text-muted-foreground hover:text-destructive"
+          className="size-7 rounded-xl text-muted-foreground hover:text-destructive"
           aria-label={`Delete ${mailbox.address}`}
           onClick={() =>
             start(async () => {
@@ -316,9 +316,9 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
         {labels.map((item) => (
           <li
             key={item.id}
-            className="flex items-center gap-1.5 rounded-sm border px-2 py-1 text-[12px]"
+            className="flex items-center gap-1.5 rounded-xl border px-2 py-1 text-[12px]"
           >
-            <span className="size-2 rounded-[2px]" style={{ background: item.color }} />
+            <span className="size-2 rounded-md" style={{ background: item.color }} />
             {item.name}
             <button
               type="button"
@@ -356,7 +356,7 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
               type="button"
               onClick={() => setColor(item)}
               className={cn(
-                "size-5 rounded-[3px] ring-offset-2 ring-offset-background transition",
+                "size-5 rounded-lg ring-offset-2 ring-offset-background transition",
                 color === item && "ring-2 ring-ring",
               )}
               style={{ background: item }}
@@ -407,7 +407,7 @@ export function RulePanel({
       description="Applied to inbound mail before it reaches the inbox."
       meta={`${rules.length}`}
     >
-      <div className="divide-y rounded-sm border">
+      <div className="divide-y rounded-xl border">
         {rules.map((rule) => (
           <div key={rule.id} className="flex items-center gap-2.5 px-3 py-2">
             <div className="min-w-0 flex-1">
@@ -425,7 +425,7 @@ export function RulePanel({
             <Button
               variant="ghost"
               size="icon"
-              className="size-7 rounded-sm text-muted-foreground hover:text-destructive"
+              className="size-7 rounded-xl text-muted-foreground hover:text-destructive"
               aria-label={`Delete ${rule.name}`}
               onClick={() =>
                 start(async () => {
@@ -445,7 +445,7 @@ export function RulePanel({
         )}
       </div>
 
-      <div className="mt-3 grid gap-2.5 rounded-sm border bg-muted/40 p-3 sm:grid-cols-4">
+      <div className="mt-3 grid gap-2.5 rounded-xl border bg-muted/40 p-3 sm:grid-cols-4">
         <div className="space-y-1">
           <Label className="eyebrow">Name</Label>
           <Input

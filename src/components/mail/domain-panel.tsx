@@ -104,7 +104,7 @@ export function DomainPanel({ domains, account, syncError }: Props) {
       }
     >
       {account && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-sm border bg-background px-2.5 py-1.5">
+        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border bg-background px-2.5 py-1.5">
           <StatusPill state={account.productionAccess ? "ok" : "pending"}>
             {account.productionAccess ? "production" : "sandbox"}
           </StatusPill>
@@ -119,13 +119,13 @@ export function DomainPanel({ domains, account, syncError }: Props) {
       )}
 
       {syncError && (
-        <p className="mb-3 flex items-center gap-2 rounded-sm border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+        <p className="mb-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
           <AlertTriangle className="size-3.5 shrink-0" />
           SES could not be reached: {syncError}
         </p>
       )}
 
-      <div className="divide-y rounded-sm border">
+      <div className="divide-y rounded-xl border">
         {domains.map((row) => (
           <DomainRowItem key={row.id} row={row} />
         ))}
@@ -212,7 +212,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
           <button
             type="button"
             title="Replace the three DKIM CNAMEs with one TXT record"
-            className="whitespace-nowrap rounded-[3px] border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            className="whitespace-nowrap rounded-lg border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
             onClick={() =>
               start(async () => {
                 await useOwnDkimKeyAction(row.id);
@@ -335,7 +335,7 @@ function CopyCell({ value, copy }: { value: string; copy?: string }) {
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="group inline-flex max-w-full items-center gap-1.5 rounded-[3px] px-1 py-0.5 text-left font-mono hover:bg-accent"
+      className="group inline-flex max-w-full items-center gap-1.5 rounded-lg px-1 py-0.5 text-left font-mono hover:bg-accent"
     >
       <span className="truncate">{value}</span>
       {copied ? (

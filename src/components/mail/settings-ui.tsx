@@ -16,7 +16,7 @@ export function Panel({
   children: React.ReactNode;
 }) {
   return (
-    <section className="rounded-sm border bg-card p-4">
+    <section className="rounded-xl border bg-card p-4">
       <div className="mb-3 flex items-start gap-3">
         <div className="min-w-0 flex-1">
           <h2 className="font-medium text-[13.5px]">{title}</h2>
@@ -64,10 +64,10 @@ export function StatusPill({
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1 rounded-[3px] border px-1.5 py-0.5 text-[10.5px]",
-        state === "ok" && "border-ok/30 bg-ok/10 text-ok",
-        state === "pending" && "border-warn/30 bg-warn/10 text-warn",
-        state === "bad" && "border-destructive/30 bg-destructive/10 text-destructive",
+        "pill font-medium",
+        state === "ok" && "border-ok/25 bg-ok/10 text-ok",
+        state === "pending" && "border-warn/25 bg-warn/10 text-warn",
+        state === "bad" && "border-destructive/25 bg-destructive/10 text-destructive",
       )}
     >
       {children}

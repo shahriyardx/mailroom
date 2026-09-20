@@ -113,7 +113,7 @@ function Tool({
       size="icon"
       title={label}
       aria-label={label}
-      className="size-7 rounded-sm text-muted-foreground"
+      className="size-7 rounded-xl text-muted-foreground"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
     >

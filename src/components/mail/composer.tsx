@@ -162,7 +162,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
   return (
     <div
       className={cn(
-        "overlay-shadow fixed z-50 flex flex-col overflow-hidden rounded-sm border bg-card",
+        "overlay-shadow fixed z-50 flex flex-col overflow-hidden rounded-xl border bg-card",
         expanded
           ? "inset-6"
           : "right-5 bottom-0 h-[32rem] w-[min(40rem,calc(100vw-2.5rem))] rounded-b-none",
@@ -178,7 +178,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 rounded-sm"
+          className="size-7 rounded-xl"
           onClick={() => setExpanded((value) => !value)}
           aria-label={expanded ? "Shrink" : "Expand"}
         >
@@ -187,7 +187,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 rounded-sm"
+          className="size-7 rounded-xl"
           onClick={onClose}
           aria-label="Close"
         >
@@ -284,7 +284,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
           {files.map((file) => (
             <li
               key={file.id}
-              className="flex items-center gap-1.5 rounded-sm border px-1.5 py-1 text-[11px]"
+              className="flex items-center gap-1.5 rounded-xl border px-1.5 py-1 text-[11px]"
             >
               <Paperclip className="size-3 text-muted-foreground" />
               <span className="max-w-44 truncate">{file.filename}</span>
@@ -325,7 +325,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 rounded-sm"
+          className="size-7 rounded-xl"
           onClick={() => fileInput.current?.click()}
           disabled={uploading}
           aria-label="Attach files"
@@ -344,7 +344,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
         <Button
           variant="ghost"
           size="icon"
-          className="size-7 rounded-sm text-muted-foreground hover:text-destructive"
+          className="size-7 rounded-xl text-muted-foreground hover:text-destructive"
           onClick={discard}
           aria-label="Discard draft"
         >

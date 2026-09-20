@@ -7,14 +7,27 @@
 /* ==========================================================================
    Design language: "operations console"
 
-   Graphite neutrals with a single ochre signal colour. Hairline borders do
-   the structural work instead of shadows. Every machine-readable value
-   (address, timestamp, size, count, verdict) is set in IBM Plex Mono so the
-   eye can scan a column without reading it.
+   Graphite neutrals with a single ochre signal colour. Every machine-readable
+   value (address, timestamp, size, count, verdict) is set in mono so the eye
+   can scan a column without reading it.
+
+   Three type roles, and nothing else:
+     display  Bricolage Grotesque  page and product voice
+     ui       Figtree              everything you read as language
+     mono     IBM Plex Mono        everything you read as data
+
+   Geometry is soft throughout: a 12px base radius, pills for anything that
+   states a status. Hairlines still carry the structure; shadow is reserved
+   for surfaces that genuinely float.
    ========================================================================== */
 
 :root {
-  --radius: 0.25rem;
+  --radius: 0.75rem;
+
+  /* Two levels only. Anything else is a hairline's job. */
+  --shadow-raise: 0 1px 2px oklch(0 0 0 / 0.04), 0 1px 1px oklch(0 0 0 / 0.03);
+  --shadow-float: 0 0 0 1px color-mix(in oklab, var(--border) 85%, transparent), 0 18px 40px -16px
+    oklch(0 0 0 / 0.26), 0 4px 12px -6px oklch(0 0 0 / 0.14);
 
   --background: oklch(0.982 0.002 250);
   --foreground: oklch(0.22 0.008 260);
@@ -117,9 +130,9 @@
 }
 
 @theme inline {
-  --font-sans: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-sans: var(--font-ui), ui-sans-serif, system-ui, sans-serif;
   --font-mono: var(--font-plex-mono), ui-monospace, "SFMono-Regular", monospace;
-  --font-heading: var(--font-plex-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-heading: var(--font-display), var(--font-ui), ui-sans-serif, sans-serif;
 
   --color-background: var(--background);
   --color-foreground: var(--foreground);
@@ -163,13 +176,14 @@
   --color-sidebar-border: var(--sidebar-border);
   --color-sidebar-ring: var(--sidebar-ring);
 
-  --radius-sm: calc(var(--radius) * 0.6);
-  --radius-md: calc(var(--radius) * 0.8);
+  /* 8 / 10 / 12 / 16 / 20 / 24 / 28 */
+  --radius-sm: calc(var(--radius) * 0.667);
+  --radius-md: calc(var(--radius) * 0.833);
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) * 1.4);
-  --radius-2xl: calc(var(--radius) * 1.8);
-  --radius-3xl: calc(var(--radius) * 2.2);
-  --radius-4xl: calc(var(--radius) * 2.6);
+  --radius-xl: calc(var(--radius) * 1.333);
+  --radius-2xl: calc(var(--radius) * 1.667);
+  --radius-3xl: calc(var(--radius) * 2);
+  --radius-4xl: calc(var(--radius) * 2.333);
 }
 
 @layer base {
@@ -191,12 +205,11 @@
 
   body {
     @apply bg-background text-foreground font-sans;
-    /* 13px base: this is a dense working tool, not a marketing page. */
-    font-size: 13px;
-    line-height: 1.45;
+    /* Dense enough for a working tool, large enough to read all day. */
+    font-size: 13.5px;
+    line-height: 1.5;
     -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
-    font-feature-settings: "cv05" 1, "ss03" 1;
   }
 
   /* Machine-readable values line up in columns. */
@@ -210,7 +223,10 @@
   h1,
   h2,
   h3 {
-    letter-spacing: -0.014em;
+    @apply font-heading;
+    font-weight: 600;
+    /* Bricolage is wide by default; pulling it in gives it authority. */
+    letter-spacing: -0.02em;
   }
 
   ::-webkit-scrollbar {
@@ -238,7 +254,7 @@
 @layer components {
   /* Section headings in the rail and settings. */
   .eyebrow {
-    @apply font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground;
+    @apply font-mono text-[10.5px] uppercase tracking-[0.12em] text-muted-foreground;
   }
 
   /* Unread rows get a signal bar, never a coloured dot. */
@@ -247,12 +263,21 @@
   }
 
   .kbd {
-    @apply inline-flex h-[18px] min-w-[18px] items-center justify-center rounded-[3px] border border-border bg-muted px-1 font-mono text-[10px] text-muted-foreground;
+    @apply inline-flex h-[19px] min-w-[19px] items-center justify-center rounded-md border border-border bg-muted px-1.5 font-mono text-[10.5px] text-muted-foreground;
+  }
+
+  /* Anything stating a status is a pill. Never a rectangle. */
+  .pill {
+    @apply inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] leading-none;
+  }
+
+  /* Cards that sit on the page rather than above it. */
+  .raise {
+    box-shadow: var(--shadow-raise);
   }
 
   /* One shadow level, reserved for things that float above the page. */
   .overlay-shadow {
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--border) 90%, transparent), 0 8px 28px -8px
-      oklch(0 0 0 / 0.22), 0 2px 6px -2px oklch(0 0 0 / 0.12);
+    box-shadow: var(--shadow-float);
   }
 }

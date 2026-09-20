@@ -198,7 +198,7 @@ export function ThreadView({ thread, backHref }: Props) {
                   className="flex w-full items-start gap-2.5 text-left"
                 >
                   <span
-                    className="mt-px grid size-6 shrink-0 place-items-center rounded-[3px] font-mono text-[9px] font-semibold text-white"
+                    className="mt-px grid size-6 shrink-0 place-items-center rounded-lg font-mono text-[9px] font-semibold text-white"
                     style={{ background: colorOf(item.fromAddress) }}
                     aria-hidden
                   >
@@ -249,7 +249,7 @@ export function ThreadView({ thread, backHref }: Props) {
                   <div className="mt-2 pl-8.5">
                     {!item.isOutbound && <AuthBadges message={item} />}
                     {item.isOutbound && item.deliveryError && (
-                      <p className="mb-2 rounded-[3px] border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11.5px] text-destructive">
+                      <p className="mb-2 rounded-lg border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11.5px] text-destructive">
                         {item.deliveryError}
                       </p>
                     )}
@@ -271,7 +271,7 @@ export function ThreadView({ thread, backHref }: Props) {
                             <li key={file.id}>
                               <a
                                 href={`/api/attachments/${file.id}`}
-                                className="group flex items-center gap-2 rounded-sm border px-2 py-1.5 transition-colors hover:bg-accent"
+                                className="group flex items-center gap-2 rounded-xl border px-2 py-1.5 transition-colors hover:bg-accent"
                               >
                                 <Paperclip className="size-3 text-muted-foreground" />
                                 <span className="max-w-56 truncate text-[11.5px]">
@@ -319,7 +319,7 @@ function DeliveryBadge({ message }: { message: Message }) {
     <span
       title={message.deliveryError ?? `SES reported: ${message.deliveryStatus}`}
       className={cn(
-        "shrink-0 rounded-[3px] border px-1.5 py-0.5 font-mono text-[10px]",
+        "pill shrink-0 font-mono font-medium",
         tone[message.deliveryStatus] ?? "border-border text-muted-foreground",
       )}
     >
@@ -346,7 +346,7 @@ function AuthBadges({ message }: { message: Message }) {
           <li
             key={name}
             className={cn(
-              "flex items-center gap-1 rounded-[2px] px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.06em]",
+              "flex items-center gap-1 rounded-md px-1.5 py-0.5 font-mono text-[9.5px] uppercase tracking-[0.06em]",
               good ? "bg-ok/12 text-ok" : "bg-destructive/12 text-destructive",
             )}
           >
@@ -372,7 +372,7 @@ function Action({
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button variant="ghost" size="icon" className="size-7 rounded-sm" onClick={onClick}>
+          <Button variant="ghost" size="icon" className="size-7 rounded-xl" onClick={onClick}>
             {children}
           </Button>
         }

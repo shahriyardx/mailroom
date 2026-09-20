@@ -39,10 +39,10 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
       meta={`${keys.filter((item) => !item.revokedAt).length} active`}
     >
       {fresh && (
-        <div className="mb-3 rounded-sm border border-ok/30 bg-ok/10 p-2.5">
+        <div className="mb-3 rounded-xl border border-ok/30 bg-ok/10 p-2.5">
           <p className="mb-1.5 text-[12px]">Copy this key now — it will not be shown again.</p>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-[3px] border bg-card px-2 py-1.5 font-mono text-[11.5px]">
+            <code className="min-w-0 flex-1 truncate rounded-lg border bg-card px-2 py-1.5 font-mono text-[11.5px]">
               {fresh}
             </code>
             <Button
@@ -63,7 +63,7 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
         </div>
       )}
 
-      <div className="divide-y rounded-sm border">
+      <div className="divide-y rounded-xl border">
         {keys.map((item) => (
           <div key={item.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
             <KeyRound className="size-3.5 shrink-0 text-muted-foreground" />
@@ -164,9 +164,9 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
         </Button>
       </div>
 
-      <details className="mt-3 rounded-sm border bg-background p-2.5">
+      <details className="mt-3 rounded-xl border bg-background p-2.5">
         <summary className="cursor-pointer text-[12px]">How to send with it</summary>
-        <pre className="mt-2 overflow-x-auto rounded-[3px] border bg-card p-2.5 font-mono text-[11px] leading-relaxed">
+        <pre className="mt-2 overflow-x-auto rounded-lg border bg-card p-2.5 font-mono text-[11px] leading-relaxed">
           {`curl -X POST ${appUrl}/api/v1/emails \\
   -H "Authorization: Bearer mk_live_..." \\
   -H "Content-Type: application/json" \\

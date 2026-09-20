@@ -13,7 +13,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
           <Link
             href="/mail/all/inbox"
             aria-label="Back to mail"
-            className="rounded-[3px] border p-1.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            className="rounded-lg border p-1.5 text-muted-foreground transition hover:bg-accent hover:text-foreground"
           >
             <ArrowLeft className="size-3.5" />
           </Link>

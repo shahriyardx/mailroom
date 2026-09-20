@@ -23,7 +23,7 @@ export function SuppressionPanel({ rows }: { rows: Row[] }) {
       description="Added automatically after a hard bounce or a spam complaint. Sending to these is refused."
       meta={`${rows.length}`}
     >
-      <div className="divide-y rounded-sm border">
+      <div className="divide-y rounded-xl border">
         {rows.map((row) => (
           <div key={row.id} className="flex items-center gap-2 px-3 py-2">
             <ShieldOff className="size-3.5 shrink-0 text-destructive" />

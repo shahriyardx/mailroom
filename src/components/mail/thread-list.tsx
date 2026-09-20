@@ -118,19 +118,19 @@ export function ThreadList({
           const checked = selected.has(item.id);
 
           return (
-            <li
-              key={item.id}
-              className={cn(
-                "group relative border-b transition-colors duration-100",
-                unread && "unread-bar",
-                active ? "bg-accent" : "hover:bg-accent/50",
-              )}
-            >
-              <Link href={hrefFor(item.id)} className="block py-2 pr-3 pl-3">
-                <div className="flex items-center gap-2">
+            <li key={item.id} className="group relative px-1.5 py-px">
+              <Link
+                href={hrefFor(item.id)}
+                className={cn(
+                  "block rounded-xl px-2.5 py-2.5 transition-colors duration-100",
+                  unread && "unread-bar",
+                  active ? "bg-accent text-accent-foreground" : "hover:bg-accent/55",
+                )}
+              >
+                <div className="flex items-center gap-2.5">
                   <span
                     className={cn(
-                      "grid size-5 shrink-0 place-items-center rounded-[3px] font-mono text-[9px] font-semibold text-white transition-opacity",
+                      "grid size-6 shrink-0 place-items-center rounded-lg font-mono text-[10px] font-semibold text-white transition-opacity",
                       checked ? "opacity-0" : "group-hover:opacity-0",
                     )}
                     style={{ background: colorOf(sender?.address ?? item.id) }}
@@ -141,43 +141,43 @@ export function ThreadList({
 
                   <span
                     className={cn(
-                      "min-w-0 flex-1 truncate text-[12.5px]",
-                      unread ? "font-semibold" : "text-foreground/80",
+                      "min-w-0 flex-1 truncate text-[13px]",
+                      unread ? "font-semibold" : "font-medium text-foreground/75",
                     )}
                   >
                     {sender?.name || sender?.address || "Unknown"}
                   </span>
 
                   {item.messageCount > 1 && (
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="shrink-0 rounded-full border px-1.5 font-mono text-[10px] text-muted-foreground leading-[17px]">
                       {item.messageCount}
                     </span>
                   )}
                   {item.hasAttachments && (
-                    <Paperclip className="size-3 shrink-0 text-muted-foreground" />
+                    <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
                     {formatStamp(item.lastMessageAt)}
                   </span>
                 </div>
 
                 <p
                   className={cn(
-                    "mt-1 truncate pl-7 text-[12.5px]",
-                    unread ? "font-medium text-foreground" : "text-foreground/70",
+                    "mt-1 truncate pl-8.5 text-[13px]",
+                    unread ? "font-semibold text-foreground" : "text-foreground/70",
                   )}
                 >
                   {item.subject || "(no subject)"}
                 </p>
 
-                <p className="mt-0.5 truncate pl-7 text-[11.5px] text-muted-foreground">
+                <p className="mt-0.5 truncate pl-8.5 text-[12px] text-muted-foreground">
                   {item.snippet}
                 </p>
 
                 {showMailbox && (
-                  <p className="mt-1 pl-7">
+                  <p className="mt-1.5 pl-8.5">
                     <span
-                      className="rounded-[2px] px-1 py-px font-mono text-[9.5px]"
+                      className="rounded-full px-2 py-0.5 font-mono text-[10.5px]"
                       style={{
                         background: `color-mix(in oklab, ${item.mailboxColor} 14%, transparent)`,
                         color: item.mailboxColor,
@@ -192,7 +192,7 @@ export function ThreadList({
               {/* The checkbox takes over the avatar slot on hover, so nothing overlaps. */}
               <div
                 className={cn(
-                  "absolute top-2 left-3 grid size-5 place-items-center transition-opacity",
+                  "absolute top-2.5 left-4 grid size-6 place-items-center transition-opacity",
                   checked
                     ? "opacity-100"
                     : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
@@ -209,7 +209,7 @@ export function ThreadList({
                     })
                   }
                   aria-label={`Select ${item.subject || "conversation"}`}
-                  className="size-4 rounded-[3px]"
+                  className="size-4 rounded-lg"
                 />
               </div>
 
@@ -218,7 +218,7 @@ export function ThreadList({
                 onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
                 aria-label={item.isStarred ? "Unstar" : "Star"}
                 className={cn(
-                  "absolute right-2.5 bottom-2 rounded-sm p-0.5 transition-opacity",
+                  "absolute right-4 bottom-2.5 rounded-lg p-0.5 transition-opacity",
                   item.isStarred
                     ? "opacity-100"
                     : "opacity-0 group-hover:opacity-100 focus:opacity-100",
@@ -272,7 +272,7 @@ function BulkAction({
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button variant="ghost" size="icon" className="size-7 rounded-sm" onClick={onClick}>
+          <Button variant="ghost" size="icon" className="size-7 rounded-xl" onClick={onClick}>
             {children}
           </Button>
         }

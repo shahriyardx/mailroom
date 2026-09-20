@@ -226,7 +226,7 @@ export function MailShell({
                             side: "right",
                           }}
                           className={cn(
-                            "relative size-9 justify-center rounded-sm p-0",
+                            "relative size-9 justify-center rounded-xl p-0",
                             active &&
                               "bg-primary/12 text-primary hover:bg-primary/16 hover:text-primary",
                           )}
@@ -257,7 +257,7 @@ export function MailShell({
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="size-9 rounded-sm text-muted-foreground"
+                    className="size-9 rounded-xl text-muted-foreground"
                     nativeButton={false}
                     render={<Link href="/settings" />}
                   >
@@ -273,8 +273,8 @@ export function MailShell({
             <DropdownMenu>
               <DropdownMenuTrigger
                 render={
-                  <Button variant="ghost" size="icon" className="size-9 rounded-sm">
-                    <span className="grid size-6 place-items-center rounded-[3px] bg-secondary font-mono text-[10px] font-semibold text-secondary-foreground">
+                  <Button variant="ghost" size="icon" className="size-9 rounded-xl">
+                    <span className="grid size-6 place-items-center rounded-lg bg-secondary font-mono text-[10px] font-semibold text-secondary-foreground">
                       {initialsOf(user.name || user.email)}
                     </span>
                   </Button>
@@ -319,7 +319,7 @@ export function MailShell({
                       className="h-8 min-w-0 flex-1 justify-start gap-2 px-1.5 hover:bg-sidebar-accent"
                     >
                       <span
-                        className="size-2 shrink-0 rounded-[2px]"
+                        className="size-2 shrink-0 rounded-md"
                         style={{
                           background:
                             scope.kind === "all"
@@ -396,7 +396,7 @@ export function MailShell({
                             render={<Link href={`${scopeHref(scope, "inbox")}?label=${item.id}`} />}
                           >
                             <span
-                              className="size-2 rounded-[2px]"
+                              className="size-2 rounded-md"
                               style={{ background: item.color }}
                             />
                             <span className="flex-1 truncate">{item.name}</span>
@@ -532,7 +532,7 @@ function SearchField({
           }
         }}
         placeholder="Search"
-        className="h-7 rounded-sm pl-7 font-mono text-[12px]"
+        className="h-7 rounded-xl pl-7 font-mono text-[12px]"
       />
     </div>
   );
@@ -550,7 +550,7 @@ function ThemeToggle() {
           <Button
             variant="ghost"
             size="icon"
-            className="size-9 rounded-sm text-muted-foreground"
+            className="size-9 rounded-xl text-muted-foreground"
             onClick={() => {
               const next = !dark;
               setDark(next);

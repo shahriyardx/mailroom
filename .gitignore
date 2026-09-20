@@ -6,3 +6,4 @@ node_modules
 next-env.d.ts
 worker/.wrangler
 .DS_Store
+.next-verify

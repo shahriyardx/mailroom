@@ -152,7 +152,7 @@ export function RecipientInput({ value, onChange, placeholder, ariaLabel }: Prop
           key={entry.key}
           title={formatAddress(entry)}
           className={cn(
-            "flex max-w-full items-center gap-1 rounded-sm border py-px pr-1 pl-1.5 font-mono text-[11px]",
+            "flex max-w-full items-center gap-1 rounded-xl border py-px pr-1 pl-1.5 font-mono text-[11px]",
             entry.valid
               ? "border-border bg-secondary text-secondary-foreground"
               : "border-destructive/60 border-dashed bg-destructive/10 text-destructive",
@@ -166,7 +166,7 @@ export function RecipientInput({ value, onChange, placeholder, ariaLabel }: Prop
               remove(entry.key);
             }}
             aria-label={`Remove ${entry.address}`}
-            className="shrink-0 rounded-[2px] text-muted-foreground hover:text-destructive"
+            className="shrink-0 rounded-md text-muted-foreground hover:text-destructive"
           >
             <X className="size-3" />
           </button>

@@ -21,7 +21,7 @@ export function AccountPanel({ name, email, createdAt, mailboxCount, domainCount
 
   return (
     <Panel title="Account" description="The login this mail app is tied to.">
-      <dl className="divide-y rounded-sm border text-[12.5px]">
+      <dl className="divide-y rounded-xl border text-[12.5px]">
         <Row label="name" value={name} />
         <Row label="email" value={email} mono />
         <Row label="joined" value={createdAt.toLocaleDateString()} />
