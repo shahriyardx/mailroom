@@ -5,7 +5,7 @@ Self-hosted email client. Sends through **Amazon SES**, receives through a
 
 - Next.js 15 (App Router) + React 19
 - Tailwind v4, shadcn/ui, Biome, TypeScript
-- better-auth (email + password)
+- better-auth with GitHub OAuth, locked to a single owner
 - Drizzle ORM + Postgres
 - Amazon SES v2 for sending, domain identities and delivery events
 - Cloudflare R2 for attachments and raw `.eml` copies
@@ -96,17 +96,44 @@ instance role or your shared AWS config.
 }
 ```
 
-## 3. Run
+## 3. Sign-in
+
+GitHub is the only way in. Create an OAuth app at **GitHub → Settings →
+Developer settings → OAuth Apps → New OAuth App**:
+
+| Field | Value |
+| --- | --- |
+| Homepage URL | `https://mail.example.com` |
+| Authorization callback URL | `https://mail.example.com/api/auth/callback/github` |
+
+Put the client id and secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
+A GitHub OAuth app allows one callback URL, so make a second app for
+`http://localhost:3000/api/auth/callback/github` if you want to sign in locally.
+
+This is a single-operator dashboard. **The first GitHub account to sign in
+becomes the owner and sign-up closes behind it** — every later attempt is
+refused, so an exposed instance cannot be claimed by a stranger.
+
+To hand the dashboard to a different account, clear the current owner:
+
+```bash
+pnpm reset-owner          # shows what would be deleted
+pnpm reset-owner --yes    # actually clears it
+```
+
+Deleting the owner cascades to their mailboxes, domains and mail.
+
+## 4. Run
 
 ```bash
 pnpm dev
 ```
 
-Open http://localhost:3000 and create your account. **Settings** then imports your
+Open http://localhost:3000 and sign in with GitHub. **Settings** then imports your
 existing SES domains automatically; press **Import from SES** any time to refresh.
 Add a mailbox per address you want to send from or receive at.
 
-## 4. Sending domains
+## 5. Sending domains
 
 A domain is usable once SES reports it verified **and** enabled for sending.
 
@@ -143,7 +170,7 @@ Add them at your DNS host by hand. Click any value in the table to copy it; the
 name column shows the short form your host expects and copies the full hostname.
 This app never writes to your DNS provider and stores no provider credentials.
 
-## 5. Delivery events (bounces and complaints)
+## 6. Delivery events (bounces and complaints)
 
 Two scripts do this for you, using the keys already in `.env`:
 
@@ -168,7 +195,7 @@ The endpoint verifies the AWS signature on every payload, confirms the
 subscription itself, records each event, updates the message status, and adds
 hard bounces and complaints to the blocked list so nothing mails them again.
 
-## 6. Receiving mail (Cloudflare)
+## 7. Receiving mail (Cloudflare)
 
 ```bash
 cd worker
@@ -206,7 +233,7 @@ The app answers `202` when no local mailbox owns the address, and the worker the
 rejects with `550 5.1.1`. Any other failure makes the worker throw, so Cloudflare
 retries instead of dropping mail.
 
-## 7. Deploying
+## 8. Deploying
 
 The `Dockerfile` is a three-stage build producing a ~330 MB image that runs as a
 non-root user. `NEXT_PUBLIC_APP_URL` is baked in at build time, since it ends up
@@ -227,7 +254,7 @@ ones by itself. Drizzle records what it has applied, so restarts are no-ops. Set
 `GET /api/health` returns `{"status":"ok","database":"up"}`, or 503 if the
 database is unreachable.
 
-## 8. Using the API
+## 9. Using the API
 
 Create a key in **Settings → API keys**. It is shown once.
 
@@ -260,7 +287,7 @@ this way also lands in that mailbox's **Sent** folder.
 | 422 | body failed validation |
 | 502 | SES refused the message |
 
-## 9. Security notes
+## 10. Security notes
 
 - `/api/inbound` verifies an HMAC over `timestamp.body` and rejects anything older
   than 5 minutes, so the endpoint cannot be spoofed or replayed.

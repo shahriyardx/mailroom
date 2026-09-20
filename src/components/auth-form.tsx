@@ -1,124 +1,80 @@
 "use client";
 
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth-client";
-import { Loader2, Mails } from "lucide-react";
-import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { Github, Loader2, Lock, Mails } from "lucide-react";
 import { useState } from "react";
 
-export function AuthForm({ mode }: { mode: "sign-in" | "sign-up" }) {
-  const router = useRouter();
-  const [pending, setPending] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+interface Props {
+  /** False once an owner exists, which closes account creation for good. */
+  registrationOpen: boolean;
+  /** Error handed back by an OAuth redirect. */
+  initialError?: string;
+}
 
-  async function onSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
+export function AuthForm({ registrationOpen, initialError }: Props) {
+  const [pending, setPending] = useState(false);
+  const [error, setError] = useState<string | null>(initialError ?? null);
+
+  async function signInWithGithub() {
     setPending(true);
     setError(null);
-
-    const form = new FormData(event.currentTarget);
-    const email = String(form.get("email"));
-    const password = String(form.get("password"));
-
-    const result =
-      mode === "sign-in"
-        ? await authClient.signIn.email({ email, password })
-        : await authClient.signUp.email({
-            email,
-            password,
-            name: String(form.get("name") || email.split("@")[0]),
-          });
-
-    if (result.error) {
-      setError(result.error.message ?? "Something went wrong");
+    const result = await authClient.signIn.social({
+      provider: "github",
+      callbackURL: "/mail/all/inbox",
+      errorCallbackURL: "/sign-in",
+    });
+    if (result?.error) {
+      setError(result.error.message ?? "GitHub sign-in failed");
       setPending(false);
-      return;
     }
-
-    router.push("/mail/all/inbox");
-    router.refresh();
   }
 
   return (
-    <div className="grid min-h-dvh place-items-center bg-background p-6">
-      <div className="w-full max-w-[22rem]">
+    <div className="flex min-h-dvh items-center justify-center bg-background p-6">
+      <div className="w-full max-w-xs">
         <div className="mb-6 flex items-center gap-2.5">
           <div className="grid size-8 place-items-center rounded-sm bg-primary text-primary-foreground">
             <Mails className="size-4" />
           </div>
           <div>
-            <p className="text-[14px] font-semibold leading-tight">Mail</p>
-            <p className="font-mono text-[10px] uppercase tracking-[0.1em] text-muted-foreground">
-              {mode === "sign-in" ? "sign in" : "create account"}
+            <p className="font-medium text-[14px] leading-tight">Mail</p>
+            <p className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">
+              {registrationOpen ? "first run" : "sign in"}
             </p>
           </div>
         </div>
 
-        <form onSubmit={onSubmit} className="space-y-3 rounded-sm border bg-card p-4">
-          {mode === "sign-up" && (
-            <div className="space-y-1.5">
-              <Label className="eyebrow">Name</Label>
-              <Input name="name" autoComplete="name" placeholder="Ada Lovelace" className="h-8" />
+        <div className="rounded-sm border bg-card p-5">
+          {registrationOpen ? (
+            <p className="mb-4 text-[12px] text-muted-foreground">
+              Nobody owns this dashboard yet. The first GitHub account to sign in becomes the owner,
+              and sign-up closes behind it.
+            </p>
+          ) : (
+            <div className="mb-4 flex items-start gap-2">
+              <Lock className="mt-0.5 size-3.5 shrink-0 text-muted-foreground" />
+              <p className="text-[12px] text-muted-foreground">
+                This dashboard has an owner. Only that GitHub account can sign in.
+              </p>
             </div>
           )}
 
-          <div className="space-y-1.5">
-            <Label className="eyebrow">Email</Label>
-            <Input
-              name="email"
-              type="email"
-              required
-              autoComplete="email"
-              placeholder="you@example.com"
-              className="h-8 font-mono text-[12px]"
-            />
-          </div>
-
-          <div className="space-y-1.5">
-            <Label className="eyebrow">Password</Label>
-            <Input
-              name="password"
-              type="password"
-              required
-              minLength={10}
-              autoComplete={mode === "sign-in" ? "current-password" : "new-password"}
-              placeholder="At least 10 characters"
-              className="h-8"
-            />
-          </div>
+          <Button
+            className="h-9 w-full text-[12.5px]"
+            disabled={pending}
+            onClick={signInWithGithub}
+          >
+            {pending ? <Loader2 className="size-4 animate-spin" /> : <Github className="size-4" />}
+            {registrationOpen ? "Claim with GitHub" : "Continue with GitHub"}
+          </Button>
 
           {error && (
-            <p className="rounded-sm bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
+            <p className="mt-3 rounded-[3px] border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11.5px] text-destructive">
               {error}
             </p>
           )}
-
-          <Button type="submit" size="sm" className="h-8 w-full gap-2" disabled={pending}>
-            {pending && <Loader2 className="size-3.5 animate-spin" />}
-            {mode === "sign-in" ? "Sign in" : "Create account"}
-          </Button>
-
-          <p className="text-center text-[11.5px] text-muted-foreground">
-            {mode === "sign-in" ? (
-              <>
-                No account?{" "}
-                <Link href="/sign-up" className="text-primary hover:underline">
-                  Sign up
-                </Link>
-              </>
-            ) : (
-              <>
-                Already registered?{" "}
-                <Link href="/sign-in" className="text-primary hover:underline">
-                  Sign in
-                </Link>
-              </>
-            )}
-          </p>
-        </form>
+        </div>
       </div>
     </div>
   );
