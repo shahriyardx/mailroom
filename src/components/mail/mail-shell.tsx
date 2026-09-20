@@ -264,6 +264,17 @@ export function MailShell({
                   <X className="size-3" />
                 </button>
               )}
+
+              <Hint label="Refresh">
+                <IconButton
+                  size="md"
+                  label="Refresh"
+                  className={cn("shrink-0", !searchValue && "ml-auto")}
+                  onClick={() => router.refresh()}
+                >
+                  <RefreshCw />
+                </IconButton>
+              </Hint>
             </header>
 
             <div className="flex min-h-0 flex-1">
@@ -274,8 +285,8 @@ export function MailShell({
                 )}
               >
                 {/* Filters sit over the list, never over the whole app. */}
-                <div className="flex shrink-0 items-center gap-2 px-4 py-3">
-                  {supportsUnreadFilter(folder) && (
+                {supportsUnreadFilter(folder) && (
+                  <div className="flex shrink-0 items-center gap-2 px-4 py-3">
                     <Tabs
                       value={unreadOnly ? "unread" : "all"}
                       onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
@@ -293,20 +304,8 @@ export function MailShell({
                         </TabsTrigger>
                       </TabsList>
                     </Tabs>
-                  )}
-
-                  <Hint label="Refresh">
-                    <IconButton
-                      size="md"
-                      variant="outline"
-                      label="Refresh"
-                      className="ml-auto rounded-xl"
-                      onClick={() => router.refresh()}
-                    >
-                      <RefreshCw />
-                    </IconButton>
-                  </Hint>
-                </div>
+                  </div>
+                )}
 
                 <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
               </section>

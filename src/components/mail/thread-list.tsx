@@ -11,15 +11,18 @@ import {
 } from "@/server/actions";
 import type { ThreadListItem } from "@/server/threads";
 import { isThisYear, isToday } from "date-fns";
+import type { LucideIcon } from "lucide-react";
 import {
   Archive,
   ArchiveRestore,
+  FileText,
   Inbox,
   Loader2,
   MailOpen,
   MailQuestion,
   Paperclip,
   RefreshCw,
+  Send,
   ShieldAlert,
   Star,
   Trash2,
@@ -27,6 +30,45 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+
+/** What each folder says when it has nothing in it. */
+const EMPTY: Record<ViewFolder, { icon: LucideIcon; title: string; body: string }> = {
+  inbox: {
+    icon: Inbox,
+    title: "Nothing here",
+    body: "New mail appears the moment the Cloudflare worker delivers it.",
+  },
+  starred: {
+    icon: Star,
+    title: "Nothing starred",
+    body: "Star a conversation and it collects here.",
+  },
+  sent: {
+    icon: Send,
+    title: "Nothing sent yet",
+    body: "Messages you send through SES appear here.",
+  },
+  drafts: {
+    icon: FileText,
+    title: "No drafts",
+    body: "Press c to start writing. Drafts save themselves as you type.",
+  },
+  archive: {
+    icon: Archive,
+    title: "Nothing archived",
+    body: "Archived conversations are kept out of the inbox, not deleted.",
+  },
+  spam: {
+    icon: ShieldAlert,
+    title: "No spam",
+    body: "Conversations you report land here.",
+  },
+  trash: {
+    icon: Trash2,
+    title: "Trash is empty",
+    body: "Deleted conversations rest here before they go for good.",
+  },
+};
 
 interface Props {
   items: ThreadListItem[];
@@ -127,19 +169,7 @@ export function ThreadList({
       )}
 
       <ul className="min-h-0 flex-1 overflow-y-auto pb-3">
-        {items.length === 0 && (
-          <li className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-            <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
-              <Inbox className="size-5" />
-            </span>
-            <span className="max-w-56 space-y-1">
-              <span className="block font-display text-[15px] font-semibold">Nothing here</span>
-              <span className="block text-[13px] leading-relaxed text-muted-foreground">
-                New mail appears the moment the Cloudflare worker delivers it.
-              </span>
-            </span>
-          </li>
-        )}
+        {items.length === 0 && <EmptyFolder folder={folder} />}
 
         {items.map((item) => {
           const unread = item.unreadCount > 0;
@@ -292,6 +322,21 @@ export function ThreadList({
         )}
       </ul>
     </div>
+  );
+}
+
+function EmptyFolder({ folder }: { folder: ViewFolder }) {
+  const { icon: Icon, title, body } = EMPTY[folder];
+  return (
+    <li className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+      <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+        <Icon className="size-5" />
+      </span>
+      <span className="max-w-60 space-y-1">
+        <span className="block font-display text-[15px] font-semibold">{title}</span>
+        <span className="block text-[13px] leading-relaxed text-muted-foreground">{body}</span>
+      </span>
+    </li>
   );
 }
 
