@@ -87,7 +87,11 @@ export function DomainPanel({ domains, account, syncError }: Props) {
         setName("");
         setNote({
           tone: "ok",
-          text: `${result.name} added. Add the DNS records below at your DNS host.`,
+          // A subdomain leans on its parent's identity, so there is nothing
+          // to publish and nothing to wait for.
+          text: result.inheritedFrom
+            ? `${result.name} added. It sends on ${result.inheritedFrom}'s verification, so there are no records to add.`
+            : `${result.name} added. Add the DNS records below at your DNS host.`,
         });
       } else {
         setNote({ tone: "bad", text: result.error });

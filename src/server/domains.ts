@@ -257,7 +257,7 @@ export async function addDomain(userId: string, rawName: string) {
     lastCheckedAt: new Date(),
   });
 
-  return { id, name };
+  return { id, name, inheritedFrom: null as string | null };
 }
 
 export async function refreshDomain(userId: string, domainId: string) {
