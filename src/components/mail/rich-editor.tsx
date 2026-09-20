@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Separator } from "@/components/ui/separator";
+import { IconButton, Separator } from "@/components/kit";
 import { cn } from "@/lib/utils";
 import {
   Bold,
@@ -39,31 +38,28 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
-      <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b px-2 py-1">
+      <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1.5">
         <Tool onClick={() => exec("bold")} label="Bold">
-          <Bold className="size-3.5" />
+          <Bold className="size-4" />
         </Tool>
         <Tool onClick={() => exec("italic")} label="Italic">
-          <Italic className="size-3.5" />
+          <Italic className="size-4" />
         </Tool>
         <Tool onClick={() => exec("underline")} label="Underline">
-          <Underline className="size-3.5" />
+          <Underline className="size-4" />
         </Tool>
         <Tool onClick={() => exec("strikeThrough")} label="Strikethrough">
-          <Strikethrough className="size-3.5" />
+          <Strikethrough className="size-4" />
         </Tool>
-        <Separator
-          orientation="vertical"
-          className="mx-1 data-vertical:h-4 data-vertical:self-center"
-        />
+        <Separator orientation="vertical" className="mx-1 h-4 self-center" />
         <Tool onClick={() => exec("insertUnorderedList")} label="Bullet list">
-          <List className="size-3.5" />
+          <List className="size-4" />
         </Tool>
         <Tool onClick={() => exec("insertOrderedList")} label="Numbered list">
-          <ListOrdered className="size-3.5" />
+          <ListOrdered className="size-4" />
         </Tool>
         <Tool onClick={() => exec("formatBlock", "blockquote")} label="Quote">
-          <Quote className="size-3.5" />
+          <Quote className="size-4" />
         </Tool>
         <Tool
           onClick={() => {
@@ -72,7 +68,7 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
           }}
           label="Insert link"
         >
-          <Link2 className="size-3.5" />
+          <Link2 className="size-4" />
         </Tool>
       </div>
 
@@ -108,16 +104,13 @@ function Tool({
   children: React.ReactNode;
 }) {
   return (
-    <Button
-      variant="ghost"
-      size="icon"
-      title={label}
-      aria-label={label}
-      className="size-7 rounded-xl text-muted-foreground"
+    <IconButton
+      label={label}
+      size="sm"
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
     >
       {children}
-    </Button>
+    </IconButton>
   );
 }

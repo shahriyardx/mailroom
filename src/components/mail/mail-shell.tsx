@@ -209,9 +209,8 @@ export function MailShell({
 
   return (
     <TooltipProvider>
-      {/* The page is grey; the application sits on it as one white card. */}
-      <div className="flex h-dvh overflow-hidden bg-background md:p-2.5">
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden bg-card md:rounded-2xl md:border md:border-border md:shadow-pop">
+      <div className="flex h-dvh overflow-hidden bg-card">
+        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
           {/* ------------------------------------------------------------ */}
           {/* Navigation: everything you can switch between, named, in one */}
           {/* list. Fixed on a wide screen, a drawer on a narrow one.      */}

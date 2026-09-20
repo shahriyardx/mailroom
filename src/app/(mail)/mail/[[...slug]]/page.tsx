@@ -1,7 +1,7 @@
+import { Button } from "@/components/kit";
 import { MailShell } from "@/components/mail/mail-shell";
 import { ThreadList } from "@/components/mail/thread-list";
 import { ThreadView } from "@/components/mail/thread-view";
-import { Button } from "@/components/ui/button";
 import { db } from "@/db";
 import { label } from "@/db/schema";
 import { FOLDER_LABELS, parseRoute, scopeHref } from "@/lib/scope";
@@ -115,8 +115,8 @@ function NoMailboxes() {
           one Cloudflare worker.
         </p>
       </div>
-      <Button size="sm" nativeButton={false} render={<Link href="/settings" />}>
-        Add a mailbox
+      <Button variant="solid" size="sm" pill asChild>
+        <Link href="/settings">Add a mailbox</Link>
       </Button>
     </div>
   );

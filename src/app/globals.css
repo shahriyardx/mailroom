@@ -32,8 +32,8 @@
   --shadow-float: 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent), 0 22px 48px -20px
     oklch(0.2 0.02 80 / 0.24), 0 6px 16px -8px oklch(0.2 0.02 80 / 0.12);
 
-  /* The page is grey; the application sits on it as a white card. */
-  --background: oklch(0.938 0.002 265);
+  /* Pages outside the mail application sit on a faint grey. */
+  --background: oklch(0.969 0.002 265);
   --foreground: oklch(0.21 0.006 265);
 
   --card: oklch(1 0 0);
