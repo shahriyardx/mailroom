@@ -8,6 +8,13 @@
       "when": 1789884130936,
       "tag": "0000_faulty_selene",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1789885747331,
+      "tag": "0001_common_shockwave",
+      "breakpoints": true
     }
   ]
 }

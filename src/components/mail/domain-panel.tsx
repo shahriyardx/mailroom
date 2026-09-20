@@ -20,12 +20,14 @@ import {
   CloudUpload,
   Copy,
   DownloadCloud,
+  ExternalLink,
   Loader2,
   RefreshCw,
   Trash2,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { CloudflareConnect, type CloudflareState } from "./cloudflare-connect";
 import { EmptyNote, Panel, StatusPill } from "./settings-ui";
 
 export interface DomainRow extends Domain {
@@ -34,8 +36,8 @@ export interface DomainRow extends Domain {
 
 interface Props {
   domains: DomainRow[];
-  /** True when CLOUDFLARE_API_TOKEN is set, which enables one-click publishing. */
-  cloudflareReady: boolean;
+  /** Whether a Cloudflare token is connected, which enables one-click publishing. */
+  cloudflare: CloudflareState;
   account: {
     productionAccess: boolean;
     enforcementStatus: string;
@@ -46,7 +48,7 @@ interface Props {
   syncError?: string;
 }
 
-export function DomainPanel({ domains, account, syncError, cloudflareReady }: Props) {
+export function DomainPanel({ domains, account, syncError, cloudflare }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [name, setName] = useState("");
@@ -126,9 +128,11 @@ export function DomainPanel({ domains, account, syncError, cloudflareReady }: Pr
         </p>
       )}
 
+      <CloudflareConnect state={cloudflare} />
+
       <div className="divide-y rounded-sm border">
         {domains.map((row) => (
-          <DomainRowItem key={row.id} row={row} cloudflareReady={cloudflareReady} />
+          <DomainRowItem key={row.id} row={row} cloudflareReady={cloudflare.connected} />
         ))}
         {domains.length === 0 && (
           <div className="px-3 py-3">
@@ -233,6 +237,17 @@ function DomainRowItem({
           <StatusPill state={row.dmarcVerified ? "ok" : "pending"}>dmarc</StatusPill>
         </div>
 
+        <a
+          href={`https://dash.cloudflare.com/?to=/:account/${row.name}/dns`}
+          target="_blank"
+          rel="noopener noreferrer"
+          title="Open this zone's DNS page in Cloudflare"
+          className="flex items-center gap-1 rounded-[3px] border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+        >
+          <ExternalLink className="size-3" />
+          Open in Cloudflare
+        </a>
+
         {cloudflareReady && (
           <button
             type="button"
@@ -329,7 +344,7 @@ function DomainRowItem({
           <p className="mb-2 text-[11.5px] text-muted-foreground">
             {cloudflareReady
               ? "Press Publish DNS to create these in Cloudflare, or copy them to another host."
-              : "Publish these at your DNS host. SES usually verifies minutes after the CNAMEs go live."}
+              : "Open in Cloudflare takes you to the zone's DNS page; copy each value across. Connect a token above to publish them in one click."}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[52rem] table-auto text-left text-[11.5px]">

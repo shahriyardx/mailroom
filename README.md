@@ -125,13 +125,21 @@ The root SPF record must cover both directions:
 v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all
 ```
 
-### Publishing DNS with one click
+### Getting these records published
 
-Set `CLOUDFLARE_API_TOKEN` and each domain gets a **Publish DNS** button that
-writes every record above straight into Cloudflare.
+Two ways, per domain:
 
-Create the token at **Cloudflare → My Profile → API Tokens → Create Token →
-Custom token** with:
+**Open in Cloudflare** — always available, nothing to set up. Deep-links to that
+zone's DNS page in the Cloudflare dashboard, where you paste each value across
+using the copy buttons.
+
+**Publish DNS** — one click, writes every record for you. Needs a Cloudflare API
+token, which you connect in **Settings → Domains → Connect**. The token is
+encrypted with a key derived from `BETTER_AUTH_SECRET` before being stored, and
+is verified against Cloudflare before it is saved. `CLOUDFLARE_API_TOKEN` in the
+environment still works as a server-wide fallback.
+
+Token permissions:
 
 | Permission | Scope |
 | --- | --- |

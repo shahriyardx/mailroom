@@ -1,5 +1,3 @@
-import { env } from "./env";
-
 const API = "https://api.cloudflare.com/client/v4";
 
 export class CloudflareError extends Error {}
@@ -10,9 +8,8 @@ interface CloudflareResponse<T> {
   result: T;
 }
 
-async function call<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = env.cloudflare.apiToken;
-  if (!token) throw new CloudflareError("CLOUDFLARE_API_TOKEN is not set");
+async function call<T>(token: string, path: string, init?: RequestInit): Promise<T> {
+  if (!token) throw new CloudflareError("No Cloudflare token is connected");
 
   const response = await fetch(`${API}${path}`, {
     ...init,
@@ -50,27 +47,32 @@ export interface DnsRecord {
  * Finds the zone that owns a hostname. A record for mail.acme.com lives in the
  * acme.com zone, so labels are stripped until a zone matches.
  */
-export async function findZone(hostname: string): Promise<Zone | null> {
+export async function findZone(token: string, hostname: string): Promise<Zone | null> {
   const labels = hostname.split(".");
   for (let i = 0; i < labels.length - 1; i += 1) {
     const candidate = labels.slice(i).join(".");
-    const zones = await call<Zone[]>(`/zones?name=${encodeURIComponent(candidate)}&per_page=1`);
+    const zones = await call<Zone[]>(
+      token,
+      `/zones?name=${encodeURIComponent(candidate)}&per_page=1`,
+    );
     if (zones.length > 0) return zones[0]!;
   }
   return null;
 }
 
-export async function listRecords(zoneId: string, type: string, name: string) {
+export async function listRecords(token: string, zoneId: string, type: string, name: string) {
   return call<DnsRecord[]>(
+    token,
     `/zones/${zoneId}/dns_records?type=${type}&name=${encodeURIComponent(name)}&per_page=100`,
   );
 }
 
 export async function createRecord(
+  token: string,
   zoneId: string,
   record: { type: string; name: string; content: string; priority?: number; ttl?: number },
 ) {
-  return call<DnsRecord>(`/zones/${zoneId}/dns_records`, {
+  return call<DnsRecord>(token, `/zones/${zoneId}/dns_records`, {
     method: "POST",
     body: JSON.stringify({
       type: record.type,
@@ -84,11 +86,12 @@ export async function createRecord(
 }
 
 export async function updateRecord(
+  token: string,
   zoneId: string,
   recordId: string,
   record: { type: string; name: string; content: string; priority?: number; ttl?: number },
 ) {
-  return call<DnsRecord>(`/zones/${zoneId}/dns_records/${recordId}`, {
+  return call<DnsRecord>(token, `/zones/${zoneId}/dns_records/${recordId}`, {
     method: "PATCH",
     body: JSON.stringify({
       type: record.type,
@@ -101,11 +104,24 @@ export async function updateRecord(
   });
 }
 
-export async function verifyToken() {
+export interface TokenCheck {
+  ok: boolean;
+  status?: string;
+  zones: string[];
+  error?: string;
+}
+
+/** Confirms a token works and reports which zones it can see. */
+export async function checkToken(token: string): Promise<TokenCheck> {
   try {
-    await call("/user/tokens/verify");
-    return true;
-  } catch {
-    return false;
+    const verify = await call<{ status: string }>(token, "/user/tokens/verify");
+    const zones = await call<Zone[]>(token, "/zones?per_page=50");
+    return { ok: true, status: verify.status, zones: zones.map((zone) => zone.name) };
+  } catch (error) {
+    return {
+      ok: false,
+      zones: [],
+      error: error instanceof Error ? error.message : "Cloudflare rejected the token",
+    };
   }
 }

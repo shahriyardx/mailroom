@@ -28,6 +28,7 @@ import {
   refreshDomain,
   removeDomain,
 } from "./domains";
+import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
 
@@ -447,6 +448,30 @@ export async function publishDnsAction(domainId: string) {
       error: error instanceof Error ? error.message : "Could not reach Cloudflare",
     };
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cloudflare connection                                                      */
+/* -------------------------------------------------------------------------- */
+
+export async function connectCloudflareAction(token: string) {
+  const user = await requireUser();
+  try {
+    const result = await connectCloudflare(user.id, token);
+    revalidatePath("/settings/domains");
+    return { ok: true as const, zones: result.zones };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Could not verify that token",
+    };
+  }
+}
+
+export async function disconnectCloudflareAction() {
+  const user = await requireUser();
+  await disconnectCloudflare(user.id);
+  revalidatePath("/settings/domains");
 }
 
 export async function removeDomainAction(domainId: string, alsoDeleteInSes: boolean) {
