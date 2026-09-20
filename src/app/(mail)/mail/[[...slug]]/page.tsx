@@ -90,14 +90,16 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       {detail ? (
         <ThreadView thread={detail} backHref={backHref} />
       ) : (
-        <div className="flex h-full flex-col items-center justify-center gap-2 bg-background">
-          <Inbox className="size-7 text-muted-foreground/50" />
-          <p className="font-mono text-[11px] uppercase tracking-[0.1em] text-muted-foreground">
-            {FOLDER_LABELS[folder]}
-          </p>
-          <p className="text-[12px] text-muted-foreground/70">
-            Select a conversation, or press <span className="kbd">c</span> to write one.
-          </p>
+        <div className="flex h-full flex-col items-center justify-center gap-3 bg-card px-6 text-center">
+          <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+            <Inbox className="size-5" />
+          </span>
+          <div className="space-y-1">
+            <p className="font-display text-[15px] font-semibold">{FOLDER_LABELS[folder]}</p>
+            <p className="text-[13px] text-muted-foreground">
+              Select a conversation, or press <span className="kbd">c</span> to write one.
+            </p>
+          </div>
         </div>
       )}
     </MailShell>

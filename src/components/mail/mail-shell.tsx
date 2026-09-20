@@ -237,12 +237,19 @@ export function MailShell({
               >
                 <Menu />
               </IconButton>
-              <h1 className="min-w-0 truncate font-display text-[18px] font-semibold tracking-[-0.02em]">
-                {scopeLabel}
+              {/* The folder names the view; the scope only qualifies it, and
+                  only when it is narrower than everything. */}
+              <h1 className="shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em]">
+                {FOLDER_LABELS[folder]}
               </h1>
               {threadCount > 0 && (
                 <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
                   {threadCount}
+                </span>
+              )}
+              {scope.kind !== "all" && (
+                <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+                  in <span className="font-mono">{scopeLabel}</span>
                 </span>
               )}
 
@@ -277,7 +284,7 @@ export function MailShell({
                       className="h-9 gap-1 rounded-xl border border-border bg-muted/70 p-1"
                     >
                       <TabsTrigger value="all" className="h-7 rounded-lg px-3">
-                        All mail
+                        All
                       </TabsTrigger>
                       <TabsTrigger value="unread" className="h-7 rounded-lg px-3">
                         Unread
