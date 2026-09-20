@@ -1,3 +1,4 @@
+import { TooltipProvider } from "@/components/kit/tooltip";
 import type { Metadata } from "next";
 import { Bricolage_Grotesque, Figtree, IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
@@ -42,7 +43,9 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         />
       </head>
       <body className={`${display.variable} ${ui.variable} ${mono.variable} h-full antialiased`}>
-        {children}
+        {/* Every page can use a tooltip, so the provider lives at the root
+            rather than inside one screen's shell. */}
+        <TooltipProvider>{children}</TooltipProvider>
       </body>
     </html>
   );

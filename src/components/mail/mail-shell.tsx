@@ -18,7 +18,6 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
-  TooltipProvider,
 } from "@/components/kit";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
@@ -209,122 +208,120 @@ export function MailShell({
   );
 
   return (
-    <TooltipProvider>
-      <div className="flex h-dvh overflow-hidden bg-card">
-        <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-          {/* ------------------------------------------------------------ */}
-          {/* Navigation: everything you can switch between, named, in one */}
-          {/* list. Fixed on a wide screen, a drawer on a narrow one.      */}
-          {/* ------------------------------------------------------------ */}
-          <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+    <div className="flex h-dvh overflow-hidden bg-card">
+      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
+        {/* ------------------------------------------------------------ */}
+        {/* Navigation: everything you can switch between, named, in one */}
+        {/* list. Fixed on a wide screen, a drawer on a narrow one.      */}
+        {/* ------------------------------------------------------------ */}
+        <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+          {nav}
+        </aside>
+
+        <Sheet open={navOpen} onOpenChange={setNavOpen}>
+          <SheetContent side="left" className="flex flex-col bg-sidebar p-0" showClose={false}>
+            <SheetTitle className="sr-only">Navigation</SheetTitle>
             {nav}
-          </aside>
+          </SheetContent>
+        </Sheet>
 
-          <Sheet open={navOpen} onOpenChange={setNavOpen}>
-            <SheetContent side="left" className="flex flex-col bg-sidebar p-0" showClose={false}>
-              <SheetTitle className="sr-only">Navigation</SheetTitle>
-              {nav}
-            </SheetContent>
-          </Sheet>
+        <div className="flex min-w-0 flex-1 flex-col">
+          {/* The view is named once, across both columns. */}
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-5">
+            <IconButton
+              size="md"
+              label="Open navigation"
+              className="-ml-1.5 md:hidden"
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu />
+            </IconButton>
+            {/* The folder names the view; the scope only qualifies it, and
+                  only when it is narrower than everything. */}
+            <h1 className="shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em]">
+              {FOLDER_LABELS[folder]}
+            </h1>
+            {threadCount > 0 && (
+              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+                {threadCount}
+              </span>
+            )}
+            {scope.kind !== "all" && (
+              <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+                in <span className="font-mono">{scopeLabel}</span>
+              </span>
+            )}
 
-          <div className="flex min-w-0 flex-1 flex-col">
-            {/* The view is named once, across both columns. */}
-            <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-5">
+            {searchValue && (
+              <button
+                type="button"
+                onClick={() => setParam("q", null)}
+                className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] text-primary-soft-foreground"
+              >
+                <span className="max-w-36 truncate font-mono">{searchValue}</span>
+                <X className="size-3" />
+              </button>
+            )}
+
+            <Hint label="Refresh">
               <IconButton
                 size="md"
-                label="Open navigation"
-                className="-ml-1.5 md:hidden"
-                onClick={() => setNavOpen(true)}
+                label="Refresh"
+                className={cn("shrink-0", !searchValue && "ml-auto")}
+                onClick={() => router.refresh()}
               >
-                <Menu />
+                <RefreshCw />
               </IconButton>
-              {/* The folder names the view; the scope only qualifies it, and
-                  only when it is narrower than everything. */}
-              <h1 className="shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em]">
-                {FOLDER_LABELS[folder]}
-              </h1>
-              {threadCount > 0 && (
-                <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
-                  {threadCount}
-                </span>
-              )}
-              {scope.kind !== "all" && (
-                <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
-                  in <span className="font-mono">{scopeLabel}</span>
-                </span>
-              )}
+            </Hint>
+          </header>
 
-              {searchValue && (
-                <button
-                  type="button"
-                  onClick={() => setParam("q", null)}
-                  className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] text-primary-soft-foreground"
-                >
-                  <span className="max-w-36 truncate font-mono">{searchValue}</span>
-                  <X className="size-3" />
-                </button>
+          <div className="flex min-h-0 flex-1">
+            <section
+              className={cn(
+                "w-full min-w-0 flex-col lg:flex lg:w-[24.5rem] lg:shrink-0 lg:border-r lg:border-border xl:w-[26.5rem]",
+                threadOpen ? "hidden" : "flex",
               )}
-
-              <Hint label="Refresh">
-                <IconButton
-                  size="md"
-                  label="Refresh"
-                  className={cn("shrink-0", !searchValue && "ml-auto")}
-                  onClick={() => router.refresh()}
-                >
-                  <RefreshCw />
-                </IconButton>
-              </Hint>
-            </header>
-
-            <div className="flex min-h-0 flex-1">
-              <section
-                className={cn(
-                  "w-full min-w-0 flex-col lg:flex lg:w-[24.5rem] lg:shrink-0 lg:border-r lg:border-border xl:w-[26.5rem]",
-                  threadOpen ? "hidden" : "flex",
-                )}
-              >
-                {/* Filters sit over the list, never over the whole app. */}
-                {supportsUnreadFilter(folder) && (
-                  <div className="flex shrink-0 items-center gap-2 px-4 py-3">
-                    <Tabs
-                      value={unreadOnly ? "unread" : "all"}
-                      onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
-                      className="min-w-0"
+            >
+              {/* Filters sit over the list, never over the whole app. */}
+              {supportsUnreadFilter(folder) && (
+                <div className="flex shrink-0 items-center gap-2 px-4 py-3">
+                  <Tabs
+                    value={unreadOnly ? "unread" : "all"}
+                    onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
+                    className="min-w-0"
+                  >
+                    <TabsList
+                      variant="segmented"
+                      className="h-9 gap-1 rounded-xl border border-border bg-muted/70 p-1"
                     >
-                      <TabsList
-                        variant="segmented"
-                        className="h-9 gap-1 rounded-xl border border-border bg-muted/70 p-1"
-                      >
-                        <TabsTrigger value="all" className="h-7 rounded-lg px-3">
-                          All
-                        </TabsTrigger>
-                        <TabsTrigger value="unread" className="h-7 rounded-lg px-3">
-                          Unread
-                        </TabsTrigger>
-                      </TabsList>
-                    </Tabs>
-                  </div>
-                )}
+                      <TabsTrigger value="all" className="h-7 rounded-lg px-3">
+                        All
+                      </TabsTrigger>
+                      <TabsTrigger value="unread" className="h-7 rounded-lg px-3">
+                        Unread
+                      </TabsTrigger>
+                    </TabsList>
+                  </Tabs>
+                </div>
+              )}
 
-                <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
-              </section>
+              <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
+            </section>
 
-              <section
-                className={cn("min-w-0 flex-1 flex-col lg:flex", threadOpen ? "flex" : "hidden")}
-              >
-                {openSubject && (
-                  <div className="flex h-10 shrink-0 items-center border-b border-border px-4 lg:hidden">
-                    <p className="truncate text-[12.5px] text-muted-foreground">{openSubject}</p>
-                  </div>
-                )}
-                <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
-              </section>
-            </div>
+            <section
+              className={cn("min-w-0 flex-1 flex-col lg:flex", threadOpen ? "flex" : "hidden")}
+            >
+              {openSubject && (
+                <div className="flex h-10 shrink-0 items-center border-b border-border px-4 lg:hidden">
+                  <p className="truncate text-[12.5px] text-muted-foreground">{openSubject}</p>
+                </div>
+              )}
+              <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+            </section>
           </div>
         </div>
       </div>
-    </TooltipProvider>
+    </div>
   );
 }
 
