@@ -118,7 +118,7 @@ function NoMailboxes() {
         </p>
       </div>
       <Button variant="solid" size="sm" pill asChild>
-        <Link href="/settings">Add a mailbox</Link>
+        <Link href="/settings/mailboxes">Add a mailbox</Link>
       </Button>
     </div>
   );

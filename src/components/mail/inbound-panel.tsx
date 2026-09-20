@@ -4,6 +4,7 @@ import {
   Button,
   Field,
   Fieldset,
+  FieldsetActions,
   Input,
   List,
   ListEmpty,
@@ -260,17 +261,17 @@ function ConnectCard() {
           <ExternalLink className="size-3" />
         </a>
 
-        <div className="flex flex-wrap items-end gap-3">
-          <Field label="API token" htmlFor="cloudflare-token" className="w-72">
-            <Input
-              id="cloudflare-token"
-              type="password"
-              mono
-              value={token}
-              onChange={(event) => setToken(event.target.value)}
-              placeholder="Paste the API token"
-            />
-          </Field>
+        <Field label="API token" htmlFor="cloudflare-token" className="max-w-sm">
+          <Input
+            id="cloudflare-token"
+            type="password"
+            mono
+            value={token}
+            onChange={(event) => setToken(event.target.value)}
+            placeholder="Paste the API token"
+          />
+        </Field>
+        <FieldsetActions note="The token is encrypted before it is stored and can be revoked in Cloudflare at any time.">
           <Button
             variant="solid"
             pill
@@ -291,13 +292,9 @@ function ConnectCard() {
           >
             Verify and save
           </Button>
-        </div>
+        </FieldsetActions>
 
         {error && <p className="mt-2 text-[12.5px] text-destructive">{error}</p>}
-
-        <Note className="mt-3">
-          The token is encrypted before it is stored and can be revoked in Cloudflare at any time.
-        </Note>
       </Fieldset>
     </Panel>
   );

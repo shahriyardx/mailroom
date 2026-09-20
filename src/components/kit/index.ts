@@ -47,7 +47,7 @@ export {
 export { EmptyState, Skeleton } from "./empty";
 export { Field, Label } from "./field";
 export { Input, Textarea } from "./input";
-export { Fieldset, List, ListEmpty, ListRow, Note } from "./list";
+export { Fieldset, FieldsetActions, List, ListEmpty, ListRow, Note } from "./list";
 export { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "./popover";
 export { ScrollArea, ScrollBar } from "./scroll-area";
 export {
@@ -61,6 +61,7 @@ export {
   SelectValue,
 } from "./select";
 export { Separator } from "./separator";
+export { Meter, Stat, Stats } from "./stat";
 export {
   Sheet,
   SheetClose,

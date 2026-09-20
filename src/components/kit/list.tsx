@@ -45,6 +45,25 @@ export function Note({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
+/** Closes a Fieldset: what the form does on the left, the button on the right. */
+export function FieldsetActions({
+  note,
+  className,
+  children,
+  ...props
+}: React.ComponentProps<"div"> & { note?: React.ReactNode }) {
+  return (
+    <div
+      data-slot="fieldset-actions"
+      className={cn("mt-4 flex flex-wrap items-center justify-end gap-3", className)}
+      {...props}
+    >
+      {note && <Note className="mr-auto max-w-md">{note}</Note>}
+      {children}
+    </div>
+  );
+}
+
 /** The block that creates a record, set apart by space rather than a box. */
 export function Fieldset({
   title,

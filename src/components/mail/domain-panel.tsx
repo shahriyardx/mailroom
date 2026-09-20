@@ -4,6 +4,7 @@ import {
   Button,
   Field,
   Fieldset,
+  FieldsetActions,
   Hint,
   IconButton,
   Input,
@@ -34,6 +35,7 @@ import {
   RefreshCw,
   Trash2,
 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 
@@ -136,32 +138,23 @@ export function DomainPanel({ domains, account, syncError }: Props) {
       </List>
 
       <Fieldset title="Add a domain">
-        <div className="flex flex-wrap items-end gap-4">
-          <Field
-            label="Domain"
-            htmlFor="domain-name"
-            hint="Creates the identity with Easy DKIM and a custom return path."
-            className="w-64"
-          >
-            <Input
-              id="domain-name"
-              mono
-              value={name}
-              onChange={(event) => setName(event.target.value)}
-              placeholder="acme.com"
-            />
-          </Field>
-          <Button
-            variant="solid"
-            pill
-            className="mb-6 ml-auto"
-            onClick={add}
-            loading={pending}
-            disabled={!name.trim()}
-          >
+        <Field label="Domain" htmlFor="domain-name" className="max-w-xs">
+          <Input
+            id="domain-name"
+            mono
+            value={name}
+            onChange={(event) => setName(event.target.value)}
+            placeholder="acme.com"
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && name.trim()) add();
+            }}
+          />
+        </Field>
+        <FieldsetActions note="Creates the identity with Easy DKIM and a custom return path.">
+          <Button variant="solid" pill onClick={add} loading={pending} disabled={!name.trim()}>
             Add domain
           </Button>
-        </div>
+        </FieldsetActions>
       </Fieldset>
 
       {note && (
@@ -207,11 +200,11 @@ function DomainRowItem({ row }: { row: DomainRow }) {
 
   return (
     <div>
-      <ListRow className="flex-wrap">
+      <ListRow className="gap-2.5">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:text-foreground"
+          className="-ml-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
           aria-label={open ? "Hide DNS records" : "Show DNS records"}
         >
           <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
@@ -252,37 +245,39 @@ function DomainRowItem({ row }: { row: DomainRow }) {
           </div>
         )}
 
-        <Hint label="Check status now">
-          <IconButton
-            label="Check status now"
-            onClick={() =>
-              start(async () => {
-                await refreshDomainAction(row.id);
-                router.refresh();
-              })
-            }
-          >
-            {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-          </IconButton>
-        </Hint>
+        <div className="flex shrink-0 items-center gap-0.5">
+          <Hint label="Check status now">
+            <IconButton
+              label="Check status now"
+              onClick={() =>
+                start(async () => {
+                  await refreshDomainAction(row.id);
+                  router.refresh();
+                })
+              }
+            >
+              {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            </IconButton>
+          </Hint>
 
-        <Hint label="Remove domain">
-          <IconButton
-            variant="danger"
-            label="Remove domain"
-            onClick={() => {
-              const alsoSes = window.confirm(
-                `Remove ${row.name} from this app?\n\nOK = also delete the identity in SES.\nCancel = remove it here only.`,
-              );
-              start(async () => {
-                await removeDomainAction(row.id, alsoSes);
-                router.refresh();
-              });
-            }}
-          >
-            <Trash2 />
-          </IconButton>
-        </Hint>
+          <Hint label="Remove domain">
+            <IconButton
+              variant="danger"
+              label="Remove domain"
+              onClick={() => {
+                const alsoSes = window.confirm(
+                  `Remove ${row.name} from this app?\n\nOK = also delete the identity in SES.\nCancel = remove it here only.`,
+                );
+                start(async () => {
+                  await removeDomainAction(row.id, alsoSes);
+                  router.refresh();
+                });
+              }}
+            >
+              <Trash2 />
+            </IconButton>
+          </Hint>
+        </div>
       </ListRow>
 
       {open && (

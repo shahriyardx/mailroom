@@ -4,6 +4,7 @@ import {
   Button,
   Field,
   Fieldset,
+  FieldsetActions,
   IconButton,
   Input,
   List,
@@ -126,7 +127,7 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
       </List>
 
       <Fieldset title="Create a key">
-        <div className="flex flex-wrap items-end gap-4">
+        <div className="flex flex-wrap items-start gap-5">
           <Field label="Name" htmlFor="key-name" className="w-52">
             <Input
               id="key-name"
@@ -150,10 +151,11 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
               </SelectContent>
             </Select>
           </Field>
+        </div>
+        <FieldsetActions note="The key is shown once. Store it somewhere safe.">
           <Button
             variant="solid"
             pill
-            className="ml-auto"
             loading={pending}
             disabled={!name.trim()}
             onClick={() =>
@@ -170,7 +172,7 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
           >
             Create key
           </Button>
-        </div>
+        </FieldsetActions>
       </Fieldset>
 
       <details className="mt-5 border-t border-border pt-4">

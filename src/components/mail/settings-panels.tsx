@@ -11,6 +11,7 @@ import {
   DropdownMenuTrigger,
   Field,
   Fieldset,
+  FieldsetActions,
   IconButton,
   Input,
   List,
@@ -156,16 +157,20 @@ export function MailboxPanel({
           </Field>
         </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          {domains.length === 0 && (
-            <Note className="text-destructive">
-              No verified domains yet. Add one under Domains first.
-            </Note>
-          )}
+        <FieldsetActions
+          note={
+            domains.length === 0 ? (
+              <span className="text-destructive">
+                No verified domains yet. Add one under Domains first.
+              </span>
+            ) : (
+              "Receiving needs the inbound worker deployed for this domain."
+            )
+          }
+        >
           <Button
             variant="solid"
             pill
-            className="ml-auto"
             onClick={add}
             loading={pending}
             disabled={!local.trim() || !domain}
@@ -173,7 +178,7 @@ export function MailboxPanel({
             {!pending && <Plus />}
             Add mailbox
           </Button>
-        </div>
+        </FieldsetActions>
       </Fieldset>
     </Panel>
   );
@@ -336,8 +341,8 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
       )}
 
       <Fieldset title="Add a label">
-        <div className="flex flex-wrap items-end gap-4">
-          <Field label="Name" htmlFor="label-name" className="w-52">
+        <div className="flex flex-wrap items-start gap-5">
+          <Field label="Name" htmlFor="label-name" className="w-56">
             <Input
               id="label-name"
               value={name}
@@ -348,10 +353,11 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
           <Field label="Colour">
             <ColorPicker value={color} onChange={setColor} palette={PALETTE} />
           </Field>
+        </div>
+        <FieldsetActions>
           <Button
             variant="solid"
             pill
-            className="ml-auto"
             loading={pending}
             disabled={!name.trim()}
             onClick={() =>
@@ -365,7 +371,7 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
             {!pending && <Plus />}
             Add label
           </Button>
-        </div>
+        </FieldsetActions>
       </Fieldset>
     </Panel>
   );
@@ -470,12 +476,10 @@ export function RulePanel({
           </Field>
         </div>
 
-        <div className="mt-4 flex items-center gap-3">
-          <Note>A filter needs at least one thing to match on.</Note>
+        <FieldsetActions note="A filter needs at least one thing to match on.">
           <Button
             variant="solid"
             pill
-            className="ml-auto"
             loading={pending}
             disabled={!name.trim() || (!matchFrom.trim() && !matchSubject.trim())}
             onClick={() =>
@@ -496,7 +500,7 @@ export function RulePanel({
             {!pending && <Plus />}
             Add filter
           </Button>
-        </div>
+        </FieldsetActions>
       </Fieldset>
     </Panel>
   );

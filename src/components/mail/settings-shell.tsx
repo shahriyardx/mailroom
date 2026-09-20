@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
+  Gauge,
   Globe,
   Inbox,
   KeyRound,
@@ -27,7 +28,8 @@ interface NavItem {
 }
 
 /** Grouped the way you think about the system, not the way it is stored. */
-const GROUPS: { title: string; items: NavItem[] }[] = [
+const GROUPS: { title?: string; items: NavItem[] }[] = [
+  { items: [{ href: "/settings/overview", label: "Overview", icon: Gauge }] },
   {
     title: "Sending",
     items: [
@@ -143,8 +145,8 @@ function SettingsNavPanel({
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
         {GROUPS.map((group) => (
-          <div key={group.title} className="mb-1">
-            <p className="eyebrow px-2 pt-3 pb-1.5">{group.title}</p>
+          <div key={group.title ?? group.items[0].href} className="mb-1">
+            {group.title && <p className="eyebrow px-2 pt-3 pb-1.5">{group.title}</p>}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
                 const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
