@@ -102,8 +102,10 @@ export function SettingsShell({
           </h1>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-          <div className="mx-auto max-w-3xl space-y-4 p-4 pb-12 sm:p-6">{children}</div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <div className="mx-auto max-w-3xl divide-y divide-border px-5 pb-16 sm:px-7">
+            {children}
+          </div>
         </div>
       </div>
     </div>

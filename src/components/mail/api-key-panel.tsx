@@ -47,12 +47,12 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
       meta={`${keys.filter((item) => !item.revokedAt).length} active`}
     >
       {fresh && (
-        <div className="mb-4 rounded-xl bg-ok-soft p-3">
+        <div className="mb-4 rounded-xl bg-ok-soft p-3.5">
           <p className="mb-2 text-[12.5px] font-medium text-ok">
             Copy this key now. It is stored hashed and will not be shown again.
           </p>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-card px-2.5 py-2 font-mono text-[12px]">
+            <code className="min-w-0 flex-1 truncate rounded-lg bg-card px-2.5 py-2 font-mono text-[12px]">
               {fresh}
             </code>
             <IconButton
@@ -173,9 +173,9 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
         </div>
       </Fieldset>
 
-      <details className="mt-4 rounded-xl border border-border bg-muted/40 p-3.5">
+      <details className="mt-5 border-t border-border pt-4">
         <summary className="cursor-pointer text-[13px] font-medium">How to send with it</summary>
-        <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-card p-3 font-mono text-[11.5px] leading-relaxed">
+        <pre className="mt-3 overflow-x-auto rounded-xl bg-muted p-3.5 font-mono text-[11.5px] leading-relaxed">
           {`curl -X POST ${appUrl}/api/v1/emails \\
   -H "Authorization: Bearer mk_live_..." \\
   -H "Content-Type: application/json" \\

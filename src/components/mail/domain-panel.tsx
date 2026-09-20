@@ -286,7 +286,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
       </ListRow>
 
       {open && (
-        <div className="border-t border-border bg-muted/40 px-3.5 py-3">
+        <div className="border-t border-border py-3.5">
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {checks.map((check) => (
@@ -319,7 +319,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
               <button
                 type="button"
                 title="Replace the three DKIM CNAMEs with one TXT record"
-                className="ml-auto whitespace-nowrap rounded-full bg-card px-2.5 py-1 text-[12px] text-muted-foreground shadow-raise transition-colors hover:bg-accent hover:text-foreground"
+                className="ml-auto whitespace-nowrap rounded-full border border-border px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                 onClick={() =>
                   start(async () => {
                     await useOwnDkimKeyAction(row.id);

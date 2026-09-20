@@ -64,7 +64,10 @@ export function CardFooter({ className, ...props }: React.ComponentProps<"div">)
   );
 }
 
-/** A settings section: title, one line of explanation, then its controls. */
+/**
+ * A settings section. Not a card: a heading, one line on why, then the
+ * controls. The rule between sections comes from the page that stacks them.
+ */
 export function Panel({
   title,
   description,
@@ -81,23 +84,20 @@ export function Panel({
   action?: React.ReactNode;
 }) {
   return (
-    <section
-      data-slot="panel"
-      className={cn(
-        "overflow-hidden rounded-2xl border border-border bg-card text-card-foreground shadow-raise",
-        className,
-      )}
-      {...props}
-    >
-      <CardHeader>
-        <div className="min-w-0">
-          <CardTitle>{title}</CardTitle>
-          {description && <CardDescription>{description}</CardDescription>}
+    <section data-slot="panel" className={cn("py-7 first:pt-6", className)} {...props}>
+      <div className="mb-4 flex items-start gap-3">
+        <div className="min-w-0 flex-1">
+          <h2 className="text-[14.5px] font-semibold tracking-[-0.01em]">{title}</h2>
+          {description && (
+            <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
+              {description}
+            </p>
+          )}
         </div>
         {meta && <span className="shrink-0 text-[12px] text-muted-foreground">{meta}</span>}
         {action && <div className="shrink-0">{action}</div>}
-      </CardHeader>
-      <CardBody>{children}</CardBody>
+      </div>
+      {children}
     </section>
   );
 }

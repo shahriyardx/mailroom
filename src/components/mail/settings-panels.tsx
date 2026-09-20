@@ -249,7 +249,7 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
       </ListRow>
 
       {open && (
-        <div className="border-t border-border bg-muted/40 px-3.5 py-3">
+        <div className="border-t border-border py-3.5">
           <Field
             label="Signature"
             htmlFor={`signature-${mailbox.id}`}

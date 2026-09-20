@@ -84,7 +84,7 @@ export function InboundPanel({ status, connection }: Props) {
           </p>
         )}
 
-        <dl className="mb-4 grid grid-cols-2 gap-px overflow-hidden rounded-xl border border-border bg-border sm:grid-cols-3">
+        <dl className="mb-4 grid grid-cols-2 gap-x-6 gap-y-3 border-y border-border py-3 sm:grid-cols-3">
           <Cell label="Script">{status.scriptName}</Cell>
           <Cell label="Size">{(status.scriptBytes / 1024).toFixed(0)} KB</Cell>
           <Cell label="Updated">
@@ -305,7 +305,7 @@ function ConnectCard() {
 
 function Cell({ label, children }: { label: string; children: React.ReactNode }) {
   return (
-    <div className="bg-card px-3.5 py-2.5">
+    <div className="min-w-0">
       <dt className="text-[11.5px] text-muted-foreground">{label}</dt>
       <dd className="mt-0.5 truncate font-mono text-[12.5px]">{children}</dd>
     </div>
