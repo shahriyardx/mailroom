@@ -6,6 +6,11 @@ export interface Env {
   INBOUND_WEBHOOK_SECRET: string;
   STORE_RAW?: string;
   MAX_ATTACHMENT_BYTES?: string;
+  /**
+   * Optional comma-separated addresses to forward every message on to, on top
+   * of storing it. Each must be a verified destination in Email Routing.
+   */
+  FORWARD_TO?: string;
 }
 
 interface StoredAttachment {
@@ -99,6 +104,13 @@ async function storeAttachments(
   return stored;
 }
 
+/** Sends the message on to each verified destination address. */
+async function forward(message: ForwardableEmailMessage, addresses: string[]) {
+  for (const address of addresses) {
+    await message.forward(address);
+  }
+}
+
 export default {
   /** Cloudflare Email Routing calls this for every message sent to a routed address. */
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext) {
@@ -167,8 +179,18 @@ export default {
       body,
     });
 
+    const forwardTo = (env.FORWARD_TO ?? "")
+      .split(",")
+      .map((address) => address.trim())
+      .filter(Boolean);
+
     if (response.status === 202) {
-      // The app has no mailbox for this address; bounce so the sender knows.
+      // The app has no mailbox for this address. Forward it if somewhere was
+      // configured, rather than bouncing mail we could still deliver.
+      if (forwardTo.length > 0) {
+        await forward(message, forwardTo);
+        return;
+      }
       message.setReject("550 5.1.1 No such recipient here");
       return;
     }
@@ -178,6 +200,10 @@ export default {
       const detail = await response.text().catch(() => "");
       throw new Error(`inbound webhook failed ${response.status}: ${detail.slice(0, 300)}`);
     }
+
+    // Stored successfully. Forwarding happens after, so a forwarding failure
+    // retries the whole message; the app deduplicates on Message-ID.
+    if (forwardTo.length > 0) await forward(message, forwardTo);
   },
 
   /** Health check, useful after deploy. */

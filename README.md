@@ -187,6 +187,21 @@ Then per domain in the Cloudflare dashboard:
 Flow: Cloudflare receives → worker parses MIME → attachments to R2 → signed JSON
 POST to `/api/inbound` → rows in Postgres.
 
+### Keeping a copy in Gmail
+
+A routing rule has one action, so it cannot both forward and call the worker.
+The worker does the forwarding instead: set `FORWARD_TO` in `worker/wrangler.toml`
+to one or more comma-separated addresses and every message is stored **and**
+sent on.
+
+Each address has to be verified first under **Email Routing → Destination
+addresses**. Forwarding runs after the message is stored, so a forwarding
+failure makes Cloudflare retry the whole delivery; the app deduplicates on
+`Message-ID`, so the message is not stored twice.
+
+With `FORWARD_TO` set, mail for an address no mailbox owns is forwarded rather
+than bounced.
+
 The app answers `202` when no local mailbox owns the address, and the worker then
 rejects with `550 5.1.1`. Any other failure makes the worker throw, so Cloudflare
 retries instead of dropping mail.

@@ -15,5 +15,8 @@ APP_INBOUND_URL = "https://mail.example.com/api/inbound"
 STORE_RAW = "true"
 # Max single attachment size to store, in bytes.
 MAX_ATTACHMENT_BYTES = "26214400"
+# Optional: also forward every message on to these addresses, comma separated.
+# Each one must be verified under Email Routing -> Destination addresses.
+FORWARD_TO = ""
 
 # Secret, set with: wrangler secret put INBOUND_WEBHOOK_SECRET --config worker/wrangler.toml
