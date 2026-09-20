@@ -139,7 +139,7 @@ export function RecipientInput({ value, onChange, placeholder, ariaLabel }: Prop
 
   return (
     <div
-      className="flex min-h-9 w-full flex-wrap items-center gap-1 py-1.5"
+      className="flex min-h-10 w-full flex-wrap items-center gap-1 py-1.5 pr-3"
       onClick={() => inputRef.current?.focus()}
       onKeyDown={(event) => {
         if (event.target === event.currentTarget && event.key === "Enter") {
@@ -152,10 +152,8 @@ export function RecipientInput({ value, onChange, placeholder, ariaLabel }: Prop
           key={entry.key}
           title={formatAddress(entry)}
           className={cn(
-            "flex max-w-full items-center gap-1 rounded-xl border py-px pr-1 pl-1.5 font-mono text-[11px]",
-            entry.valid
-              ? "border-border bg-secondary text-secondary-foreground"
-              : "border-destructive/60 border-dashed bg-destructive/10 text-destructive",
+            "flex max-w-full items-center gap-1 rounded-full py-0.5 pr-1 pl-2 font-mono text-[11.5px]",
+            entry.valid ? "bg-muted text-foreground" : "bg-danger-soft text-destructive",
           )}
         >
           <span className="truncate">{entry.name ?? entry.address}</span>
@@ -182,7 +180,7 @@ export function RecipientInput({ value, onChange, placeholder, ariaLabel }: Prop
         onPaste={onPaste}
         onBlur={() => commit(draft)}
         placeholder={entries.length === 0 ? placeholder : ""}
-        className="h-6 min-w-32 flex-1 bg-transparent font-mono text-[12px] outline-none placeholder:text-muted-foreground"
+        className="h-7 min-w-32 flex-1 bg-transparent font-mono text-[12.5px] outline-none placeholder:text-muted-foreground/70"
       />
     </div>
   );

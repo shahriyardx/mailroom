@@ -1,14 +1,15 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
+  Button,
+  IconButton,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/kit";
 import type { Mailbox } from "@/db/schema";
 import { cn, formatBytes } from "@/lib/utils";
 import { deleteDraftAction, saveDraftAction, sendMessageAction } from "@/server/actions";
@@ -162,73 +163,43 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
   return (
     <div
       className={cn(
-        "overlay-shadow fixed z-50 flex flex-col overflow-hidden rounded-xl border bg-card",
+        "overlay-shadow fixed z-50 flex flex-col overflow-hidden rounded-2xl border border-border bg-card",
         // On a phone the composer is the screen; on a desktop it docks bottom-right.
         expanded
           ? "inset-2 sm:inset-6"
-          : "inset-x-0 bottom-0 h-[min(32rem,100dvh)] rounded-b-none sm:inset-x-auto sm:right-5 sm:w-[min(40rem,calc(100vw-2.5rem))]",
+          : "inset-x-0 bottom-0 h-[min(32rem,100dvh)] rounded-b-none sm:inset-x-auto sm:right-5 sm:bottom-0 sm:w-[min(40rem,calc(100vw-2.5rem))]",
       )}
     >
-      <header className="flex h-9 shrink-0 items-center gap-2 border-b bg-muted/60 pr-1 pl-3">
-        <h2 className="flex-1 truncate font-mono text-[11px] uppercase tracking-[0.08em] text-muted-foreground">
+      <header className="flex h-11 shrink-0 items-center gap-2 border-b border-border pr-2 pl-4">
+        <h2 className="flex-1 truncate text-[13px] font-semibold">
           {draft.threadId ? "Reply" : "New message"}
         </h2>
-        {savedAt && (
-          <span className="font-mono text-[10px] text-muted-foreground">draft {savedAt}</span>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 rounded-xl"
+        {savedAt && <span className="text-[11px] text-muted-foreground">Saved {savedAt}</span>}
+        <IconButton
+          label={expanded ? "Shrink" : "Expand"}
           onClick={() => setExpanded((value) => !value)}
-          aria-label={expanded ? "Shrink" : "Expand"}
         >
-          {expanded ? <Minimize2 className="size-3.5" /> : <Maximize2 className="size-3.5" />}
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 rounded-xl"
-          onClick={onClose}
-          aria-label="Close"
-        >
-          <X className="size-3.5" />
-        </Button>
+          {expanded ? <Minimize2 /> : <Maximize2 />}
+        </IconButton>
+        <IconButton label="Close" onClick={onClose}>
+          <X />
+        </IconButton>
       </header>
 
-      <div className="shrink-0 border-b">
+      <div className="shrink-0 border-b border-border">
         <Row label="From">
           <Select value={mailboxId} onValueChange={(value) => value && setMailboxId(value)}>
-            <SelectTrigger
-              size="sm"
-              className="h-9 w-full rounded-none border-0 bg-transparent px-0 pr-3 font-mono text-[12px] shadow-none focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent"
-            >
-              <SelectValue placeholder="Pick a mailbox">
-                {(value: string | null) => {
-                  const box = mailboxes.find((entry) => entry.id === value);
-                  if (!box) return "Pick a mailbox";
-                  return (
-                    <span className="flex min-w-0 items-center gap-1.5">
-                      <span
-                        className="size-1.5 shrink-0 rounded-full"
-                        style={{ background: box.color }}
-                      />
-                      <span className="truncate">
-                        {box.displayName} &lt;{box.address}&gt;
-                      </span>
-                    </span>
-                  );
-                }}
-              </SelectValue>
+            <SelectTrigger size="bare" className="pr-3 text-[13px]">
+              <SelectValue placeholder="Pick a mailbox" />
             </SelectTrigger>
             <SelectContent>
               {mailboxes.map((box) => (
-                <SelectItem key={box.id} value={box.id} className="font-mono text-[12px]">
+                <SelectItem key={box.id} value={box.id}>
                   <span
                     className="mr-1.5 inline-block size-1.5 rounded-full align-middle"
                     style={{ background: box.color }}
                   />
-                  {box.displayName} &lt;{box.address}&gt;
+                  <span className="font-mono text-[12.5px]">{box.address}</span>
                 </SelectItem>
               ))}
             </SelectContent>
@@ -241,7 +212,7 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
             !showCc && (
               <button
                 type="button"
-                className="shrink-0 px-3 font-mono text-[10px] text-muted-foreground uppercase tracking-[0.08em] hover:text-foreground"
+                className="shrink-0 px-3 text-[12px] font-medium text-muted-foreground transition-colors hover:text-foreground"
                 onClick={() => setShowCc(true)}
               >
                 Cc / Bcc
@@ -281,15 +252,15 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
       />
 
       {files.length > 0 && (
-        <ul className="flex shrink-0 flex-wrap gap-1.5 border-t px-3 py-2">
+        <ul className="flex shrink-0 flex-wrap gap-1.5 border-t border-border px-4 py-2.5">
           {files.map((file) => (
             <li
               key={file.id}
-              className="flex items-center gap-1.5 rounded-xl border px-1.5 py-1 text-[11px]"
+              className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-1 text-[11.5px]"
             >
               <Paperclip className="size-3 text-muted-foreground" />
               <span className="max-w-44 truncate">{file.filename}</span>
-              <span className="font-mono text-[10px] text-muted-foreground">
+              <span className="font-mono text-[10.5px] text-muted-foreground">
                 {formatBytes(file.sizeBytes)}
               </span>
               <button
@@ -305,14 +276,16 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
         </ul>
       )}
 
-      <footer className="flex h-11 shrink-0 items-center gap-2 border-t px-3">
+      <footer className="flex h-14 shrink-0 items-center gap-2 border-t border-border px-4">
         <Button
-          size="sm"
-          className="h-7 gap-1.5 px-3 text-[12px]"
+          variant="solid"
+          size="md"
+          pill
           onClick={send}
-          disabled={sending || !to.trim() || !mailboxId}
+          loading={sending}
+          disabled={!to.trim() || !mailboxId}
         >
-          {sending ? <Loader2 className="size-3.5 animate-spin" /> : <Send className="size-3.5" />}
+          {!sending && <Send />}
           Send
         </Button>
 
@@ -323,34 +296,24 @@ export function Composer({ draft, mailboxes, onClose }: Props) {
           hidden
           onChange={(event) => upload(event.target.files)}
         />
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 rounded-xl"
+        <IconButton
+          size="md"
+          label="Attach files"
           onClick={() => fileInput.current?.click()}
           disabled={uploading}
-          aria-label="Attach files"
         >
-          {uploading ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Paperclip className="size-3.5" />
-          )}
-        </Button>
+          {uploading ? <Loader2 className="animate-spin" /> : <Paperclip />}
+        </IconButton>
 
-        <span className="ml-auto font-mono text-[10px] text-muted-foreground">
-          <span className="kbd">⌘</span> <span className="kbd">↵</span> send
+        <span className="ml-auto hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+          <span className="kbd">⌘</span>
+          <span className="kbd">↵</span>
+          send
         </span>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 rounded-xl text-muted-foreground hover:text-destructive"
-          onClick={discard}
-          aria-label="Discard draft"
-        >
-          <Trash2 className="size-3.5" />
-        </Button>
+        <IconButton size="md" variant="danger" label="Discard draft" onClick={discard}>
+          <Trash2 />
+        </IconButton>
       </footer>
     </div>
   );
@@ -369,14 +332,11 @@ function FieldInput({
 }) {
   return (
     <Input
+      variant="bare"
       value={value}
       onChange={(event) => onChange(event.target.value)}
       placeholder={placeholder}
-      className={cn(
-        "h-9 rounded-none border-0 bg-transparent px-0 text-[12.5px] shadow-none",
-        "focus-visible:border-0 focus-visible:ring-0 dark:bg-transparent",
-        mono && "font-mono text-[12px]",
-      )}
+      className={cn("h-10 text-[13.5px]", mono && "font-mono text-[12.5px]")}
     />
   );
 }
@@ -391,9 +351,11 @@ function Row({
   action?: React.ReactNode;
 }) {
   return (
-    <div className="flex min-h-9 items-stretch border-b last:border-b-0">
-      <span className="eyebrow flex w-[4.75rem] shrink-0 items-center border-r pl-3">{label}</span>
-      <div className="flex min-w-0 flex-1 items-center pl-3">{children}</div>
+    <div className="flex min-h-10 items-stretch border-b border-border last:border-b-0">
+      <span className="flex w-16 shrink-0 items-center pl-4 text-[12.5px] text-muted-foreground">
+        {label}
+      </span>
+      <div className="flex min-w-0 flex-1 items-center">{children}</div>
       {action}
     </div>
   );
