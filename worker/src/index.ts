@@ -161,7 +161,13 @@ async function storeAttachments(
       sizeBytes: bytes.byteLength,
       r2Key: key,
       contentId: file.contentId ?? null,
-      isInline: file.disposition === "inline" || Boolean(file.contentId),
+      // A Content-ID alone does not make a part inline: Gmail stamps one on
+      // ordinary attachments too. An explicit disposition settles it, and a
+      // Content-ID only decides the case where there is none.
+      isInline:
+        file.disposition === "attachment"
+          ? false
+          : file.disposition === "inline" || Boolean(file.contentId),
     });
   }
 
