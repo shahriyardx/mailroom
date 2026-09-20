@@ -131,8 +131,13 @@ export function DomainPanel({ domains, account, syncError }: Props) {
       )}
 
       <List>
-        {domains.map((row) => (
-          <DomainRowItem key={row.id} row={row} />
+        {nest(domains).map(({ row, children }) => (
+          <div key={row.id}>
+            <DomainRowItem row={row} />
+            {children.map((child) => (
+              <DomainRowItem key={child.id} row={child} nested />
+            ))}
+          </div>
         ))}
         {domains.length === 0 && (
           <ListEmpty>No domains yet. Import the ones already verified in SES.</ListEmpty>
@@ -175,6 +180,25 @@ export function DomainPanel({ domains, account, syncError }: Props) {
   );
 }
 
+/**
+ * A subdomain covered by a parent belongs under it, not adrift in an
+ * alphabetical list. Anything whose parent is missing stays at the top level
+ * rather than disappearing.
+ */
+function nest(domains: DomainRow[]) {
+  const byName = new Map(domains.map((row) => [row.name, row]));
+  const parents = domains
+    .filter((row) => !row.inheritedFrom || !byName.has(row.inheritedFrom))
+    .sort((a, b) => a.name.localeCompare(b.name));
+
+  return parents.map((row) => ({
+    row,
+    children: domains
+      .filter((child) => child.inheritedFrom === row.name)
+      .sort((a, b) => a.name.localeCompare(b.name)),
+  }));
+}
+
 const LABELS: Record<string, string> = {
   dkim: "DKIM",
   "mail-from": "Return path",
@@ -195,7 +219,7 @@ function checksFor(row: DomainRow) {
   ];
 }
 
-function DomainRowItem({ row }: { row: DomainRow }) {
+function DomainRowItem({ row, nested }: { row: DomainRow; nested?: boolean }) {
   const router = useRouter();
   const [pending, start] = useTransition();
 
@@ -209,9 +233,15 @@ function DomainRowItem({ row }: { row: DomainRow }) {
 
   return (
     <div>
-      <ListRow className="gap-2.5">
+      <ListRow className={cn("gap-2.5", nested && "border-t border-border/60 pl-6")}>
         {row.inheritedFrom ? (
-          <span className="size-6 shrink-0" aria-hidden />
+          <span
+            className={cn(
+              "shrink-0",
+              nested ? "-ml-3 h-4 w-4 border-border border-b border-l" : "size-6",
+            )}
+            aria-hidden
+          />
         ) : (
           <button
             type="button"
@@ -231,7 +261,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
               row.lastCheckedAt ? `Last checked ${row.lastCheckedAt.toLocaleString()}` : undefined
             }
           >
-            {row.inheritedFrom ? `Covered by ${row.inheritedFrom}` : row.region}
+            {row.inheritedFrom ? "Subdomain · no setup of its own" : row.region}
             {!row.inheritedFrom && row.importedAt && " · imported"}
           </p>
         </div>
