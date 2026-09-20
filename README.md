@@ -206,7 +206,28 @@ The app answers `202` when no local mailbox owns the address, and the worker the
 rejects with `550 5.1.1`. Any other failure makes the worker throw, so Cloudflare
 retries instead of dropping mail.
 
-## 7. Using the API
+## 7. Deploying
+
+The `Dockerfile` is a three-stage build producing a ~330 MB image that runs as a
+non-root user. `NEXT_PUBLIC_APP_URL` is baked in at build time, since it ends up
+in the client bundle; everything else is read at run time.
+
+On Coolify:
+
+1. New resource → **Docker Compose** or **Dockerfile**, pointed at the GitHub repo
+2. Build argument: `NEXT_PUBLIC_APP_URL=https://mail.example.com`
+3. Environment variables: copy `.env.production.example` and fill it in
+4. Port `3000`, domain `mail.example.com`, HTTPS on
+5. Health check path `/api/health`
+
+Migrations run on boot from `src/instrumentation.ts`, so a deploy applies any new
+ones by itself. Drizzle records what it has applied, so restarts are no-ops. Set
+`RUN_MIGRATIONS_ON_BOOT=false` to take that over yourself.
+
+`GET /api/health` returns `{"status":"ok","database":"up"}`, or 503 if the
+database is unreachable.
+
+## 8. Using the API
 
 Create a key in **Settings → API keys**. It is shown once.
 
@@ -239,7 +260,7 @@ this way also lands in that mailbox's **Sent** folder.
 | 422 | body failed validation |
 | 502 | SES refused the message |
 
-## 8. Security notes
+## 9. Security notes
 
 - `/api/inbound` verifies an HMAC over `timestamp.body` and rejects anything older
   than 5 minutes, so the endpoint cannot be spoofed or replayed.
