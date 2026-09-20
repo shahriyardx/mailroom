@@ -3,6 +3,7 @@ import { mailbox } from "@/db/schema";
 import { type EmailAddress, parseAddress, parseAddressList } from "@/lib/mail";
 import type { MimeAttachment } from "@/lib/mime";
 import { authenticateApiKey } from "@/server/api-auth";
+import { mailboxForSending } from "@/server/mailboxes";
 import { SendError, deliverMessage } from "@/server/send";
 import { and, eq } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
@@ -66,18 +67,33 @@ export async function POST(request: NextRequest) {
   }
 
   const fromAddress = parseAddress(parsed.from).address;
-  const box = await db.query.mailbox.findFirst({
-    where: and(eq(mailbox.address, fromAddress), eq(mailbox.userId, caller.userId)),
-  });
+
+  // A key locked to one mailbox may only ever use that mailbox, so it is
+  // matched by name and never allowed to bring a new one into being.
+  if (caller.mailboxId) {
+    const locked = await db.query.mailbox.findFirst({
+      where: and(eq(mailbox.id, caller.mailboxId), eq(mailbox.userId, caller.userId)),
+    });
+    if (!locked || locked.address !== fromAddress) {
+      return NextResponse.json(
+        { error: "This API key is locked to a different mailbox" },
+        { status: 403 },
+      );
+    }
+  }
+
+  // An unlocked key may send as any address on a domain this account has
+  // verified, and the mailbox is created on first use. SES already permits
+  // it, and code sends from addresses nobody creates by hand.
+  const box = caller.mailboxId
+    ? await db.query.mailbox.findFirst({
+        where: and(eq(mailbox.id, caller.mailboxId), eq(mailbox.userId, caller.userId)),
+      })
+    : await mailboxForSending(caller.userId, fromAddress);
+
   if (!box) {
     return NextResponse.json(
-      { error: `No mailbox on this account sends as ${fromAddress}` },
-      { status: 403 },
-    );
-  }
-  if (caller.mailboxId && caller.mailboxId !== box.id) {
-    return NextResponse.json(
-      { error: "This API key is locked to a different mailbox" },
+      { error: `${fromAddress} is not on a domain this account has verified for sending` },
       { status: 403 },
     );
   }

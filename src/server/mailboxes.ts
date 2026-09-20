@@ -1,7 +1,9 @@
 import "server-only";
 import { db } from "@/db";
-import { mailbox } from "@/db/schema";
+import { domain, mailbox } from "@/db/schema";
+import { coveringDomain, domainOf } from "@/lib/mail";
 import type { Scope } from "@/lib/scope";
+import { colorOf, newId } from "@/lib/utils";
 import { and, asc, eq } from "drizzle-orm";
 
 export async function listMailboxes(userId: string) {
@@ -45,4 +47,49 @@ export async function getMailboxForUser(userId: string, mailboxId: string) {
 export async function getDefaultMailbox(userId: string) {
   const boxes = await listMailboxes(userId);
   return boxes.find((box) => box.isDefault) ?? boxes[0];
+}
+
+/**
+ * The mailbox an address sends from, creating it when the address sits on a
+ * domain this account has verified. SES already allows any address on a
+ * verified domain, so refusing one that simply has no row here would be our
+ * own restriction rather than a real one — and code sends from addresses like
+ * noreply@ and receipts@ that nobody would think to create by hand.
+ *
+ * Returns null when the address is not covered, which the caller reports.
+ */
+export async function mailboxForSending(userId: string, address: string) {
+  const normalized = address.toLowerCase();
+
+  const existing = await db.query.mailbox.findFirst({
+    where: and(eq(mailbox.address, normalized), eq(mailbox.userId, userId)),
+  });
+  if (existing) return existing;
+
+  const owned = await db.query.domain.findMany({ where: eq(domain.userId, userId) });
+  const covering = coveringDomain(normalized, owned);
+  if (!covering || !(covering.status === "verified" && covering.sendingEnabled)) return null;
+
+  const local = normalized.split("@")[0] ?? normalized;
+  const id = newId("mbx");
+
+  await db
+    .insert(mailbox)
+    .values({
+      id,
+      userId,
+      address: normalized,
+      domain: domainOf(normalized),
+      domainId: covering.id,
+      displayName: local,
+      color: colorOf(normalized),
+    })
+    // Two sends from a new address can land at the same moment.
+    .onConflictDoNothing();
+
+  return (
+    (await db.query.mailbox.findFirst({
+      where: and(eq(mailbox.address, normalized), eq(mailbox.userId, userId)),
+    })) ?? null
+  );
 }

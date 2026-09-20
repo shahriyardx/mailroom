@@ -45,7 +45,7 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
   return (
     <Panel
       title="Your keys"
-      description="Send from your own code. Keys are stored hashed, so a key is shown once and never again."
+      description="Send from your own code. A key that is not locked to a mailbox can send as any address on a domain you have verified, creating the mailbox on first use. Keys are stored hashed, so a key is shown once and never again."
       meta={`${keys.filter((item) => !item.revokedAt).length} active`}
     >
       {fresh && (
@@ -143,7 +143,12 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
               placeholder="Billing service"
             />
           </Field>
-          <Field label="Can send from" htmlFor="key-mailbox" className="w-56">
+          <Field
+            label="Can send from"
+            htmlFor="key-mailbox"
+            hint="Any mailbox also allows addresses that do not exist yet."
+            className="w-56"
+          >
             <Select value={mailboxId} onValueChange={(value) => value && setMailboxId(value)}>
               <SelectTrigger id="key-mailbox" className="font-mono text-[12.5px]">
                 <SelectValue placeholder="Any mailbox" />
