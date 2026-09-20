@@ -1,6 +1,7 @@
 import "server-only";
 import { WORKER_BYTES, WORKER_SCRIPT } from "@/generated/worker-bundle";
 import {
+  CloudflareError,
   type Zone,
   deleteWorker,
   disableCatchAll,
@@ -94,6 +95,21 @@ export async function inboundStatus(userId: string): Promise<InboundStatus> {
  * Uploads the bundled worker with its R2 binding and the shared secret. The
  * same call wrangler makes, so deploying and redeploying are identical.
  */
+/**
+ * Cloudflare answers "Authentication error" (code 10000) for both a bad token
+ * and a token missing one permission, which leaves you with nothing to act on.
+ * Name the permission the call actually needed.
+ */
+function explain(error: unknown, needs: string) {
+  if (error instanceof CloudflareError && error.codes.includes(10000)) {
+    return new CloudflareError(
+      `Cloudflare rejected the token. It needs ${needs}. Edit the token in Cloudflare, then reconnect it here.`,
+      error.codes,
+    );
+  }
+  return error instanceof Error ? error : new Error("Cloudflare could not be reached");
+}
+
 export async function deployWorker(userId: string) {
   const credentials = await cloudflareCredentials(userId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
@@ -105,22 +121,26 @@ export async function deployWorker(userId: string) {
     );
   }
 
-  await uploadWorker({
-    token: credentials.token,
-    accountId: credentials.accountId,
-    scriptName: SCRIPT_NAME,
-    script: WORKER_SCRIPT,
-    compatibilityDate: COMPATIBILITY_DATE,
-    compatibilityFlags: ["nodejs_compat"],
-    bindings: [
-      { type: "r2_bucket", name: "ATTACHMENTS", bucket_name: env.r2.bucket },
-      { type: "plain_text", name: "APP_INBOUND_URL", text: `${appUrl}/api/inbound` },
-      { type: "plain_text", name: "STORE_RAW", text: "true" },
-      { type: "plain_text", name: "MAX_ATTACHMENT_BYTES", text: "26214400" },
-      { type: "plain_text", name: "FORWARD_TO", text: env.forwardTo },
-      { type: "secret_text", name: "INBOUND_WEBHOOK_SECRET", text: env.inboundSecret },
-    ],
-  });
+  try {
+    await uploadWorker({
+      token: credentials.token,
+      accountId: credentials.accountId,
+      scriptName: SCRIPT_NAME,
+      script: WORKER_SCRIPT,
+      compatibilityDate: COMPATIBILITY_DATE,
+      compatibilityFlags: ["nodejs_compat"],
+      bindings: [
+        { type: "r2_bucket", name: "ATTACHMENTS", bucket_name: env.r2.bucket },
+        { type: "plain_text", name: "APP_INBOUND_URL", text: `${appUrl}/api/inbound` },
+        { type: "plain_text", name: "STORE_RAW", text: "true" },
+        { type: "plain_text", name: "MAX_ATTACHMENT_BYTES", text: "26214400" },
+        { type: "plain_text", name: "FORWARD_TO", text: env.forwardTo },
+        { type: "secret_text", name: "INBOUND_WEBHOOK_SECRET", text: env.inboundSecret },
+      ],
+    });
+  } catch (error) {
+    throw explain(error, "Workers Scripts -> Edit, and Workers R2 Storage -> Edit");
+  }
 
   return { scriptName: SCRIPT_NAME };
 }
@@ -128,7 +148,11 @@ export async function deployWorker(userId: string) {
 export async function removeWorker(userId: string) {
   const credentials = await cloudflareCredentials(userId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
-  await deleteWorker(credentials.token, credentials.accountId, SCRIPT_NAME);
+  try {
+    await deleteWorker(credentials.token, credentials.accountId, SCRIPT_NAME);
+  } catch (error) {
+    throw explain(error, "Workers Scripts -> Edit");
+  }
 }
 
 /** Enables Email Routing on a zone and points its catch-all at the worker. */
@@ -136,16 +160,24 @@ export async function routeZoneToWorker(userId: string, zoneId: string) {
   const credentials = await cloudflareCredentials(userId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
 
-  const routing = await getRouting(credentials.token, zoneId);
-  if (!routing?.enabled) await enableRouting(credentials.token, zoneId);
+  try {
+    const routing = await getRouting(credentials.token, zoneId);
+    if (!routing?.enabled) await enableRouting(credentials.token, zoneId);
 
-  await setCatchAllToWorker(credentials.token, zoneId, SCRIPT_NAME);
+    await setCatchAllToWorker(credentials.token, zoneId, SCRIPT_NAME);
+  } catch (error) {
+    throw explain(error, "Email Routing -> Edit and DNS -> Edit on this zone");
+  }
 }
 
 export async function unrouteZone(userId: string, zoneId: string, alsoDisableRouting: boolean) {
   const credentials = await cloudflareCredentials(userId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
 
-  await disableCatchAll(credentials.token, zoneId);
-  if (alsoDisableRouting) await disableRouting(credentials.token, zoneId);
+  try {
+    await disableCatchAll(credentials.token, zoneId);
+    if (alsoDisableRouting) await disableRouting(credentials.token, zoneId);
+  } catch (error) {
+    throw explain(error, "Email Routing -> Edit on this zone");
+  }
 }

@@ -1,6 +1,14 @@
 const API = "https://api.cloudflare.com/client/v4";
 
-export class CloudflareError extends Error {}
+export class CloudflareError extends Error {
+  /** Cloudflare's own error codes, kept so a caller can explain the common ones. */
+  codes: number[];
+
+  constructor(message: string, codes: number[] = []) {
+    super(message);
+    this.codes = codes;
+  }
+}
 
 interface Envelope<T> {
   success: boolean;
@@ -24,7 +32,7 @@ async function call<T>(token: string, path: string, init?: RequestInit): Promise
   const body = (await response.json()) as Envelope<T>;
   if (!response.ok || !body.success) {
     const detail = body.errors?.map((error) => error.message).join("; ") || response.statusText;
-    throw new CloudflareError(detail);
+    throw new CloudflareError(detail, body.errors?.map((error) => error.code) ?? []);
   }
   return body.result;
 }
@@ -67,10 +75,8 @@ export interface WorkerInfo {
 
 export async function getWorker(token: string, accountId: string, scriptName: string) {
   try {
-    return await call<WorkerInfo>(
-      token,
-      `/accounts/${accountId}/workers/scripts/${scriptName}/settings`,
-    );
+    const scripts = await call<WorkerInfo[]>(token, `/accounts/${accountId}/workers/scripts`);
+    return scripts.find((script) => script.id === scriptName) ?? null;
   } catch {
     return null;
   }
