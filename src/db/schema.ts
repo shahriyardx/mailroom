@@ -147,6 +147,13 @@ export const domain = pgTable(
     spfVerified: boolean("spf_verified").notNull().default(false),
     dmarcVerified: boolean("dmarc_verified").notNull().default(false),
 
+    /**
+     * When on, mail to an address on this domain that no mailbox claims
+     * creates that mailbox instead of falling through to forwarding. Off by
+     * default: it turns every spammed address into a mailbox.
+     */
+    autoCreateMailboxes: boolean("auto_create_mailboxes").notNull().default(false),
+
     /** Set when the row came from SES rather than being created here. */
     importedAt: timestamp("imported_at", { withTimezone: true }),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),

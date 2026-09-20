@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   attachment,
   contact,
+  domain as domainTable,
   filterRule,
   mailbox,
   message,
@@ -11,7 +12,7 @@ import {
 } from "@/db/schema";
 import type { Folder } from "@/db/schema";
 import { domainOf, makeSnippet, normalizeSubject } from "@/lib/mail";
-import { newId } from "@/lib/utils";
+import { colorOf, newId } from "@/lib/utils";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
 
@@ -44,10 +45,14 @@ export interface InboundPayload {
   spamScore?: number | null;
 }
 
-/** Finds the mailbox for a delivered address, falling back to a domain catch-all. */
+/**
+ * Finds the mailbox for a delivered address: an exact match first, then the
+ * domain's catch-all, then — only if that domain asks for it — a mailbox
+ * created on the spot for this address.
+ */
 async function resolveMailbox(address: string) {
   const normalized = address.toLowerCase();
-  const domain = domainOf(normalized);
+  const domainName = domainOf(normalized);
 
   const candidates = await db
     .select()
@@ -55,11 +60,44 @@ async function resolveMailbox(address: string) {
     .where(
       or(
         eq(mailbox.address, normalized),
-        and(eq(mailbox.domain, domain), eq(mailbox.isCatchAll, true)),
+        and(eq(mailbox.domain, domainName), eq(mailbox.isCatchAll, true)),
       ),
     );
 
-  return candidates.find((box) => box.address === normalized) ?? candidates[0] ?? null;
+  const match = candidates.find((box) => box.address === normalized) ?? candidates[0] ?? null;
+  if (match) return match;
+
+  return createMailboxForAddress(normalized, domainName);
+}
+
+/**
+ * Creates a mailbox for an address nobody claimed. Returns null unless the
+ * domain is known here and has the setting switched on.
+ */
+async function createMailboxForAddress(address: string, domainName: string) {
+  const domainRow = await db.query.domain.findFirst({
+    where: eq(domainTable.name, domainName),
+  });
+  if (!domainRow?.autoCreateMailboxes) return null;
+
+  const local = address.split("@")[0] ?? address;
+  const id = newId("mbx");
+
+  await db
+    .insert(mailbox)
+    .values({
+      id,
+      userId: domainRow.userId,
+      address,
+      domain: domainName,
+      domainId: domainRow.id,
+      displayName: local,
+      color: colorOf(address),
+    })
+    // Two messages to a new address can arrive at once.
+    .onConflictDoNothing();
+
+  return (await db.query.mailbox.findFirst({ where: eq(mailbox.address, address) })) ?? null;
 }
 
 /** Threads by In-Reply-To / References first, then falls back to subject matching. */

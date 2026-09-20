@@ -258,6 +258,16 @@ const mailboxSchema = z.object({
   color: z.string().optional(),
 });
 
+/** Turns wildcard capture on or off for one domain. */
+export async function setDomainAutoCreateAction(domainId: string, on: boolean) {
+  const user = await requireUser();
+  await db
+    .update(domainTable)
+    .set({ autoCreateMailboxes: on })
+    .where(and(eq(domainTable.id, domainId), eq(domainTable.userId, user.id)));
+  revalidatePath("/settings", "layout");
+}
+
 export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   const user = await requireUser();
   const input = mailboxSchema.parse(raw);

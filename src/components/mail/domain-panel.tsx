@@ -14,6 +14,7 @@ import {
   Note,
   Panel,
   StatusPill,
+  Switch,
 } from "@/components/kit";
 import type { Domain } from "@/db/schema";
 import { type DnsRecord, relativeName } from "@/lib/ses";
@@ -23,6 +24,7 @@ import {
   importDomainsAction,
   refreshDomainAction,
   removeDomainAction,
+  setDomainAutoCreateAction,
   useOwnDkimKeyAction,
 } from "@/server/actions";
 import {
@@ -330,6 +332,29 @@ function DomainRowItem({ row }: { row: DomainRow }) {
                 Use one TXT record
               </button>
             )}
+          </div>
+
+          {/* Receiving behaviour for this domain, beside the records that make
+              receiving work at all. */}
+          <div className="mb-3 flex items-start gap-3 border-b border-border pb-3">
+            <Switch
+              id={`auto-${row.id}`}
+              checked={row.autoCreateMailboxes}
+              onCheckedChange={(on) =>
+                start(async () => {
+                  await setDomainAutoCreateAction(row.id, on === true);
+                  router.refresh();
+                })
+              }
+              className="mt-0.5"
+            />
+            <label htmlFor={`auto-${row.id}`} className="min-w-0 cursor-pointer">
+              <span className="block text-[12.5px] font-medium">Capture every address</span>
+              <span className="block text-[12px] leading-relaxed text-muted-foreground">
+                Mail to any address on {row.name} that no mailbox claims creates that mailbox and is
+                kept here. With this off it is forwarded on instead, and nothing is stored.
+              </span>
+            </label>
           </div>
 
           <Note className="mb-2">Add these at your DNS host. Click any value to copy it.</Note>

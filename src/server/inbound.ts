@@ -166,7 +166,10 @@ export async function routeZoneToWorker(userId: string, zoneId: string) {
 
     await setCatchAllToWorker(credentials.token, zoneId, SCRIPT_NAME);
   } catch (error) {
-    throw explain(error, "Zone Settings -> Edit (which is what gates turning Email Routing on), plus Email Routing Rules -> Edit and DNS -> Edit");
+    throw explain(
+      error,
+      "Zone Settings -> Edit (which is what gates turning Email Routing on), plus Email Routing Rules -> Edit and DNS -> Edit",
+    );
   }
 }
 

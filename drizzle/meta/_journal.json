@@ -43,6 +43,13 @@
       "when": 1789893512307,
       "tag": "0005_tan_ronan",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1789936237261,
+      "tag": "0006_long_rocket_raccoon",
+      "breakpoints": true
     }
   ]
 }

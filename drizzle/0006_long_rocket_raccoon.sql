@@ -1,0 +1,1 @@
+ALTER TABLE "domain" ADD COLUMN "auto_create_mailboxes" boolean DEFAULT false NOT NULL;
