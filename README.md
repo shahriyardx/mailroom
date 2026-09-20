@@ -127,10 +127,24 @@ v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all
 
 ## 5. Delivery events (bounces and complaints)
 
-1. Create an SES configuration set and set `SES_CONFIGURATION_SET`.
-2. Add an event destination on it publishing to an SNS topic.
-3. Subscribe that topic to `https://your-app/api/ses/events` over HTTPS.
-4. Set `SES_SNS_TOPIC_ARN` so only that topic is accepted.
+Two scripts do this for you, using the keys already in `.env`:
+
+```bash
+pnpm ses:status    # read-only: account, identities, config sets, topics
+pnpm ses:setup     # creates the configuration set, SNS topic and event destination
+```
+
+`ses:setup` is safe to re-run — it creates only what is missing and appends to the
+SNS topic policy rather than replacing it. It writes `SES_CONFIGURATION_SET` and
+`SES_SNS_TOPIC_ARN` back into `.env`.
+
+Once the app is live on a public HTTPS URL, point SNS at it:
+
+```bash
+node scripts/ses-setup-events.mjs --endpoint https://your-app/api/ses/events
+```
+
+AWS calls that URL straight away and the app confirms the subscription itself.
 
 The endpoint verifies the AWS signature on every payload, confirms the
 subscription itself, records each event, updates the message status, and adds
