@@ -59,21 +59,70 @@ function headerValues(headers: { key: string; value: string }[], name: string) {
 }
 
 /**
- * Cloudflare puts SPF/DKIM/DMARC verdicts in Authentication-Results. A message
- * that has been relayed carries one of these per hop, so prefer the one
+ * Cloudflare puts SPF/DKIM/DMARC verdicts in Authentication-Results, and a
+ * message that has been relayed carries one header per hop, so prefer the one
  * Cloudflare wrote: an upstream hop's verdict describes a different delivery.
+ *
+ * Within that header a mechanism can appear more than once. SPF is checked
+ * twice — once against the HELO name and once against the envelope sender —
+ * and the HELO check is routinely "none" because a mail server's own hostname
+ * rarely publishes SPF. The envelope sender is the result that means anything,
+ * so it wins. DKIM appears once per signature, and one valid signature is
+ * enough.
  */
+function splitAuthSegments(raw: string) {
+  const segments: string[] = [];
+  let depth = 0;
+  let current = "";
+
+  // Comments are parenthesised and can themselves contain a semicolon.
+  for (const character of raw) {
+    if (character === "(") depth += 1;
+    else if (character === ")") depth = Math.max(0, depth - 1);
+
+    if (character === ";" && depth === 0) {
+      segments.push(current);
+      current = "";
+    } else {
+      current += character;
+    }
+  }
+  if (current.trim()) segments.push(current);
+  return segments;
+}
+
 function parseAuthResults(all: string[]) {
-  const raw = all.find((value) => /cloudflare/i.test(value)) ?? all[0];
+  const raw = all.find((value) => /mx\.cloudflare\.net|cloudflare/i.test(value)) ?? all[0];
   if (!raw) return {};
 
-  const pick = (name: string) => {
-    // Anchored so "spf" cannot match inside another token, and the value is
-    // read only from a real mechanism=verdict pair.
-    const match = raw.match(new RegExp(`(?:^|[;\\s(])${name}=([a-z]+)`, "i"));
-    return match ? match[1]!.toLowerCase() : null;
-  };
-  return { spf: pick("spf"), dkim: pick("dkim"), dmarc: pick("dmarc") };
+  const results: { method: string; verdict: string; rest: string }[] = [];
+  for (const segment of splitAuthSegments(raw)) {
+    const match = segment.match(/^\s*(spf|dkim|dmarc)\s*=\s*([a-z]+)/i);
+    if (match) {
+      results.push({
+        method: match[1]!.toLowerCase(),
+        verdict: match[2]!.toLowerCase(),
+        rest: segment.slice(match[0].length),
+      });
+    }
+  }
+
+  const of = (method: string) => results.filter((result) => result.method === method);
+
+  const spfResults = of("spf");
+  const spf =
+    spfResults.find((result) => /smtp\.mailfrom/i.test(result.rest))?.verdict ??
+    spfResults.find((result) => result.verdict === "pass")?.verdict ??
+    spfResults[0]?.verdict ??
+    null;
+
+  const dkimResults = of("dkim");
+  const dkim =
+    dkimResults.find((result) => result.verdict === "pass")?.verdict ??
+    dkimResults[0]?.verdict ??
+    null;
+
+  return { spf, dkim, dmarc: of("dmarc")[0]?.verdict ?? null };
 }
 
 function parseSpamScore(headers: { key: string; value: string }[]) {
