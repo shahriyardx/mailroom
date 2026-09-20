@@ -22,6 +22,8 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
 import { addDomain, importFromSes, refreshDomain, removeDomain, useOwnDkimKey } from "./domains";
+import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./inbound";
+import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
 
@@ -504,4 +506,73 @@ export async function removeSuppressionAction(suppressionId: string) {
     .delete(suppression)
     .where(and(eq(suppression.id, suppressionId), eq(suppression.userId, user.id)));
   revalidatePath("/settings");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Cloudflare: connection, worker, routing                                    */
+/* -------------------------------------------------------------------------- */
+
+function failure(error: unknown, fallback: string) {
+  return { ok: false as const, error: error instanceof Error ? error.message : fallback };
+}
+
+export async function connectCloudflareAction(token: string) {
+  const user = await requireUser();
+  try {
+    const result = await connectCloudflare(user.id, token);
+    revalidatePath("/settings/inbound");
+    return { ok: true as const, zones: result.zones };
+  } catch (error) {
+    return failure(error, "Could not verify that token");
+  }
+}
+
+export async function disconnectCloudflareAction() {
+  const user = await requireUser();
+  await disconnectCloudflare(user.id);
+  revalidatePath("/settings/inbound");
+}
+
+export async function deployWorkerAction() {
+  const user = await requireUser();
+  try {
+    const result = await deployWorker(user.id);
+    revalidatePath("/settings/inbound");
+    return { ok: true as const, scriptName: result.scriptName };
+  } catch (error) {
+    return failure(error, "Cloudflare refused the upload");
+  }
+}
+
+export async function removeWorkerAction() {
+  const user = await requireUser();
+  try {
+    await removeWorker(user.id);
+    revalidatePath("/settings/inbound");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "Could not delete the worker");
+  }
+}
+
+export async function routeZoneAction(zoneId: string) {
+  const user = await requireUser();
+  try {
+    await routeZoneToWorker(user.id, zoneId);
+    revalidatePath("/settings/inbound");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "Could not set up routing for that zone");
+  }
+}
+
+export async function unrouteZoneAction(zoneId: string, alsoDisableRouting: boolean) {
+  const user = await requireUser();
+  try {
+    await unrouteZone(user.id, zoneId, alsoDisableRouting);
+    revalidatePath("/settings/inbound");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "Could not change routing for that zone");
+  }
 }

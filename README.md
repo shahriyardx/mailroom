@@ -197,6 +197,34 @@ hard bounces and complaints to the blocked list so nothing mails them again.
 
 ## 7. Receiving mail (Cloudflare)
 
+All of this happens in **Settings → Inbound**. Connect a Cloudflare API token
+once, and the dashboard uploads the worker and switches domains on for you.
+There is no wrangler step and nothing to deploy separately.
+
+The token needs:
+
+| Permission | Scope |
+| --- | --- |
+| Workers Scripts → Edit | account |
+| Workers R2 Storage → Edit | account |
+| Zone → Read | the zones you want to receive on |
+| Email Routing → Edit | the same zones |
+| DNS → Edit | the same zones |
+
+Then:
+
+1. **Deploy worker** uploads the bundled script with its R2 binding, the app
+   URL and the shared secret attached. **Redeploy** pushes a newer bundle;
+   **Delete** removes it from Cloudflare.
+2. **Receive mail here**, per domain, turns on Email Routing and points its
+   catch-all at the worker.
+
+The worker is bundled into the app at build time by `pnpm worker:bundle`,
+which `prebuild` runs for you, so the script the dashboard uploads is always
+the one in `worker/src`.
+
+### Doing it by hand instead
+
 ```bash
 cd worker
 npx wrangler r2 bucket create mail-attachments
@@ -205,11 +233,8 @@ npx wrangler secret put INBOUND_WEBHOOK_SECRET   # same value as the app's .env
 npx wrangler deploy
 ```
 
-Then per domain in the Cloudflare dashboard:
-
-1. **Email → Email Routing → Enable** (adds the MX and SPF records).
-2. **Routing rules → Create rule**, or set a **Catch-all address**.
-3. Action: **Send to a Worker** → `mail-inbound`.
+Then per domain: **Email → Email Routing → Enable**, then a routing rule or
+catch-all with the action **Send to a Worker** → `mail-inbound`.
 
 Flow: Cloudflare receives → worker parses MIME → attachments to R2 → signed JSON
 POST to `/api/inbound` → rows in Postgres.

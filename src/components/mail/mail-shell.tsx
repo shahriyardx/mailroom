@@ -11,7 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
@@ -352,23 +351,19 @@ export function MailShell({
             </button>
           )}
 
-          <Tooltip>
-            <TooltipTrigger
-              render={
-                // biome-ignore lint/a11y/noLabelWithoutControl: the Switch is the nested control
-                <label className="flex shrink-0 items-center gap-2">
-                  <span className="eyebrow">unread</span>
-                  <Switch
-                    checked={unreadOnly}
-                    onCheckedChange={(on: boolean) => setParam("unread", on ? "1" : null)}
-                  />
-                </label>
-              }
-            />
-            <TooltipContent side="bottom" className="font-mono text-[11px]">
-              Show unread only
-            </TooltipContent>
-          </Tooltip>
+          <button
+            type="button"
+            onClick={() => setParam("unread", unreadOnly ? null : "1")}
+            aria-pressed={unreadOnly}
+            className={cn(
+              "shrink-0 rounded-full border px-3 py-1.5 text-[12px] transition-colors",
+              unreadOnly
+                ? "border-primary/30 bg-primary/12 text-primary"
+                : "text-muted-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            Unread
+          </button>
         </header>
 
         <div className="flex min-h-0 flex-1">

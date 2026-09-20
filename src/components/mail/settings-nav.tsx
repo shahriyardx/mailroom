@@ -1,13 +1,23 @@
 "use client";
 
 import { cn } from "@/lib/utils";
-import { Globe, KeyRound, Mail, ShieldOff, SlidersHorizontal, Tag, User } from "lucide-react";
+import {
+  Globe,
+  Inbox,
+  KeyRound,
+  Mail,
+  ShieldOff,
+  SlidersHorizontal,
+  Tag,
+  User,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 
 const ITEMS = [
   { href: "/settings/domains", label: "Domains", icon: Globe, hint: "SES identities and DNS" },
   { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, hint: "Addresses and signatures" },
+  { href: "/settings/inbound", label: "Inbound", icon: Inbox, hint: "Worker and routing" },
   {
     href: "/settings/api-keys",
     label: "API keys",

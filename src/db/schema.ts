@@ -387,6 +387,30 @@ export const suppression = pgTable(
   (t) => [uniqueIndex("suppression_user_address_idx").on(t.userId, t.address)],
 );
 
+/**
+ * A connected third-party account, currently only Cloudflare.
+ * The token is encrypted at rest with a key derived from BETTER_AUTH_SECRET.
+ */
+export const integration = pgTable(
+  "integration",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    provider: text("provider").notNull(),
+    secret: text("secret").notNull(),
+    /** Last few characters, so a token can be recognised without revealing it. */
+    hint: text("hint").notNull(),
+    label: text("label"),
+    /** Cloudflare account the token belongs to, resolved once when connecting. */
+    accountId: text("account_id"),
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("integration_user_provider_idx").on(t.userId, t.provider)],
+);
+
 /** Keys for the public send API. Only the hash is stored. */
 export const apiKey = pgTable(
   "api_key",
@@ -489,6 +513,7 @@ export const apiKeyRelations = relations(apiKey, ({ one }) => ({
 
 export type Folder = (typeof folderEnum.enumValues)[number];
 export type Domain = typeof domain.$inferSelect;
+export type Integration = typeof integration.$inferSelect;
 export type ApiKey = typeof apiKey.$inferSelect;
 export type DomainStatus = (typeof domainStatusEnum.enumValues)[number];
 export type Mailbox = typeof mailbox.$inferSelect;

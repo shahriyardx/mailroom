@@ -37,6 +37,10 @@ export const env = {
       return process.env.SES_MAIL_FROM_PREFIX ?? "mail";
     },
   },
+  /** Optional address the worker forwards every message on to. */
+  get forwardTo() {
+    return process.env.FORWARD_TO ?? "";
+  },
   get inboundSecret() {
     return required("INBOUND_WEBHOOK_SECRET");
   },
