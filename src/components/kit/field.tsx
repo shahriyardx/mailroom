@@ -71,3 +71,17 @@ export function Label({ className, ...props }: React.ComponentProps<"label">) {
     />
   );
 }
+
+/** An input with its action glued to it: one field, one button, one line. */
+export function InputGroup({ className, ...props }: React.ComponentProps<"div">) {
+  return (
+    <div
+      data-slot="input-group"
+      className={cn(
+        "flex items-center gap-2 [&>*:first-child]:min-w-0 [&>*:first-child]:flex-1",
+        className,
+      )}
+      {...props}
+    />
+  );
+}

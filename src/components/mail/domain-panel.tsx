@@ -4,10 +4,10 @@ import {
   Button,
   Field,
   Fieldset,
-  FieldsetActions,
   Hint,
   IconButton,
   Input,
+  InputGroup,
   List,
   ListEmpty,
   ListRow,
@@ -138,23 +138,28 @@ export function DomainPanel({ domains, account, syncError }: Props) {
       </List>
 
       <Fieldset title="Add a domain">
-        <Field label="Domain" htmlFor="domain-name" className="max-w-xs">
-          <Input
-            id="domain-name"
-            mono
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="acme.com"
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && name.trim()) add();
-            }}
-          />
+        <Field
+          label="Domain"
+          htmlFor="domain-name"
+          hint="Creates the identity with Easy DKIM and a custom return path."
+          className="max-w-md"
+        >
+          <InputGroup>
+            <Input
+              id="domain-name"
+              mono
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="acme.com"
+              onKeyDown={(event) => {
+                if (event.key === "Enter" && name.trim()) add();
+              }}
+            />
+            <Button variant="solid" pill onClick={add} loading={pending} disabled={!name.trim()}>
+              Add domain
+            </Button>
+          </InputGroup>
         </Field>
-        <FieldsetActions note="Creates the identity with Easy DKIM and a custom return path.">
-          <Button variant="solid" pill onClick={add} loading={pending} disabled={!name.trim()}>
-            Add domain
-          </Button>
-        </FieldsetActions>
       </Fieldset>
 
       {note && (

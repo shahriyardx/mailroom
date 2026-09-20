@@ -341,7 +341,7 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
       )}
 
       <Fieldset title="Add a label">
-        <div className="flex flex-wrap items-start gap-5">
+        <div className="flex flex-wrap items-end gap-5">
           <Field label="Name" htmlFor="label-name" className="w-56">
             <Input
               id="label-name"
@@ -353,8 +353,6 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
           <Field label="Colour">
             <ColorPicker value={color} onChange={setColor} palette={PALETTE} />
           </Field>
-        </div>
-        <FieldsetActions>
           <Button
             variant="solid"
             pill
@@ -371,7 +369,7 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
             {!pending && <Plus />}
             Add label
           </Button>
-        </FieldsetActions>
+        </div>
       </Fieldset>
     </Panel>
   );

@@ -4,8 +4,8 @@ import {
   Button,
   Field,
   Fieldset,
-  FieldsetActions,
   Input,
+  InputGroup,
   List,
   ListEmpty,
   ListRow,
@@ -261,38 +261,43 @@ function ConnectCard() {
           <ExternalLink className="size-3" />
         </a>
 
-        <Field label="API token" htmlFor="cloudflare-token" className="max-w-sm">
-          <Input
-            id="cloudflare-token"
-            type="password"
-            mono
-            value={token}
-            onChange={(event) => setToken(event.target.value)}
-            placeholder="Paste the API token"
-          />
+        <Field
+          label="API token"
+          htmlFor="cloudflare-token"
+          hint="The token is encrypted before it is stored and can be revoked in Cloudflare at any time."
+          className="max-w-lg"
+        >
+          <InputGroup>
+            <Input
+              id="cloudflare-token"
+              type="password"
+              mono
+              value={token}
+              onChange={(event) => setToken(event.target.value)}
+              placeholder="Paste the API token"
+            />
+            <Button
+              variant="solid"
+              pill
+              loading={pending}
+              disabled={!token.trim()}
+              onClick={() => {
+                setError(null);
+                start(async () => {
+                  const result = await connectCloudflareAction(token);
+                  if (result.ok) {
+                    setToken("");
+                    router.refresh();
+                  } else {
+                    setError(result.error);
+                  }
+                });
+              }}
+            >
+              Verify and save
+            </Button>
+          </InputGroup>
         </Field>
-        <FieldsetActions note="The token is encrypted before it is stored and can be revoked in Cloudflare at any time.">
-          <Button
-            variant="solid"
-            pill
-            loading={pending}
-            disabled={!token.trim()}
-            onClick={() => {
-              setError(null);
-              start(async () => {
-                const result = await connectCloudflareAction(token);
-                if (result.ok) {
-                  setToken("");
-                  router.refresh();
-                } else {
-                  setError(result.error);
-                }
-              });
-            }}
-          >
-            Verify and save
-          </Button>
-        </FieldsetActions>
 
         {error && <p className="mt-2 text-[12.5px] text-destructive">{error}</p>}
       </Fieldset>

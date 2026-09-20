@@ -45,7 +45,7 @@ export {
   DropdownMenuTrigger,
 } from "./dropdown-menu";
 export { EmptyState, Skeleton } from "./empty";
-export { Field, Label } from "./field";
+export { Field, InputGroup, Label } from "./field";
 export { Input, Textarea } from "./input";
 export { Fieldset, FieldsetActions, List, ListEmpty, ListRow, Note } from "./list";
 export { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "./popover";
