@@ -1,6 +1,5 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -12,19 +11,6 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Input } from "@/components/ui/input";
-import {
-  Sidebar,
-  SidebarContent,
-  SidebarFooter,
-  SidebarGroup,
-  SidebarGroupContent,
-  SidebarHeader,
-  SidebarInset,
-  SidebarMenu,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarProvider,
-} from "@/components/ui/sidebar";
 import { Switch } from "@/components/ui/switch";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
@@ -40,11 +26,11 @@ import {
 import { cn, colorOf, initialsOf } from "@/lib/utils";
 import {
   Archive,
-  Check,
-  ChevronsUpDown,
+  ChevronRight,
   FileText,
   Globe,
   Inbox,
+  Layers,
   LogOut,
   Mails,
   Moon,
@@ -55,6 +41,7 @@ import {
   ShieldAlert,
   Star,
   Sun,
+  Tag,
   Trash2,
   X,
 } from "lucide-react";
@@ -169,6 +156,7 @@ export function MailShell({
   const activeKey = scopeKey(scope);
   const unreadOnly = params.get("unread") === "1";
   const searchValue = params.get("q") ?? "";
+  const activeLabel = params.get("label");
 
   const setParam = useCallback(
     (key: string, value: string | null) => {
@@ -183,311 +171,350 @@ export function MailShell({
   );
 
   return (
-    <SidebarProvider
-      style={{ "--sidebar-width": "23rem" } as React.CSSProperties}
-      className="h-dvh overflow-hidden"
-    >
-      <Sidebar collapsible="icon" className="overflow-hidden *:data-[sidebar=sidebar]:flex-row">
-        {/* ---- Icon rail: folders ---- */}
-        <Sidebar
-          collapsible="none"
-          className="w-[calc(var(--sidebar-width-icon)+1px)] border-r bg-rail"
-        >
-          <SidebarHeader className="items-center border-b p-0">
-            <Link
-              href="/mail/all/inbox"
-              className="grid size-12 place-items-center text-primary"
-              aria-label="Mail home"
-            >
-              <Mails className="size-[18px]" />
-            </Link>
-          </SidebarHeader>
+    <div className="flex h-dvh overflow-hidden bg-background">
+      {/* ---------------------------------------------------------------- */}
+      {/* Navigation: everything you can switch between, named, in one list */}
+      {/* ---------------------------------------------------------------- */}
+      <aside className="hidden w-60 shrink-0 flex-col border-r bg-sidebar md:flex">
+        <div className="flex h-14 shrink-0 items-center gap-2 px-4">
+          <span className="grid size-7 place-items-center rounded-xl bg-primary text-primary-foreground">
+            <Mails className="size-4" />
+          </span>
+          <span className="font-heading text-[15px] tracking-[-0.02em]">
+            <span className="font-semibold">post</span>
+            <span className="text-muted-foreground"> mail</span>
+          </span>
+        </div>
 
-          <SidebarContent>
-            <SidebarGroup className="p-0 py-1.5">
-              <SidebarGroupContent>
-                <SidebarMenu className="items-center gap-0.5">
-                  {FOLDERS.map((item) => {
-                    const Icon = FOLDER_ICONS[item];
-                    const active = folder === item;
-                    const count = counts.folders[item] ?? 0;
-                    return (
-                      <SidebarMenuItem key={item}>
-                        <SidebarMenuButton
-                          render={<Link href={scopeHref(scope, item)} />}
-                          isActive={active}
-                          tooltip={{
-                            children: (
-                              <span className="font-mono text-[11px]">
-                                {FOLDER_LABELS[item]}
-                                {count > 0 && <span className="ml-1.5 opacity-60">{count}</span>}
-                              </span>
-                            ),
-                            side: "right",
-                          }}
-                          className={cn(
-                            "relative size-9 justify-center rounded-xl p-0",
-                            active &&
-                              "bg-primary/12 text-primary hover:bg-primary/16 hover:text-primary",
-                          )}
-                        >
-                          <Icon className="size-[17px]" />
-                          {count > 0 && (
-                            <span
-                              className={cn(
-                                "absolute top-1 right-1 size-1.5 rounded-full",
-                                active ? "bg-primary" : "bg-muted-foreground/70",
-                              )}
-                            />
-                          )}
-                        </SidebarMenuButton>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-          </SidebarContent>
+        <div className="px-3 pb-3">
+          <Button
+            className="h-10 w-full justify-center gap-2 rounded-full font-medium text-[13px]"
+            onClick={() => composer.open()}
+          >
+            <PenLine className="size-4" />
+            Compose
+          </Button>
+        </div>
 
-          <SidebarFooter className="items-center gap-0.5 border-t py-2">
-            <ThemeToggle />
-            <Tooltip>
-              <TooltipTrigger
-                render={
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="size-9 rounded-xl text-muted-foreground"
-                    nativeButton={false}
-                    render={<Link href="/settings" />}
-                  >
-                    <Settings className="size-[17px]" />
-                  </Button>
-                }
-              />
-              <TooltipContent side="right" className="font-mono text-[11px]">
-                Settings
-              </TooltipContent>
-            </Tooltip>
-
-            <DropdownMenu>
-              <DropdownMenuTrigger
-                render={
-                  <Button variant="ghost" size="icon" className="size-9 rounded-xl">
-                    <span className="grid size-6 place-items-center rounded-lg bg-secondary font-mono text-[10px] font-semibold text-secondary-foreground">
-                      {initialsOf(user.name || user.email)}
-                    </span>
-                  </Button>
-                }
-              />
-              <DropdownMenuContent side="right" align="end" className="w-56">
-                <DropdownMenuGroup>
-                  <DropdownMenuLabel className="font-normal">
-                    <p className="truncate text-[13px] font-medium">{user.name}</p>
-                    <p className="truncate font-mono text-[11px] text-muted-foreground">
-                      {user.email}
-                    </p>
-                  </DropdownMenuLabel>
-                </DropdownMenuGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem render={<Link href="/settings" />}>
-                  <Settings /> Settings
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={async () => {
-                    await authClient.signOut();
-                    router.push("/sign-in");
-                    router.refresh();
-                  }}
-                >
-                  <LogOut /> Sign out
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          </SidebarFooter>
-        </Sidebar>
-
-        {/* ---- List panel: scope, search, threads ---- */}
-        <Sidebar collapsible="none" className="hidden min-w-0 flex-1 md:flex">
-          <SidebarHeader className="gap-0 border-b p-0">
-            <div className="flex items-center gap-1 px-2.5 py-2">
-              <DropdownMenu>
-                <DropdownMenuTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      className="h-8 min-w-0 flex-1 justify-start gap-2 px-1.5 hover:bg-sidebar-accent"
-                    >
+        <nav className="min-h-0 flex-1 overflow-y-auto px-2 pb-4">
+          <p className="eyebrow px-2 pt-2 pb-1.5">menu</p>
+          <ul className="space-y-0.5">
+            {FOLDERS.map((item) => {
+              const Icon = FOLDER_ICONS[item];
+              const count = counts.folders[item] ?? 0;
+              const active = folder === item && !activeLabel;
+              return (
+                <li key={item}>
+                  <NavRow href={scopeHref(scope, item)} active={active}>
+                    <Icon className="size-4 shrink-0" />
+                    <span className="flex-1 truncate">{FOLDER_LABELS[item]}</span>
+                    {count > 0 && (
                       <span
-                        className="size-2 shrink-0 rounded-md"
-                        style={{
-                          background:
-                            scope.kind === "all"
-                              ? "var(--muted-foreground)"
-                              : scope.kind === "domain"
-                                ? colorOf(scope.domain)
-                                : (mailboxes.find((box) => box.id === scope.mailboxId)?.color ??
-                                  "var(--primary)"),
-                        }}
-                      />
-                      <span className="truncate font-mono text-[12px]">{scopeLabel}</span>
-                      <ChevronsUpDown className="ml-auto size-3.5 shrink-0 opacity-50" />
-                    </Button>
-                  }
-                />
-                <DropdownMenuContent align="start" className="w-72">
-                  <DropdownMenuGroup>
-                    <DropdownMenuLabel className="eyebrow">Scope</DropdownMenuLabel>
-                    <DropdownMenuItem render={<Link href={scopeHref({ kind: "all" }, folder)} />}>
-                      <Mails />
-                      <span className="flex-1">All mail</span>
-                      {activeKey === "all" && <Check className="size-3.5 text-primary" />}
-                    </DropdownMenuItem>
-                  </DropdownMenuGroup>
-
-                  {domains.map(([domain, boxes]) => (
-                    <DropdownMenuGroup key={domain}>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuItem
-                        render={<Link href={scopeHref({ kind: "domain", domain }, folder)} />}
+                        className={cn(
+                          "shrink-0 font-mono text-[10.5px] tabular-nums",
+                          active ? "text-primary" : "text-muted-foreground",
+                        )}
                       >
-                        <Globe style={{ color: colorOf(domain) }} />
-                        <span className="flex-1 font-mono text-[12px]">{domain}</span>
-                        {activeKey === `d:${domain}` && <Check className="size-3.5 text-primary" />}
-                      </DropdownMenuItem>
-                      {boxes.map((box) => (
-                        <DropdownMenuItem
-                          key={box.id}
-                          className="pl-7"
-                          render={
-                            <Link
-                              href={scopeHref({ kind: "mailbox", mailboxId: box.id }, folder)}
-                            />
-                          }
-                        >
-                          <span
-                            className="size-1.5 rounded-full"
-                            style={{ background: box.color }}
-                          />
-                          <span className="flex-1 truncate font-mono text-[12px]">
-                            {box.address}
-                          </span>
-                          {(counts.mailboxes[box.id] ?? 0) > 0 && (
-                            <span className="font-mono text-[10px] text-muted-foreground">
-                              {counts.mailboxes[box.id]}
-                            </span>
-                          )}
-                          {activeKey === `m:${box.id}` && (
-                            <Check className="size-3.5 text-primary" />
-                          )}
-                        </DropdownMenuItem>
-                      ))}
-                    </DropdownMenuGroup>
-                  ))}
+                        {count}
+                      </span>
+                    )}
+                  </NavRow>
+                </li>
+              );
+            })}
+          </ul>
 
-                  {labels.length > 0 && (
-                    <>
-                      <DropdownMenuSeparator />
-                      <DropdownMenuGroup>
-                        <DropdownMenuLabel className="eyebrow">Labels</DropdownMenuLabel>
-                        {labels.map((item) => (
-                          <DropdownMenuItem
-                            key={item.id}
-                            render={<Link href={`${scopeHref(scope, "inbox")}?label=${item.id}`} />}
-                          >
-                            <span
-                              className="size-2 rounded-md"
-                              style={{ background: item.color }}
-                            />
-                            <span className="flex-1 truncate">{item.name}</span>
-                          </DropdownMenuItem>
-                        ))}
-                      </DropdownMenuGroup>
-                    </>
-                  )}
-                </DropdownMenuContent>
-              </DropdownMenu>
-
-              <Button
-                size="sm"
-                className="h-8 gap-1.5 rounded-full px-3.5 font-medium text-[12px] shadow-none"
-                onClick={() => composer.open()}
-              >
-                <PenLine className="size-3.5" />
-                Compose
-              </Button>
-            </div>
-
-            <div className="flex items-center gap-2 border-t px-2.5 py-2">
-              <SearchField defaultValue={searchValue} onCommit={(value) => setParam("q", value)} />
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    // biome-ignore lint/a11y/noLabelWithoutControl: the Switch is the nested control
-                    <label className="flex shrink-0 items-center gap-1.5">
-                      <span className="eyebrow">Unread</span>
-                      <Switch
-                        checked={unreadOnly}
-                        onCheckedChange={(on: boolean) => setParam("unread", on ? "1" : null)}
-                        className="scale-90"
-                      />
-                    </label>
-                  }
-                />
-                <TooltipContent side="bottom" className="font-mono text-[11px]">
-                  Show unread only
-                </TooltipContent>
-              </Tooltip>
-            </div>
-          </SidebarHeader>
-
-          <SidebarContent className="min-h-0">{list}</SidebarContent>
-        </Sidebar>
-      </Sidebar>
-
-      <SidebarInset className="flex min-w-0 flex-col overflow-hidden">
-        <header className="flex h-11 shrink-0 items-center gap-2 border-b bg-card px-3">
-          <nav aria-label="Breadcrumb" className="flex min-w-0 items-center gap-1.5 text-[12px]">
-            <span className="font-mono text-muted-foreground">{scopeLabel}</span>
-            <span className="text-muted-foreground/40">/</span>
-            <span className="font-medium">{FOLDER_LABELS[folder]}</span>
-            {openSubject && (
-              <>
-                <span className="text-muted-foreground/40">/</span>
-                <span className="truncate text-muted-foreground">{openSubject}</span>
-              </>
+          <p className="eyebrow px-2 pt-5 pb-1.5">mailboxes</p>
+          <ul className="space-y-0.5">
+            <li>
+              <NavRow href={scopeHref({ kind: "all" }, folder)} active={activeKey === "all"}>
+                <Layers className="size-4 shrink-0" />
+                <span className="flex-1 truncate">All mail</span>
+              </NavRow>
+            </li>
+            {domains.map(([domain, boxes]) => (
+              <DomainBranch
+                key={domain}
+                domain={domain}
+                boxes={boxes}
+                folder={folder}
+                activeKey={activeKey}
+                unread={counts.mailboxes}
+              />
+            ))}
+            {mailboxes.length === 0 && (
+              <li className="px-2 py-1.5 text-[12px] text-muted-foreground">
+                None yet.{" "}
+                <Link href="/settings/mailboxes" className="text-primary hover:underline">
+                  Add one
+                </Link>
+              </li>
             )}
-          </nav>
+          </ul>
+
+          {labels.length > 0 && (
+            <>
+              <p className="eyebrow px-2 pt-5 pb-1.5">labels</p>
+              <ul className="space-y-0.5">
+                {labels.map((item) => (
+                  <li key={item.id}>
+                    <NavRow
+                      href={`${scopeHref(scope, "inbox")}?label=${item.id}`}
+                      active={activeLabel === item.id}
+                    >
+                      <Tag className="size-4 shrink-0" style={{ color: item.color }} />
+                      <span className="flex-1 truncate">{item.name}</span>
+                    </NavRow>
+                  </li>
+                ))}
+              </ul>
+            </>
+          )}
+        </nav>
+
+        <div className="flex shrink-0 items-center gap-1 border-t px-2 py-2">
+          <ThemeToggle />
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="size-8 rounded-lg text-muted-foreground"
+                  nativeButton={false}
+                  render={<Link href="/settings" />}
+                >
+                  <Settings className="size-4" />
+                </Button>
+              }
+            />
+            <TooltipContent side="top" className="font-mono text-[11px]">
+              Settings
+            </TooltipContent>
+          </Tooltip>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  className="ml-auto h-8 min-w-0 gap-2 rounded-full px-1.5 pr-3"
+                >
+                  <span className="grid size-6 shrink-0 place-items-center rounded-full bg-secondary font-mono text-[10px] font-semibold text-secondary-foreground">
+                    {initialsOf(user.name || user.email)}
+                  </span>
+                  <span className="truncate text-[12px]">{user.name}</span>
+                </Button>
+              }
+            />
+            <DropdownMenuContent side="top" align="end" className="w-56">
+              <DropdownMenuGroup>
+                <DropdownMenuLabel className="font-normal">
+                  <p className="truncate font-medium text-[13px]">{user.name}</p>
+                  <p className="truncate font-mono text-[11px] text-muted-foreground">
+                    {user.email}
+                  </p>
+                </DropdownMenuLabel>
+              </DropdownMenuGroup>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem render={<Link href="/settings" />}>
+                <Settings /> Settings
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onClick={async () => {
+                  await authClient.signOut();
+                  router.push("/sign-in");
+                  router.refresh();
+                }}
+              >
+                <LogOut /> Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </aside>
+
+      {/* ---------------------------------------------------------------- */}
+      {/* Work area: search on top, list beside the open conversation      */}
+      {/* ---------------------------------------------------------------- */}
+      <div className="flex min-w-0 flex-1 flex-col">
+        <header className="flex h-14 shrink-0 items-center gap-3 border-b px-4">
+          <SearchField defaultValue={searchValue} onCommit={(value) => setParam("q", value)} />
 
           {searchValue && (
-            <Badge variant="secondary" className="h-5 gap-1 font-mono text-[10px]">
-              q: {searchValue}
-              <button type="button" onClick={() => setParam("q", null)} aria-label="Clear search">
-                <X className="size-3" />
-              </button>
-            </Badge>
+            <button
+              type="button"
+              onClick={() => setParam("q", null)}
+              className="flex shrink-0 items-center gap-1 rounded-full border px-2.5 py-1 font-mono text-[11px] text-muted-foreground hover:text-foreground"
+            >
+              {searchValue}
+              <X className="size-3" />
+            </button>
           )}
+
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                // biome-ignore lint/a11y/noLabelWithoutControl: the Switch is the nested control
+                <label className="flex shrink-0 items-center gap-2">
+                  <span className="eyebrow">unread</span>
+                  <Switch
+                    checked={unreadOnly}
+                    onCheckedChange={(on: boolean) => setParam("unread", on ? "1" : null)}
+                  />
+                </label>
+              }
+            />
+            <TooltipContent side="bottom" className="font-mono text-[11px]">
+              Show unread only
+            </TooltipContent>
+          </Tooltip>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+        <div className="flex min-h-0 flex-1">
+          <section className="flex w-full min-w-0 flex-col border-r lg:w-[27rem] lg:shrink-0">
+            <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
+              <span className="truncate font-medium text-[12.5px]">{FOLDER_LABELS[folder]}</span>
+              <span className="truncate font-mono text-[11px] text-muted-foreground">
+                {scopeLabel}
+              </span>
+              <span className="ml-auto shrink-0 font-mono text-[10.5px] text-muted-foreground">
+                {threadCount}
+              </span>
+            </div>
+            <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
+          </section>
 
-        {/* Status bar: the same habit as an IDE — always know what you are looking at. */}
-        <footer className="flex h-6 shrink-0 items-center gap-3 border-t bg-statusbar px-3 font-mono text-[10px] text-muted-foreground">
+          <section className="hidden min-w-0 flex-1 flex-col lg:flex">
+            {openSubject && (
+              <div className="flex h-9 shrink-0 items-center border-b px-4">
+                <p className="truncate text-[12.5px] text-muted-foreground">{openSubject}</p>
+              </div>
+            )}
+            <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
+          </section>
+        </div>
+
+        <footer className="flex h-7 shrink-0 items-center gap-3 border-t bg-statusbar px-4 font-mono text-[10px] text-muted-foreground">
           <span>{mailboxes.length} mailboxes</span>
           <span className="opacity-40">|</span>
           <span>{domains.length} domains</span>
-          <span className="opacity-40">|</span>
-          <span>
-            {threadCount} in {FOLDER_LABELS[folder].toLowerCase()}
-          </span>
           <span className="ml-auto flex items-center gap-2">
             <span className="kbd">c</span> compose
             <span className="kbd">/</span> search
             <span className="kbd">g</span> then folder
           </span>
         </footer>
-      </SidebarInset>
-    </SidebarProvider>
+      </div>
+    </div>
+  );
+}
+
+/** One row of the navigation list. Active state is a filled pill, not a border. */
+function NavRow({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center gap-2.5 rounded-lg px-2 py-[7px] text-[13px] transition-colors",
+        active
+          ? "bg-primary/12 font-medium text-primary"
+          : "text-sidebar-foreground hover:bg-sidebar-accent hover:text-foreground",
+      )}
+    >
+      {children}
+    </Link>
+  );
+}
+
+/** A domain and the mailboxes under it, expanded while it is the active scope. */
+function DomainBranch({
+  domain,
+  boxes,
+  folder,
+  activeKey,
+  unread,
+}: {
+  domain: string;
+  boxes: Mailbox[];
+  folder: ViewFolder;
+  activeKey: string;
+  unread: Record<string, number>;
+}) {
+  const isActive = activeKey === `d:${domain}` || boxes.some((box) => activeKey === `m:${box.id}`);
+  const [open, setOpen] = useState(isActive);
+
+  useEffect(() => {
+    if (isActive) setOpen(true);
+  }, [isActive]);
+
+  const domainUnread = boxes.reduce((sum, box) => sum + (unread[box.id] ?? 0), 0);
+
+  return (
+    <li>
+      <div className="flex items-center">
+        <button
+          type="button"
+          onClick={() => setOpen((value) => !value)}
+          aria-label={open ? `Collapse ${domain}` : `Expand ${domain}`}
+          className="rounded-md p-1 text-muted-foreground hover:text-foreground"
+        >
+          <ChevronRight className={cn("size-3 transition-transform", open && "rotate-90")} />
+        </button>
+        <div className="min-w-0 flex-1">
+          <NavRow
+            href={scopeHref({ kind: "domain", domain }, folder)}
+            active={activeKey === `d:${domain}`}
+          >
+            <Globe className="size-4 shrink-0" style={{ color: colorOf(domain) }} />
+            <span className="flex-1 truncate">{domain}</span>
+            {domainUnread > 0 && (
+              <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground tabular-nums">
+                {domainUnread}
+              </span>
+            )}
+          </NavRow>
+        </div>
+      </div>
+
+      {open && (
+        <ul className="mt-0.5 ml-4 space-y-0.5 border-l pl-2">
+          {boxes.map((box) => {
+            const count = unread[box.id] ?? 0;
+            return (
+              <li key={box.id}>
+                <NavRow
+                  href={scopeHref({ kind: "mailbox", mailboxId: box.id }, folder)}
+                  active={activeKey === `m:${box.id}`}
+                >
+                  <span
+                    className="size-2 shrink-0 rounded-full"
+                    style={{ background: box.color }}
+                    aria-hidden
+                  />
+                  <span className="flex-1 truncate font-mono text-[12px]">
+                    {box.address.split("@")[0]}
+                  </span>
+                  {count > 0 && (
+                    <span className="shrink-0 font-mono text-[10.5px] text-muted-foreground tabular-nums">
+                      {count}
+                    </span>
+                  )}
+                </NavRow>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </li>
   );
 }
 
@@ -518,8 +545,8 @@ function SearchField({
   }, []);
 
   return (
-    <div className="relative min-w-0 flex-1">
-      <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2 size-3.5 text-muted-foreground" />
+    <div className="relative min-w-0 max-w-xl flex-1">
+      <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3.5 size-4 text-muted-foreground" />
       <Input
         id="mail-search"
         value={value}
@@ -531,8 +558,8 @@ function SearchField({
             onCommit(null);
           }
         }}
-        placeholder="Search"
-        className="h-7 rounded-xl pl-7 font-mono text-[12px]"
+        placeholder="Search mail"
+        className="h-9 rounded-full bg-muted/60 pl-10 text-[13px] shadow-none"
       />
     </div>
   );
@@ -550,7 +577,7 @@ function ThemeToggle() {
           <Button
             variant="ghost"
             size="icon"
-            className="size-9 rounded-xl text-muted-foreground"
+            className="size-8 rounded-lg text-muted-foreground"
             onClick={() => {
               const next = !dark;
               setDark(next);
@@ -558,11 +585,11 @@ function ThemeToggle() {
               localStorage.setItem("theme", next ? "dark" : "light");
             }}
           >
-            {dark ? <Sun className="size-[17px]" /> : <Moon className="size-[17px]" />}
+            {dark ? <Sun className="size-4" /> : <Moon className="size-4" />}
           </Button>
         }
       />
-      <TooltipContent side="right" className="font-mono text-[11px]">
+      <TooltipContent side="top" className="font-mono text-[11px]">
         {dark ? "Light theme" : "Dark theme"}
       </TooltipContent>
     </Tooltip>
