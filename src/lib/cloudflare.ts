@@ -189,3 +189,48 @@ export async function disableCatchAll(token: string, zoneId: string) {
     }),
   });
 }
+
+/* -------------------------------------------------------------------------- */
+/* DNS                                                                        */
+/* -------------------------------------------------------------------------- */
+
+export interface DnsRecordSummary {
+  id: string;
+  type: string;
+  name: string;
+  content: string;
+  priority?: number;
+}
+
+export async function listDnsRecords(token: string, zoneId: string, name: string, type?: string) {
+  const query = new URLSearchParams({ name, per_page: "100" });
+  if (type) query.set("type", type);
+  return call<DnsRecordSummary[]>(token, `/zones/${zoneId}/dns_records?${query}`);
+}
+
+export async function createDnsRecord(
+  token: string,
+  zoneId: string,
+  record: { type: string; name: string; content: string; priority?: number; comment?: string },
+) {
+  return call<DnsRecordSummary>(token, `/zones/${zoneId}/dns_records`, {
+    method: "POST",
+    body: JSON.stringify({ ttl: 1, ...record }),
+  });
+}
+
+export async function deleteDnsRecord(token: string, zoneId: string, recordId: string) {
+  return call<{ id: string }>(token, `/zones/${zoneId}/dns_records/${recordId}`, {
+    method: "DELETE",
+  });
+}
+
+/**
+ * The hosts Cloudflare Email Routing publishes on a zone it receives for. The
+ * priorities are arbitrary; all three hosts have to be present.
+ */
+export const EMAIL_ROUTING_MX = [
+  { host: "route1.mx.cloudflare.net", priority: 91 },
+  { host: "route2.mx.cloudflare.net", priority: 99 },
+  { host: "route3.mx.cloudflare.net", priority: 1 },
+] as const;

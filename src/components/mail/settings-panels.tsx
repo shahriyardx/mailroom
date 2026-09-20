@@ -63,7 +63,7 @@ export function MailboxPanel({
   function add() {
     start(async () => {
       try {
-        await createMailboxAction({
+        const result = await createMailboxAction({
           address: `${local.trim()}@${domain}`,
           displayName: displayName.trim() || local.trim(),
           isCatchAll,
@@ -72,7 +72,23 @@ export function MailboxPanel({
         });
         setLocal("");
         setDisplayName("");
-        toast.success("Mailbox added");
+
+        // Say what was done about receiving, since it happened behind the
+        // scenes and decides whether mail will actually arrive.
+        const receiving = result.receiving;
+        if (receiving.state === "published") {
+          toast.success("Mailbox added", {
+            description: `Published MX records so ${receiving.domain} receives through ${receiving.zone}.`,
+          });
+        } else if (receiving.state === "already") {
+          toast.success("Mailbox added");
+        } else if (receiving.reason === "Not a subdomain") {
+          toast.success("Mailbox added");
+        } else {
+          toast.success("Mailbox added", {
+            description: `Receiving not set up: ${receiving.reason}`,
+          });
+        }
         router.refresh();
       } catch (error) {
         toast.error(error instanceof Error ? error.message : "Could not add mailbox");

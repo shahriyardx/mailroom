@@ -22,6 +22,7 @@ import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
 import { addDomain, importFromSes, refreshDomain, removeDomain, useOwnDkimKey } from "./domains";
+import { type SubdomainReceiving, ensureSubdomainReceiving } from "./inbound";
 import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./inbound";
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
@@ -304,8 +305,24 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   }
 
   revalidatePath("/mail", "layout");
+
+  // A subdomain of a zone that already receives needs three MX records and
+  // nothing else. Do it here so a mailbox on one simply works. A failure is
+  // reported, never fatal: the mailbox exists either way.
+  let receiving: SubdomainReceiving = { state: "skipped", reason: "Not a subdomain" };
+  if (domainName !== domainRow.name) {
+    try {
+      receiving = await ensureSubdomainReceiving(user.id, domainName);
+    } catch (error) {
+      receiving = {
+        state: "skipped",
+        reason: error instanceof Error ? error.message : "Cloudflare could not be reached",
+      };
+    }
+  }
+
   revalidatePath("/settings");
-  return { id };
+  return { id, receiving };
 }
 
 export async function updateMailboxAction(

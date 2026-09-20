@@ -2,7 +2,9 @@ import "server-only";
 import { WORKER_BYTES, WORKER_SCRIPT } from "@/generated/worker-bundle";
 import {
   CloudflareError,
+  EMAIL_ROUTING_MX,
   type Zone,
+  createDnsRecord,
   deleteWorker,
   disableCatchAll,
   disableRouting,
@@ -10,6 +12,7 @@ import {
   getCatchAll,
   getRouting,
   getWorker,
+  listDnsRecords,
   listZones,
   setCatchAllToWorker,
   uploadWorker,
@@ -183,4 +186,56 @@ export async function unrouteZone(userId: string, zoneId: string, alsoDisableRou
   } catch (error) {
     throw explain(error, "Zone Settings -> Edit and Email Routing Rules -> Edit");
   }
+}
+
+export type SubdomainReceiving =
+  | { state: "published"; domain: string; zone: string }
+  | { state: "already" }
+  | { state: "skipped"; reason: string };
+
+/**
+ * A subdomain of a zone that already receives needs only the MX records: the
+ * zone's catch-all hands anything arriving at Cloudflare to the worker, and it
+ * does so for subdomains too, without them being registered for Email Routing.
+ *
+ * Publishes those records when — and only when — the parent is genuinely
+ * receiving and the subdomain carries no mail routing of its own.
+ */
+export async function ensureSubdomainReceiving(
+  userId: string,
+  domainName: string,
+): Promise<SubdomainReceiving> {
+  const credentials = await cloudflareCredentials(userId);
+  if (!credentials) return { state: "skipped", reason: "No Cloudflare token is connected" };
+
+  const zones = await listZones(credentials.token);
+  const zone = zones.find((candidate: Zone) => domainName.endsWith(`.${candidate.name}`));
+  if (!zone) return { state: "skipped", reason: "Not a subdomain of a zone on this account" };
+
+  // Only worth doing if mail for the parent already reaches the worker.
+  const catchAll = await getCatchAll(credentials.token, zone.id);
+  const routed =
+    catchAll?.enabled === true &&
+    (catchAll.actions ?? []).some(
+      (action) => action.type === "worker" && action.value?.includes(SCRIPT_NAME),
+    );
+  if (!routed) {
+    return { state: "skipped", reason: `${zone.name} is not receiving mail here yet` };
+  }
+
+  // Never touch a subdomain that already has mail routing of its own.
+  const existing = await listDnsRecords(credentials.token, zone.id, domainName, "MX");
+  if (existing.length > 0) return { state: "already" };
+
+  for (const { host, priority } of EMAIL_ROUTING_MX) {
+    await createDnsRecord(credentials.token, zone.id, {
+      type: "MX",
+      name: domainName,
+      content: host,
+      priority,
+      comment: "Added by Mailroom so this subdomain receives mail",
+    });
+  }
+
+  return { state: "published", domain: domainName, zone: zone.name };
 }
