@@ -166,7 +166,7 @@ export async function routeZoneToWorker(userId: string, zoneId: string) {
 
     await setCatchAllToWorker(credentials.token, zoneId, SCRIPT_NAME);
   } catch (error) {
-    throw explain(error, "Email Routing -> Edit and DNS -> Edit on this zone");
+    throw explain(error, "Zone Settings -> Edit (which is what gates turning Email Routing on), plus Email Routing Rules -> Edit and DNS -> Edit");
   }
 }
 
@@ -178,6 +178,6 @@ export async function unrouteZone(userId: string, zoneId: string, alsoDisableRou
     await disableCatchAll(credentials.token, zoneId);
     if (alsoDisableRouting) await disableRouting(credentials.token, zoneId);
   } catch (error) {
-    throw explain(error, "Email Routing -> Edit on this zone");
+    throw explain(error, "Zone Settings -> Edit and Email Routing Rules -> Edit");
   }
 }
