@@ -9,7 +9,8 @@ WORKDIR /app
 # lockfile to resolve.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY worker/package.json ./worker/
-RUN pnpm install --frozen-lockfile --filter=mail...
+# Both packages: the build bundles the worker, so its dependencies are needed.
+RUN pnpm install --frozen-lockfile
 
 # ---- build -----------------------------------------------------------------
 FROM node:22-alpine AS builder
@@ -17,6 +18,7 @@ RUN corepack enable
 WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app/worker/node_modules ./worker/node_modules
 COPY . .
 
 # Public build-time values. Anything secret is supplied at run time instead.
@@ -24,7 +26,8 @@ ARG NEXT_PUBLIC_APP_URL
 ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
 ENV NEXT_TELEMETRY_DISABLED=1
 
-RUN pnpm exec next build
+# Runs the worker bundler first, so the uploaded script matches worker/src.
+RUN pnpm run build
 
 # ---- runtime ---------------------------------------------------------------
 FROM node:22-alpine AS runner
