@@ -68,6 +68,7 @@ export function CardFooter({ className, ...props }: React.ComponentProps<"div">)
 export function Panel({
   title,
   description,
+  meta,
   action,
   className,
   children,
@@ -75,6 +76,8 @@ export function Panel({
 }: React.ComponentProps<"section"> & {
   title: React.ReactNode;
   description?: React.ReactNode;
+  /** A count or a state, stated quietly beside the title. */
+  meta?: React.ReactNode;
   action?: React.ReactNode;
 }) {
   return (
@@ -91,6 +94,7 @@ export function Panel({
           <CardTitle>{title}</CardTitle>
           {description && <CardDescription>{description}</CardDescription>}
         </div>
+        {meta && <span className="shrink-0 text-[12px] text-muted-foreground">{meta}</span>}
         {action && <div className="shrink-0">{action}</div>}
       </CardHeader>
       <CardBody>{children}</CardBody>

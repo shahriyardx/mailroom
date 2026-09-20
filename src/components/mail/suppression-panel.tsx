@@ -1,10 +1,10 @@
 "use client";
 
+import { IconButton, List, ListEmpty, ListRow, Panel, StatusPill } from "@/components/kit";
 import { removeSuppressionAction } from "@/server/actions";
 import { ShieldOff, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useTransition } from "react";
-import { EmptyNote, Panel, StatusPill } from "./settings-ui";
 
 interface Row {
   id: string;
@@ -23,19 +23,17 @@ export function SuppressionPanel({ rows }: { rows: Row[] }) {
       description="Added automatically after a hard bounce or a spam complaint. Sending to these is refused."
       meta={`${rows.length}`}
     >
-      <div className="divide-y rounded-xl border">
+      <List>
         {rows.map((row) => (
-          <div key={row.id} className="flex items-center gap-2 px-3 py-2">
-            <ShieldOff className="size-3.5 shrink-0 text-destructive" />
-            <span className="min-w-0 flex-1 truncate font-mono text-[12px]">{row.address}</span>
+          <ListRow key={row.id}>
+            <ShieldOff className="size-4 shrink-0 text-destructive" />
+            <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{row.address}</span>
             <StatusPill state="bad">{row.reason}</StatusPill>
-            <span className="text-[11px] text-muted-foreground">
+            <span className="text-[12px] text-muted-foreground">
               {row.createdAt.toLocaleDateString()}
             </span>
-            <button
-              type="button"
-              aria-label={`Unblock ${row.address}`}
-              className="text-muted-foreground hover:text-foreground"
+            <IconButton
+              label={`Unblock ${row.address}`}
               onClick={() =>
                 start(async () => {
                   await removeSuppressionAction(row.id);
@@ -43,16 +41,12 @@ export function SuppressionPanel({ rows }: { rows: Row[] }) {
                 })
               }
             >
-              <Trash2 className="size-3.5" />
-            </button>
-          </div>
+              <Trash2 />
+            </IconButton>
+          </ListRow>
         ))}
-        {rows.length === 0 && (
-          <div className="px-3 py-3">
-            <EmptyNote>nothing blocked</EmptyNote>
-          </div>
-        )}
-      </div>
+        {rows.length === 0 && <ListEmpty>Nothing is blocked.</ListEmpty>}
+      </List>
     </Panel>
   );
 }

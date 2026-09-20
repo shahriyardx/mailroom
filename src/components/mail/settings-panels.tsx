@@ -3,19 +3,32 @@
 import {
   Badge,
   Button,
+  ColorPicker,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+  Field,
+  Fieldset,
   IconButton,
   Input,
-  Label,
+  List,
+  ListEmpty,
+  ListRow,
+  Note,
+  PALETTE,
+  Panel,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  StatusPill,
   Switch,
   Textarea,
 } from "@/components/kit";
 import type { Domain, Label as LabelRow, Mailbox } from "@/db/schema";
-import { cn } from "@/lib/utils";
 import {
   createLabelAction,
   createMailboxAction,
@@ -25,27 +38,10 @@ import {
   deleteRuleAction,
   updateMailboxAction,
 } from "@/server/actions";
-import { Loader2, Plus, Trash2 } from "lucide-react";
+import { MoreHorizontal, PenLine, Plus, Star, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
-import { Panel, StatusPill } from "./settings-ui";
-
-const FOLDER_CHOICES: Record<string, string> = {
-  archive: "Archive",
-  inbox: "Inbox",
-  spam: "Spam",
-  trash: "Trash",
-};
-
-const PALETTE = [
-  "oklch(0.56 0.115 64)",
-  "oklch(0.52 0.07 240)",
-  "oklch(0.52 0.09 155)",
-  "oklch(0.53 0.12 20)",
-  "oklch(0.5 0.09 300)",
-  "oklch(0.55 0.05 250)",
-];
 
 export function MailboxPanel({
   mailboxes,
@@ -61,7 +57,7 @@ export function MailboxPanel({
   const [domain, setDomain] = useState(sendable[0]?.name ?? domains[0]?.name ?? "");
   const [displayName, setDisplayName] = useState("");
   const [isCatchAll, setIsCatchAll] = useState(false);
-  const [color, setColor] = useState(PALETTE[0]!);
+  const [color, setColor] = useState<string>(PALETTE[0]);
 
   function add() {
     start(async () => {
@@ -86,10 +82,10 @@ export function MailboxPanel({
   return (
     <Panel
       title="Mailboxes"
-      description="One row per address you send from or receive at. No limit."
+      description="One row per address you send from or receive at. There is no limit."
       meta={`${mailboxes.length} active`}
     >
-      <div className="divide-y rounded-xl border">
+      <List>
         {mailboxes.map((box) => (
           <MailboxRow
             key={box.id}
@@ -100,115 +96,106 @@ export function MailboxPanel({
             )}
           />
         ))}
-        {mailboxes.length === 0 && (
-          <p className="px-3 py-6 text-center font-mono text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
-            none yet
-          </p>
-        )}
-      </div>
+        {mailboxes.length === 0 && <ListEmpty>No mailboxes yet.</ListEmpty>}
+      </List>
 
-      <div className="mt-3 rounded-xl border bg-muted/40 p-3">
-        <p className="eyebrow mb-2.5">Add mailbox</p>
-        <div className="grid gap-2.5 sm:grid-cols-[1fr_1fr_auto]">
-          <div className="space-y-1">
-            <Label className="eyebrow">Address</Label>
-            <div className="flex items-center gap-1">
+      <Fieldset title="Add a mailbox">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Address" htmlFor="mailbox-local">
+            <div className="flex items-center gap-1.5">
               <Input
+                id="mailbox-local"
+                mono
                 value={local}
                 onChange={(event) => setLocal(event.target.value.replace(/[^a-z0-9._+-]/gi, ""))}
                 placeholder="hello"
-                className="h-8 font-mono text-[12px]"
               />
-              <span className="font-mono text-[12px] text-muted-foreground">@</span>
+              <span className="font-mono text-[13px] text-muted-foreground">@</span>
               <Select value={domain} onValueChange={(value) => value && setDomain(value)}>
-                <SelectTrigger size="sm" className="h-8 min-w-36 font-mono text-[12px]">
+                <SelectTrigger className="min-w-40 font-mono text-[12.5px]">
                   <SelectValue placeholder="domain" />
                 </SelectTrigger>
                 <SelectContent>
                   {domains.map((item) => (
-                    <SelectItem key={item.name} value={item.name} className="font-mono text-[12px]">
+                    <SelectItem key={item.name} value={item.name} className="font-mono">
                       {item.name}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
-          </div>
+          </Field>
 
-          <div className="space-y-1">
-            <Label className="eyebrow">Display name</Label>
+          <Field
+            label="Display name"
+            htmlFor="mailbox-name"
+            hint="What recipients see as the sender."
+          >
             <Input
+              id="mailbox-name"
               value={displayName}
               onChange={(event) => setDisplayName(event.target.value)}
               placeholder="Support"
-              className="h-8 text-[12.5px]"
             />
-          </div>
+          </Field>
 
-          <div className="space-y-1">
-            <Label className="eyebrow">Colour</Label>
-            <div className="flex h-8 items-center gap-1">
-              {PALETTE.map((item) => (
-                <button
-                  key={item}
-                  type="button"
-                  onClick={() => setColor(item)}
-                  className={cn(
-                    "size-5 rounded-lg ring-offset-2 ring-offset-background transition",
-                    color === item && "ring-2 ring-ring",
-                  )}
-                  style={{ background: item }}
-                  aria-label={`Colour ${item}`}
-                />
-              ))}
+          <Field label="Colour" hint="Marks this mailbox everywhere else in the app.">
+            <ColorPicker value={color} onChange={setColor} palette={PALETTE} />
+          </Field>
+
+          <Field
+            label="Catch-all"
+            hint="Take every address on this domain that no other mailbox claims."
+          >
+            <div className="flex h-9 items-center gap-2.5">
+              <Switch id="mailbox-catch-all" checked={isCatchAll} onCheckedChange={setIsCatchAll} />
+              <label htmlFor="mailbox-catch-all" className="text-[13px] text-muted-foreground">
+                Catch everything on {domain || "this domain"}
+              </label>
             </div>
-          </div>
+          </Field>
         </div>
 
-        <div className="mt-3 flex items-center gap-3">
-          <Label className="flex items-center gap-2 text-[12px] font-normal">
-            <Switch checked={isCatchAll} onCheckedChange={setIsCatchAll} className="scale-90" />
-            Catch-all for this domain
-          </Label>
-
+        <div className="mt-4 flex items-center gap-3">
+          {domains.length === 0 && (
+            <Note className="text-destructive">
+              No verified domains yet. Add one under Domains first.
+            </Note>
+          )}
           <Button
-            size="sm"
-            className="ml-auto h-8 gap-1.5 text-[12px]"
+            variant="solid"
+            pill
+            className="ml-auto"
             onClick={add}
-            disabled={pending || !local.trim() || !domain}
+            loading={pending}
+            disabled={!local.trim() || !domain}
           >
-            {pending ? (
-              <Loader2 className="size-3.5 animate-spin" />
-            ) : (
-              <Plus className="size-3.5" />
-            )}
+            {!pending && <Plus />}
             Add mailbox
           </Button>
         </div>
-
-        {domains.length === 0 && (
-          <p className="mt-2 text-[11.5px] text-destructive">
-            No verified domains returned by useSend. Check USESEND_BASE_URL and USESEND_API_KEY.
-          </p>
-        )}
-      </div>
+      </Fieldset>
     </Panel>
   );
 }
 
 function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: boolean }) {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [, start] = useTransition();
   const [signature, setSignature] = useState(mailbox.signature ?? "");
   const [open, setOpen] = useState(false);
 
   return (
     <div>
-      <div className="flex items-center gap-2.5 px-3 py-2">
-        <span className="size-2 shrink-0 rounded-md" style={{ background: mailbox.color }} />
+      <ListRow>
+        <span
+          className="size-2.5 shrink-0 rounded-full"
+          style={{ background: mailbox.color }}
+          aria-hidden
+        />
         <div className="min-w-0 flex-1">
-          <p className="truncate font-mono text-[12.5px]">{mailbox.address}</p>
-          <p className="truncate text-[11.5px] text-muted-foreground">{mailbox.displayName}</p>
+          <p className="truncate font-mono text-[13px]">{mailbox.address}</p>
+          <p className="truncate text-[12px] text-muted-foreground">{mailbox.displayName}</p>
         </div>
 
         {mailbox.isDefault && <Badge size="sm">Default</Badge>}
@@ -217,74 +204,86 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
             Catch-all
           </Badge>
         )}
-
         <StatusPill state={domainReady ? "ok" : "pending"}>
-          {domainReady ? "ready" : "domain pending"}
+          {domainReady ? "Ready" : "Domain pending"}
         </StatusPill>
 
-        {!mailbox.isDefault && (
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-7 text-[11.5px] text-muted-foreground"
-            onClick={() =>
-              start(async () => {
-                await updateMailboxAction(mailbox.id, { isDefault: true });
-                router.refresh();
-              })
-            }
-          >
-            Make default
-          </Button>
-        )}
-
-        <Button
-          variant="ghost"
-          size="sm"
-          className="h-7 text-[11.5px] text-muted-foreground"
-          onClick={() => setOpen((value) => !value)}
-        >
-          Signature
-        </Button>
-
-        <IconButton
-          variant="danger"
-          label={`Delete ${mailbox.address}`}
-          onClick={() =>
-            start(async () => {
-              await deleteMailboxAction(mailbox.id);
-              toast.success("Mailbox removed");
-              router.refresh();
-            })
-          }
-        >
-          {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
-        </IconButton>
-      </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <IconButton label={`Actions for ${mailbox.address}`}>
+              <MoreHorizontal />
+            </IconButton>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="end" className="w-52">
+            <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
+              <PenLine /> {open ? "Hide signature" : "Edit signature"}
+            </DropdownMenuItem>
+            {!mailbox.isDefault && (
+              <DropdownMenuItem
+                onSelect={() =>
+                  start(async () => {
+                    await updateMailboxAction(mailbox.id, { isDefault: true });
+                    toast.success("Default mailbox changed");
+                    router.refresh();
+                  })
+                }
+              >
+                <Star /> Make default
+              </DropdownMenuItem>
+            )}
+            <DropdownMenuSeparator />
+            <DropdownMenuItem
+              destructive
+              onSelect={() =>
+                start(async () => {
+                  await deleteMailboxAction(mailbox.id);
+                  toast.success("Mailbox removed");
+                  router.refresh();
+                })
+              }
+            >
+              <Trash2 /> Delete mailbox
+            </DropdownMenuItem>
+          </DropdownMenuContent>
+        </DropdownMenu>
+      </ListRow>
 
       {open && (
-        <div className="border-t bg-muted/40 px-3 py-2.5">
-          <Textarea
-            value={signature}
-            onChange={(event) => setSignature(event.target.value)}
-            rows={3}
-            placeholder="<p>Best,<br/>Ada</p>"
-            className="font-mono text-[11.5px]"
-          />
-          <Button
-            size="sm"
-            className="mt-2 h-7 text-[11.5px]"
-            onClick={() =>
-              start(async () => {
-                await updateMailboxAction(mailbox.id, { signature });
-                setOpen(false);
-                toast.success("Signature saved");
-                router.refresh();
-              })
-            }
+        <div className="border-t border-border bg-muted/40 px-3.5 py-3">
+          <Field
+            label="Signature"
+            htmlFor={`signature-${mailbox.id}`}
+            hint="Appended to every message sent from this address. HTML is allowed."
           >
-            Save signature
-          </Button>
+            <Textarea
+              id={`signature-${mailbox.id}`}
+              mono
+              rows={3}
+              value={signature}
+              onChange={(event) => setSignature(event.target.value)}
+              placeholder="<p>Best,<br/>Ada</p>"
+            />
+          </Field>
+          <div className="mt-3 flex gap-2">
+            <Button
+              variant="solid"
+              size="sm"
+              pill
+              onClick={() =>
+                start(async () => {
+                  await updateMailboxAction(mailbox.id, { signature });
+                  setOpen(false);
+                  toast.success("Signature saved");
+                  router.refresh();
+                })
+              }
+            >
+              Save signature
+            </Button>
+            <Button variant="ghost" size="sm" pill onClick={() => setOpen(false)}>
+              Cancel
+            </Button>
+          </div>
         </div>
       )}
     </div>
@@ -293,83 +292,81 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
 
 export function LabelPanel({ labels }: { labels: LabelRow[] }) {
   const router = useRouter();
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
   const [name, setName] = useState("");
-  const [color, setColor] = useState(PALETTE[2]!);
+  const [color, setColor] = useState<string>(PALETTE[2]);
 
   return (
     <Panel
       title="Labels"
-      description="Tag threads so you can find them later."
+      description="Tag conversations so you can find them again."
       meta={`${labels.length}`}
     >
-      <ul className="flex flex-wrap gap-1.5">
-        {labels.map((item) => (
-          <li
-            key={item.id}
-            className="flex items-center gap-1.5 rounded-xl border px-2 py-1 text-[12px]"
-          >
-            <span className="size-2 rounded-md" style={{ background: item.color }} />
-            {item.name}
-            <button
-              type="button"
-              className="text-muted-foreground hover:text-destructive"
-              aria-label={`Delete ${item.name}`}
-              onClick={() =>
-                start(async () => {
-                  await deleteLabelAction(item.id);
-                  router.refresh();
-                })
-              }
+      {labels.length > 0 ? (
+        <ul className="flex flex-wrap gap-2">
+          {labels.map((item) => (
+            <li
+              key={item.id}
+              className="flex items-center gap-1.5 rounded-full bg-muted py-1 pr-1.5 pl-2.5 text-[12.5px]"
             >
-              <Trash2 className="size-3" />
-            </button>
-          </li>
-        ))}
-        {labels.length === 0 && (
-          <li className="font-mono text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
-            none yet
-          </li>
-        )}
-      </ul>
-
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Label name"
-          className="h-8 w-44 text-[12.5px]"
-        />
-        <div className="flex items-center gap-1">
-          {PALETTE.map((item) => (
-            <button
-              key={item}
-              type="button"
-              onClick={() => setColor(item)}
-              className={cn(
-                "size-5 rounded-lg ring-offset-2 ring-offset-background transition",
-                color === item && "ring-2 ring-ring",
-              )}
-              style={{ background: item }}
-              aria-label={`Colour ${item}`}
-            />
+              <span
+                className="size-2 rounded-full"
+                style={{ background: item.color }}
+                aria-hidden
+              />
+              {item.name}
+              <button
+                type="button"
+                className="rounded-full p-0.5 text-muted-foreground transition-colors hover:text-destructive"
+                aria-label={`Delete ${item.name}`}
+                onClick={() =>
+                  start(async () => {
+                    await deleteLabelAction(item.id);
+                    router.refresh();
+                  })
+                }
+              >
+                <X className="size-3" />
+              </button>
+            </li>
           ))}
+        </ul>
+      ) : (
+        <Note>No labels yet.</Note>
+      )}
+
+      <Fieldset title="Add a label">
+        <div className="flex flex-wrap items-end gap-4">
+          <Field label="Name" htmlFor="label-name" className="w-52">
+            <Input
+              id="label-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Newsletters"
+            />
+          </Field>
+          <Field label="Colour">
+            <ColorPicker value={color} onChange={setColor} palette={PALETTE} />
+          </Field>
+          <Button
+            variant="solid"
+            pill
+            className="ml-auto"
+            loading={pending}
+            disabled={!name.trim()}
+            onClick={() =>
+              start(async () => {
+                await createLabelAction(name.trim(), color);
+                setName("");
+                router.refresh();
+              })
+            }
+          >
+            {!pending && <Plus />}
+            Add label
+          </Button>
         </div>
-        <Button
-          size="sm"
-          className="h-8 text-[12px]"
-          disabled={!name.trim()}
-          onClick={() =>
-            start(async () => {
-              await createLabelAction(name.trim(), color);
-              setName("");
-              router.refresh();
-            })
-          }
-        >
-          Add label
-        </Button>
-      </div>
+      </Fieldset>
     </Panel>
   );
 }
@@ -386,7 +383,7 @@ export function RulePanel({
   }[];
 }) {
   const router = useRouter();
-  const [, start] = useTransition();
+  const [pending, start] = useTransition();
   const [name, setName] = useState("");
   const [matchFrom, setMatchFrom] = useState("");
   const [matchSubject, setMatchSubject] = useState("");
@@ -398,19 +395,19 @@ export function RulePanel({
       description="Applied to inbound mail before it reaches the inbox."
       meta={`${rules.length}`}
     >
-      <div className="divide-y rounded-xl border">
+      <List>
         {rules.map((rule) => (
-          <div key={rule.id} className="flex items-center gap-2.5 px-3 py-2">
+          <ListRow key={rule.id}>
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12.5px] font-medium">{rule.name}</p>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">
+              <p className="truncate text-[13px] font-medium">{rule.name}</p>
+              <p className="truncate text-[12px] text-muted-foreground">
                 {[
-                  rule.matchFrom && `from~${rule.matchFrom}`,
-                  rule.matchSubject && `subject~${rule.matchSubject}`,
+                  rule.matchFrom && `From contains ${rule.matchFrom}`,
+                  rule.matchSubject && `subject contains ${rule.matchSubject}`,
                 ]
                   .filter(Boolean)
-                  .join(" && ") || "*"}{" "}
-                → {rule.actionFolder ?? "keep"}
+                  .join(", and ") || "Everything"}{" "}
+                &rarr; {rule.actionFolder ?? "keep in inbox"}
               </p>
             </div>
             <IconButton
@@ -425,47 +422,24 @@ export function RulePanel({
             >
               <Trash2 />
             </IconButton>
-          </div>
+          </ListRow>
         ))}
-        {rules.length === 0 && (
-          <p className="px-3 py-6 text-center font-mono text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
-            none yet
-          </p>
-        )}
-      </div>
+        {rules.length === 0 && <ListEmpty>No filters yet.</ListEmpty>}
+      </List>
 
-      <div className="mt-3 grid gap-2.5 rounded-xl border bg-muted/40 p-3 sm:grid-cols-4">
-        <div className="space-y-1">
-          <Label className="eyebrow">Name</Label>
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Newsletters"
-            className="h-8 text-[12.5px]"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="eyebrow">From contains</Label>
-          <Input
-            value={matchFrom}
-            onChange={(event) => setMatchFrom(event.target.value)}
-            placeholder="@substack.com"
-            className="h-8 font-mono text-[12px]"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="eyebrow">Subject contains</Label>
-          <Input
-            value={matchSubject}
-            onChange={(event) => setMatchSubject(event.target.value)}
-            className="h-8 font-mono text-[12px]"
-          />
-        </div>
-        <div className="space-y-1">
-          <Label className="eyebrow">Move to</Label>
-          <div className="flex gap-2">
+      <Fieldset title="Add a filter">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Name" htmlFor="rule-name">
+            <Input
+              id="rule-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Newsletters"
+            />
+          </Field>
+          <Field label="Move to" htmlFor="rule-folder">
             <Select value={actionFolder} onValueChange={(value) => value && setActionFolder(value)}>
-              <SelectTrigger size="sm" className="h-8 flex-1 text-[12px]">
+              <SelectTrigger id="rule-folder">
                 <SelectValue placeholder="Archive" />
               </SelectTrigger>
               <SelectContent>
@@ -475,30 +449,55 @@ export function RulePanel({
                 <SelectItem value="trash">Trash</SelectItem>
               </SelectContent>
             </Select>
-            <Button
-              size="sm"
-              className="h-8 text-[12px]"
-              disabled={!name.trim() || (!matchFrom.trim() && !matchSubject.trim())}
-              onClick={() =>
-                start(async () => {
-                  await createRuleAction({
-                    name: name.trim(),
-                    matchFrom: matchFrom.trim() || undefined,
-                    matchSubject: matchSubject.trim() || undefined,
-                    actionFolder: actionFolder as "inbox" | "archive" | "spam" | "trash",
-                  });
-                  setName("");
-                  setMatchFrom("");
-                  setMatchSubject("");
-                  router.refresh();
-                })
-              }
-            >
-              Add
-            </Button>
-          </div>
+          </Field>
+          <Field label="From contains" htmlFor="rule-from">
+            <Input
+              id="rule-from"
+              mono
+              value={matchFrom}
+              onChange={(event) => setMatchFrom(event.target.value)}
+              placeholder="@substack.com"
+            />
+          </Field>
+          <Field label="Subject contains" htmlFor="rule-subject">
+            <Input
+              id="rule-subject"
+              mono
+              value={matchSubject}
+              onChange={(event) => setMatchSubject(event.target.value)}
+              placeholder="invoice"
+            />
+          </Field>
         </div>
-      </div>
+
+        <div className="mt-4 flex items-center gap-3">
+          <Note>A filter needs at least one thing to match on.</Note>
+          <Button
+            variant="solid"
+            pill
+            className="ml-auto"
+            loading={pending}
+            disabled={!name.trim() || (!matchFrom.trim() && !matchSubject.trim())}
+            onClick={() =>
+              start(async () => {
+                await createRuleAction({
+                  name: name.trim(),
+                  matchFrom: matchFrom.trim() || undefined,
+                  matchSubject: matchSubject.trim() || undefined,
+                  actionFolder: actionFolder as "inbox" | "archive" | "spam" | "trash",
+                });
+                setName("");
+                setMatchFrom("");
+                setMatchSubject("");
+                router.refresh();
+              })
+            }
+          >
+            {!pending && <Plus />}
+            Add filter
+          </Button>
+        </div>
+      </Fieldset>
     </Panel>
   );
 }

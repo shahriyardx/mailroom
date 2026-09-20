@@ -2,19 +2,27 @@
 
 import {
   Button,
+  Field,
+  Fieldset,
+  IconButton,
   Input,
+  List,
+  ListEmpty,
+  ListRow,
+  Note,
+  Panel,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
+  StatusPill,
 } from "@/components/kit";
 import type { ApiKey, Mailbox } from "@/db/schema";
 import { createApiKeyAction, deleteApiKeyAction, revokeApiKeyAction } from "@/server/actions";
-import { Check, Copy, KeyRound, Loader2, Trash2 } from "lucide-react";
+import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { EmptyNote, Panel, StatusPill } from "./settings-ui";
 
 const ANY_MAILBOX = "__any__";
 
@@ -39,17 +47,18 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
       meta={`${keys.filter((item) => !item.revokedAt).length} active`}
     >
       {fresh && (
-        <div className="mb-3 rounded-xl border border-ok/30 bg-ok/10 p-2.5">
-          <p className="mb-1.5 text-[12px]">Copy this key now — it will not be shown again.</p>
+        <div className="mb-4 rounded-xl bg-ok-soft p-3">
+          <p className="mb-2 text-[12.5px] font-medium text-ok">
+            Copy this key now. It is stored hashed and will not be shown again.
+          </p>
           <div className="flex items-center gap-2">
-            <code className="min-w-0 flex-1 truncate rounded-lg border bg-card px-2 py-1.5 font-mono text-[11.5px]">
+            <code className="min-w-0 flex-1 truncate rounded-lg border border-border bg-card px-2.5 py-2 font-mono text-[12px]">
               {fresh}
             </code>
-            <Button
-              size="sm"
+            <IconButton
+              size="md"
               variant="outline"
-              className="h-8"
-              title="Copy key"
+              label="Copy key"
               onClick={() => {
                 navigator.clipboard.writeText(fresh).then(() => {
                   setCopied(true);
@@ -57,38 +66,38 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
                 });
               }}
             >
-              {copied ? <Check className="size-3.5 text-ok" /> : <Copy className="size-3.5" />}
-            </Button>
+              {copied ? <Check className="text-ok" /> : <Copy />}
+            </IconButton>
           </div>
         </div>
       )}
 
-      <div className="divide-y rounded-xl border">
+      <List>
         {keys.map((item) => (
-          <div key={item.id} className="flex flex-wrap items-center gap-2 px-3 py-2">
-            <KeyRound className="size-3.5 shrink-0 text-muted-foreground" />
+          <ListRow key={item.id} className="flex-wrap">
+            <KeyRound className="size-4 shrink-0 text-muted-foreground" />
             <div className="min-w-0 flex-1">
-              <p className="truncate text-[12.5px]">{item.name}</p>
-              <p className="truncate font-mono text-[11px] text-muted-foreground">{item.prefix}</p>
+              <p className="truncate text-[13px] font-medium">{item.name}</p>
+              <p className="truncate font-mono text-[12px] text-muted-foreground">{item.prefix}</p>
             </div>
 
             {item.mailboxId && (
               <StatusPill state="pending">
-                {mailboxes.find((box) => box.id === item.mailboxId)?.address ?? "one mailbox"}
+                {mailboxes.find((box) => box.id === item.mailboxId)?.address ?? "One mailbox"}
               </StatusPill>
             )}
             <StatusPill state={item.revokedAt ? "bad" : "ok"}>
-              {item.revokedAt ? "revoked" : "active"}
+              {item.revokedAt ? "Revoked" : "Active"}
             </StatusPill>
-            <span className="text-[11px] text-muted-foreground">
-              {item.lastUsedAt ? `used ${item.lastUsedAt.toLocaleDateString()}` : "never used"}
+            <span className="text-[12px] text-muted-foreground">
+              {item.lastUsedAt ? `Used ${item.lastUsedAt.toLocaleDateString()}` : "Never used"}
             </span>
 
             {!item.revokedAt && (
               <Button
-                size="sm"
                 variant="ghost"
-                className="h-7 text-[11.5px]"
+                size="sm"
+                pill
                 onClick={() =>
                   start(async () => {
                     await revokeApiKeyAction(item.id);
@@ -99,10 +108,9 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
                 Revoke
               </Button>
             )}
-            <button
-              type="button"
-              aria-label={`Delete ${item.name}`}
-              className="text-muted-foreground hover:text-destructive"
+            <IconButton
+              variant="danger"
+              label={`Delete ${item.name}`}
               onClick={() =>
                 start(async () => {
                   await deleteApiKeyAction(item.id);
@@ -110,63 +118,64 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
                 })
               }
             >
-              <Trash2 className="size-3.5" />
-            </button>
-          </div>
+              <Trash2 />
+            </IconButton>
+          </ListRow>
         ))}
-        {keys.length === 0 && (
-          <div className="px-3 py-3">
-            <EmptyNote>no keys yet</EmptyNote>
-          </div>
-        )}
-      </div>
+        {keys.length === 0 && <ListEmpty>No keys yet.</ListEmpty>}
+      </List>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="Billing service"
-          className="h-8 w-48 text-[12.5px]"
-        />
-        <Select value={mailboxId} onValueChange={(value) => value && setMailboxId(value)}>
-          <SelectTrigger size="sm" className="h-8 min-w-44 font-mono text-[12px]">
-            <SelectValue placeholder="any mailbox" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value={ANY_MAILBOX} className="font-mono text-[12px]">
-              any mailbox
-            </SelectItem>
-            {mailboxes.map((box) => (
-              <SelectItem key={box.id} value={box.id} className="font-mono text-[12px]">
-                {box.address}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Button
-          size="sm"
-          className="h-8 text-[12px]"
-          disabled={pending || !name.trim()}
-          onClick={() =>
-            start(async () => {
-              const result = await createApiKeyAction(
-                name.trim(),
-                mailboxId === ANY_MAILBOX ? undefined : mailboxId,
-              );
-              setFresh(result.token);
-              setName("");
-              router.refresh();
-            })
-          }
-        >
-          {pending && <Loader2 className="size-3.5 animate-spin" />}
-          Create key
-        </Button>
-      </div>
+      <Fieldset title="Create a key">
+        <div className="flex flex-wrap items-end gap-4">
+          <Field label="Name" htmlFor="key-name" className="w-52">
+            <Input
+              id="key-name"
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="Billing service"
+            />
+          </Field>
+          <Field label="Can send from" htmlFor="key-mailbox" className="w-56">
+            <Select value={mailboxId} onValueChange={(value) => value && setMailboxId(value)}>
+              <SelectTrigger id="key-mailbox" className="font-mono text-[12.5px]">
+                <SelectValue placeholder="Any mailbox" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={ANY_MAILBOX}>Any mailbox</SelectItem>
+                {mailboxes.map((box) => (
+                  <SelectItem key={box.id} value={box.id} className="font-mono">
+                    {box.address}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+          <Button
+            variant="solid"
+            pill
+            className="ml-auto"
+            loading={pending}
+            disabled={!name.trim()}
+            onClick={() =>
+              start(async () => {
+                const result = await createApiKeyAction(
+                  name.trim(),
+                  mailboxId === ANY_MAILBOX ? undefined : mailboxId,
+                );
+                setFresh(result.token);
+                setName("");
+                router.refresh();
+              })
+            }
+          >
+            Create key
+          </Button>
+        </div>
+      </Fieldset>
 
-      <details className="mt-3 rounded-xl border bg-background p-2.5">
-        <summary className="cursor-pointer text-[12px]">How to send with it</summary>
-        <pre className="mt-2 overflow-x-auto rounded-lg border bg-card p-2.5 font-mono text-[11px] leading-relaxed">
+      <details className="mt-4 rounded-xl border border-border bg-muted/40 p-3.5">
+        <summary className="cursor-pointer text-[13px] font-medium">How to send with it</summary>
+        <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-card p-3 font-mono text-[11.5px] leading-relaxed">
           {`curl -X POST ${appUrl}/api/v1/emails \\
   -H "Authorization: Bearer mk_live_..." \\
   -H "Content-Type: application/json" \\
@@ -177,10 +186,10 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
     "html": "<p>Sent through SES</p>"
   }'`}
         </pre>
-        <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+        <Note className="mt-2">
           Check one send with <code className="font-mono">GET /api/v1/emails/&lt;id&gt;</code>, list
           sending domains with <code className="font-mono">GET /api/v1/domains</code>.
-        </p>
+        </Note>
       </details>
     </Panel>
   );

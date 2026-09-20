@@ -33,6 +33,22 @@ export function Badge({ className, tone, size, ...props }: BadgeProps) {
   return <span data-slot="badge" className={cn(badge({ tone, size }), className)} {...props} />;
 }
 
+/** A state with a fixed vocabulary, so the same word always looks the same. */
+export function StatusPill({
+  state,
+  children,
+}: {
+  state: "ok" | "pending" | "bad";
+  children: React.ReactNode;
+}) {
+  const tone = { ok: "ok", pending: "warn", bad: "danger" } as const;
+  return (
+    <Badge size="sm" tone={tone[state]} className="shrink-0">
+      {children}
+    </Badge>
+  );
+}
+
 /** A count that sits at the end of a navigation row. */
 export function Count({
   value,

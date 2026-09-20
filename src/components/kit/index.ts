@@ -2,7 +2,7 @@
 // See DESIGN.md for the rules these components follow.
 
 export { Avatar, initialsFor } from "./avatar";
-export { Badge, badgeVariants, Count } from "./badge";
+export { Badge, badgeVariants, Count, StatusPill } from "./badge";
 export { Button, buttonVariants, IconButton } from "./button";
 export {
   Card,
@@ -14,6 +14,7 @@ export {
   Panel,
 } from "./card";
 export { Checkbox } from "./checkbox";
+export { ColorPicker, PALETTE } from "./color-picker";
 export {
   Dialog,
   DialogClose,
@@ -46,6 +47,7 @@ export {
 export { EmptyState, Skeleton } from "./empty";
 export { Field, Label } from "./field";
 export { Input, Textarea } from "./input";
+export { Fieldset, List, ListEmpty, ListRow, Note } from "./list";
 export { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "./popover";
 export { ScrollArea, ScrollBar } from "./scroll-area";
 export {

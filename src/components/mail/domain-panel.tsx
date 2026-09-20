@@ -1,6 +1,19 @@
 "use client";
 
-import { Button, Input } from "@/components/kit";
+import {
+  Button,
+  Field,
+  Fieldset,
+  Hint,
+  IconButton,
+  Input,
+  List,
+  ListEmpty,
+  ListRow,
+  Note,
+  Panel,
+  StatusPill,
+} from "@/components/kit";
 import type { Domain } from "@/db/schema";
 import { type DnsRecord, relativeName } from "@/lib/ses";
 import { cn } from "@/lib/utils";
@@ -23,7 +36,6 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
-import { EmptyNote, Panel, StatusPill } from "./settings-ui";
 
 export interface DomainRow extends Domain {
   records: DnsRecord[];
@@ -85,83 +97,90 @@ export function DomainPanel({ domains, account, syncError }: Props) {
       title="Domains"
       description="Sending identities in Amazon SES. Import what is already verified, or add a new one."
       action={
-        <Button
-          size="sm"
-          variant="outline"
-          className="h-8 shrink-0 text-[12px]"
-          onClick={importNow}
-          disabled={pending}
-        >
-          {pending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <DownloadCloud className="size-3.5" />
-          )}
+        <Button variant="outline" pill onClick={importNow} loading={pending}>
+          {!pending && <DownloadCloud />}
           Import from SES
         </Button>
       }
     >
       {account && (
-        <div className="mb-3 flex flex-wrap items-center gap-2 rounded-xl border bg-background px-2.5 py-1.5">
+        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-muted/60 px-3 py-2">
           <StatusPill state={account.productionAccess ? "ok" : "pending"}>
-            {account.productionAccess ? "production" : "sandbox"}
+            {account.productionAccess ? "Production access" : "Sandbox"}
           </StatusPill>
           <StatusPill state={account.enforcementStatus === "HEALTHY" ? "ok" : "bad"}>
-            {account.enforcementStatus.toLowerCase()}
+            {account.enforcementStatus === "HEALTHY" ? "Healthy" : account.enforcementStatus}
           </StatusPill>
-          <span className="font-mono text-[11px] text-muted-foreground">
-            {account.sentLast24Hours.toLocaleString()}/{account.max24Hour.toLocaleString()} per 24h
-            · {account.maxSendRate}/sec
+          <span className="text-[12px] text-muted-foreground">
+            <span className="font-mono">{account.sentLast24Hours.toLocaleString()}</span> of{" "}
+            <span className="font-mono">{account.max24Hour.toLocaleString()}</span> sent in 24
+            hours, up to <span className="font-mono">{account.maxSendRate}</span> a second
           </span>
         </div>
       )}
 
       {syncError && (
-        <p className="mb-3 flex items-center gap-2 rounded-xl border border-destructive/30 bg-destructive/10 px-2.5 py-1.5 text-[12px] text-destructive">
-          <AlertTriangle className="size-3.5 shrink-0" />
+        <p className="mb-4 flex items-center gap-2 rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-destructive">
+          <AlertTriangle className="size-4 shrink-0" />
           SES could not be reached: {syncError}
         </p>
       )}
 
-      <div className="divide-y rounded-xl border">
+      <List>
         {domains.map((row) => (
           <DomainRowItem key={row.id} row={row} />
         ))}
         {domains.length === 0 && (
-          <div className="px-3 py-3">
-            <EmptyNote>none yet — press import from ses</EmptyNote>
-          </div>
+          <ListEmpty>No domains yet. Import the ones already verified in SES.</ListEmpty>
         )}
-      </div>
+      </List>
 
-      <div className="mt-3 flex flex-wrap items-center gap-2">
-        <Input
-          value={name}
-          onChange={(event) => setName(event.target.value)}
-          placeholder="acme.com"
-          className="h-8 w-56 font-mono text-[12.5px]"
-        />
-        <Button
-          size="sm"
-          className="h-8 text-[12px]"
-          onClick={add}
-          disabled={pending || !name.trim()}
-        >
-          Add domain
-        </Button>
-        <span className="text-[11.5px] text-muted-foreground">
-          Creates the identity with Easy DKIM and a custom return path.
-        </span>
-      </div>
+      <Fieldset title="Add a domain">
+        <div className="flex flex-wrap items-end gap-4">
+          <Field
+            label="Domain"
+            htmlFor="domain-name"
+            hint="Creates the identity with Easy DKIM and a custom return path."
+            className="w-64"
+          >
+            <Input
+              id="domain-name"
+              mono
+              value={name}
+              onChange={(event) => setName(event.target.value)}
+              placeholder="acme.com"
+            />
+          </Field>
+          <Button
+            variant="solid"
+            pill
+            className="mb-6 ml-auto"
+            onClick={add}
+            loading={pending}
+            disabled={!name.trim()}
+          >
+            Add domain
+          </Button>
+        </div>
+      </Fieldset>
 
       {note && (
-        <p className={cn("mt-2 text-[12px]", note.tone === "ok" ? "text-ok" : "text-destructive")}>
+        <p
+          className={cn("mt-3 text-[12.5px]", note.tone === "ok" ? "text-ok" : "text-destructive")}
+        >
           {note.text}
         </p>
       )}
     </Panel>
   );
 }
+
+const LABELS: Record<string, string> = {
+  dkim: "DKIM",
+  "mail-from": "Return path",
+  spf: "SPF",
+  dmarc: "DMARC",
+};
 
 /** The individual things SES and DNS have to agree on before a domain works. */
 function checksFor(row: DomainRow) {
@@ -188,20 +207,20 @@ function DomainRowItem({ row }: { row: DomainRow }) {
 
   return (
     <div>
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2">
+      <ListRow className="flex-wrap">
         <button
           type="button"
           onClick={() => setOpen((value) => !value)}
-          className="text-muted-foreground hover:text-foreground"
+          className="shrink-0 rounded-md p-0.5 text-muted-foreground transition-colors hover:text-foreground"
           aria-label={open ? "Hide DNS records" : "Show DNS records"}
         >
-          <ChevronDown className={cn("size-3.5 transition", open && "rotate-180")} />
+          <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
         </button>
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-[13px]">{row.name}</p>
           <p
-            className="truncate text-[11px] text-muted-foreground"
+            className="truncate text-[12px] text-muted-foreground"
             title={
               row.lastCheckedAt ? `Last checked ${row.lastCheckedAt.toLocaleString()}` : undefined
             }
@@ -215,74 +234,71 @@ function DomainRowItem({ row }: { row: DomainRow }) {
             is not. Repeating five green chips per row says nothing. */}
         {verified && blocking.length === 0 ? (
           <StatusPill state="ok">
-            <Check className="size-2.5" />
-            ready
+            <Check />
+            Ready
           </StatusPill>
         ) : (
           <div className="flex flex-wrap items-center gap-1">
             {!verified && (
               <StatusPill state={row.status === "failed" ? "bad" : "pending"}>
-                {row.status}
+                {row.status.charAt(0).toUpperCase() + row.status.slice(1)}
               </StatusPill>
             )}
             {blocking.length > 0 && (
               <StatusPill state="pending">
-                {blocking.map((check) => check.key).join(" · ")} pending
+                {blocking.map((check) => LABELS[check.key] ?? check.key).join(" and ")} pending
               </StatusPill>
             )}
           </div>
         )}
 
-        <button
-          type="button"
-          title="Check status now"
-          className="text-muted-foreground hover:text-foreground"
-          onClick={() =>
-            start(async () => {
-              await refreshDomainAction(row.id);
-              router.refresh();
-            })
-          }
-        >
-          {pending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-        </button>
+        <Hint label="Check status now">
+          <IconButton
+            label="Check status now"
+            onClick={() =>
+              start(async () => {
+                await refreshDomainAction(row.id);
+                router.refresh();
+              })
+            }
+          >
+            {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          </IconButton>
+        </Hint>
 
-        <button
-          type="button"
-          title="Remove domain"
-          className="text-muted-foreground hover:text-destructive"
-          onClick={() => {
-            const alsoSes = window.confirm(
-              `Remove ${row.name} from this app?\n\nOK = also delete the identity in SES.\nCancel = remove it here only.`,
-            );
-            start(async () => {
-              await removeDomainAction(row.id, alsoSes);
-              router.refresh();
-            });
-          }}
-        >
-          <Trash2 className="size-3.5" />
-        </button>
-      </div>
+        <Hint label="Remove domain">
+          <IconButton
+            variant="danger"
+            label="Remove domain"
+            onClick={() => {
+              const alsoSes = window.confirm(
+                `Remove ${row.name} from this app?\n\nOK = also delete the identity in SES.\nCancel = remove it here only.`,
+              );
+              start(async () => {
+                await removeDomainAction(row.id, alsoSes);
+                router.refresh();
+              });
+            }}
+          >
+            <Trash2 />
+          </IconButton>
+        </Hint>
+      </ListRow>
 
       {open && (
-        <div className="border-t bg-background px-3 py-2.5">
-          <div className="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+        <div className="border-t border-border bg-muted/40 px-3.5 py-3">
+          <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
               {checks.map((check) => (
                 <li
                   key={check.key}
                   className={cn(
-                    "flex items-center gap-1.5 text-[11.5px]",
+                    "flex items-center gap-1.5 text-[12px]",
                     check.ok ? "text-ok" : "text-muted-foreground",
                   )}
                 >
                   {check.ok ? (
-                    <Check className="size-3" />
+                    <Check className="size-3.5" />
                   ) : (
                     <span
                       className={cn(
@@ -291,7 +307,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
                       )}
                     />
                   )}
-                  {check.key}
+                  {LABELS[check.key] ?? check.key}
                   {!check.required && !check.ok && (
                     <span className="text-muted-foreground/70">optional</span>
                   )}
@@ -303,7 +319,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
               <button
                 type="button"
                 title="Replace the three DKIM CNAMEs with one TXT record"
-                className="ml-auto whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                className="ml-auto whitespace-nowrap rounded-full bg-card px-2.5 py-1 text-[12px] text-muted-foreground shadow-raise transition-colors hover:bg-accent hover:text-foreground"
                 onClick={() =>
                   start(async () => {
                     await useOwnDkimKeyAction(row.id);
@@ -316,25 +332,23 @@ function DomainRowItem({ row }: { row: DomainRow }) {
             )}
           </div>
 
-          <p className="mb-2 text-[11.5px] text-muted-foreground">
-            Add these at your DNS host. Click any value to copy it.
-          </p>
+          <Note className="mb-2">Add these at your DNS host. Click any value to copy it.</Note>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-max text-left text-[11.5px]">
+            <table className="w-full min-w-max text-left text-[12px]">
               <thead>
-                <tr className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">
-                  <th className="w-12 py-1 pr-2 font-normal">type</th>
-                  <th className="py-1 pr-4 font-normal">name</th>
-                  <th className="py-1 pr-4 font-normal">value</th>
-                  <th className="w-10 py-1 pr-3 text-right font-normal">prio</th>
-                  <th className="w-36 py-1 font-normal">purpose</th>
+                <tr className="text-[11.5px] text-muted-foreground">
+                  <th className="w-12 py-1 pr-2 font-medium">Type</th>
+                  <th className="py-1 pr-4 font-medium">Name</th>
+                  <th className="py-1 pr-4 font-medium">Value</th>
+                  <th className="w-12 py-1 pr-3 text-right font-medium">Priority</th>
+                  <th className="w-36 py-1 font-medium">Purpose</th>
                 </tr>
               </thead>
               <tbody>
                 {row.records.map((record) => (
                   <tr
                     key={`${record.kind}-${record.name}-${record.value}`}
-                    className="border-t align-top"
+                    className="border-t border-border align-top"
                   >
                     <td className="w-12 py-1.5 pr-2 font-mono text-muted-foreground">
                       {record.kind}
@@ -351,7 +365,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
                         <CopyCell value={record.value} />
                       )}
                     </td>
-                    <td className="w-10 py-1.5 pr-3 text-right font-mono text-muted-foreground">
+                    <td className="w-12 py-1.5 pr-3 text-right font-mono text-muted-foreground">
                       {record.priority ?? "—"}
                     </td>
                     <td className="w-36 whitespace-nowrap py-1.5 text-muted-foreground">
