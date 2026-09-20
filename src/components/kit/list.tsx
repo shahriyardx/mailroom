@@ -4,13 +4,7 @@ import { cn } from "@/lib/utils";
 
 /** A list of records: hairlines between them, nothing around them. */
 export function List({ className, ...props }: React.ComponentProps<"div">) {
-  return (
-    <div
-      data-slot="list"
-      className={cn("divide-y divide-border border-y border-border", className)}
-      {...props}
-    />
-  );
+  return <div data-slot="list" className={cn("divide-y divide-border", className)} {...props} />;
 }
 
 export function ListRow({ className, ...props }: React.ComponentProps<"div">) {
@@ -28,7 +22,7 @@ export function ListEmpty({ className, ...props }: React.ComponentProps<"p">) {
   return (
     <p
       data-slot="list-empty"
-      className={cn("py-8 text-center text-[12.5px] text-muted-foreground", className)}
+      className={cn("py-5 text-[12.5px] text-muted-foreground", className)}
       {...props}
     />
   );

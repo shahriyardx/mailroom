@@ -185,15 +185,9 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
                 aria-hidden
               />
               <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{box.address}</span>
-              <span className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
-                {box.received.toLocaleString()} in
-              </span>
-              <span className="shrink-0 text-[12.5px] text-muted-foreground tabular-nums">
-                {box.sent.toLocaleString()} out
-              </span>
-              <span className="w-20 shrink-0 text-right text-[12.5px] text-muted-foreground tabular-nums">
-                {formatBytes(box.bytes)}
-              </span>
+              <Column>{box.received.toLocaleString()} in</Column>
+              <Column>{box.sent.toLocaleString()} out</Column>
+              <Column className="w-20">{formatBytes(box.bytes)}</Column>
             </ListRow>
           ))}
           {mailboxes.length === 0 && <ListEmpty>No mailboxes yet.</ListEmpty>}
@@ -226,12 +220,10 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
                   Revoked
                 </Badge>
               )}
-              <span className="shrink-0 text-[12.5px] text-muted-foreground">
+              <Column className="w-28">
                 {key.lastUsedAt ? `Used ${key.lastUsedAt.toLocaleDateString()}` : "Never used"}
-              </span>
-              <span className="w-16 shrink-0 text-right text-[12.5px] tabular-nums">
-                {key.sent.toLocaleString()}
-              </span>
+              </Column>
+              <Column className="w-16 text-foreground">{key.sent.toLocaleString()} sent</Column>
             </ListRow>
           ))}
           {keys.length === 0 && <ListEmpty>No API keys yet.</ListEmpty>}
@@ -256,6 +248,20 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
         </Stats>
       </Panel>
     </>
+  );
+}
+
+/** A right-aligned column of a fixed width, so numbers line up down the list. */
+function Column({ className, children }: { className?: string; children: React.ReactNode }) {
+  return (
+    <span
+      className={cn(
+        "w-16 shrink-0 text-right text-[12.5px] text-muted-foreground tabular-nums",
+        className,
+      )}
+    >
+      {children}
+    </span>
   );
 }
 

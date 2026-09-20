@@ -87,15 +87,21 @@ export function Panel({
     <section data-slot="panel" className={cn("py-7 first:pt-6", className)} {...props}>
       <div className="mb-4 flex items-start gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-[14.5px] font-semibold tracking-[-0.01em]">{title}</h2>
+          <h2 className="flex items-center gap-2 text-[14.5px] font-semibold tracking-[-0.01em]">
+            {title}
+            {meta && (
+              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums">
+                {meta}
+              </span>
+            )}
+          </h2>
           {description && (
             <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
               {description}
             </p>
           )}
         </div>
-        {meta && <span className="shrink-0 text-[12px] text-muted-foreground">{meta}</span>}
-        {action && <div className="shrink-0">{action}</div>}
+        {action && <div className="-mt-1 shrink-0">{action}</div>}
       </div>
       {children}
     </section>
