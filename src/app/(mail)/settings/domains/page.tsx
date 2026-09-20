@@ -1,7 +1,9 @@
 import { DomainPanel, type DomainRow } from "@/components/mail/domain-panel";
+import { EventsPanel } from "@/components/mail/events-panel";
 import { getAccountStatus } from "@/lib/ses";
 import { requireUser } from "@/lib/session";
 import { ensureDomainsSynced, recordsForDomain } from "@/server/domains";
+import { eventsStatus } from "@/server/events";
 
 export const dynamic = "force-dynamic";
 
@@ -10,7 +12,12 @@ export default async function DomainsSettingsPage() {
 
   // Domains auto-import on first visit, and refresh when the cached status is stale.
   const sync = await ensureDomainsSynced(user.id);
-  const account = await getAccountStatus();
+  // Neither call is required for the list, so a failure in one must not take
+  // the page down with it.
+  const [account, events] = await Promise.all([
+    getAccountStatus().catch(() => null),
+    eventsStatus(),
+  ]);
 
   const domains: DomainRow[] = sync.rows.map((row) => ({
     ...row,
@@ -18,6 +25,13 @@ export default async function DomainsSettingsPage() {
   }));
 
   return (
-    <DomainPanel domains={domains} account={account} syncError={sync.ok ? undefined : sync.error} />
+    <>
+      <DomainPanel
+        domains={domains}
+        account={account}
+        syncError={sync.ok ? undefined : sync.error}
+      />
+      <EventsPanel status={events} />
+    </>
   );
 }
