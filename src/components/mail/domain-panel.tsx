@@ -10,6 +10,7 @@ import {
   importDomainsAction,
   refreshDomainAction,
   removeDomainAction,
+  useOwnDkimKeyAction,
 } from "@/server/actions";
 import {
   AlertTriangle,
@@ -206,6 +207,22 @@ function DomainRowItem({ row }: { row: DomainRow }) {
           <StatusPill state={row.spfVerified ? "ok" : "pending"}>spf</StatusPill>
           <StatusPill state={row.dmarcVerified ? "ok" : "pending"}>dmarc</StatusPill>
         </div>
+
+        {row.dkimOrigin !== "EXTERNAL" && row.dkimTokens.length > 1 && (
+          <button
+            type="button"
+            title="Replace the three DKIM CNAMEs with one TXT record"
+            className="whitespace-nowrap rounded-[3px] border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            onClick={() =>
+              start(async () => {
+                await useOwnDkimKeyAction(row.id);
+                router.refresh();
+              })
+            }
+          >
+            Use one TXT record
+          </button>
+        )}
 
         <button
           type="button"

@@ -28,6 +28,10 @@ export const env = {
     get configurationSet() {
       return process.env.SES_CONFIGURATION_SET ?? "";
     },
+    /** DKIM selector for keys this app generates: <selector>._domainkey.acme.com */
+    get dkimSelector() {
+      return process.env.SES_DKIM_SELECTOR ?? "mail";
+    },
     /** Prefix for the custom MAIL FROM subdomain, e.g. "mail" -> mail.acme.com. */
     get mailFromPrefix() {
       return process.env.SES_MAIL_FROM_PREFIX ?? "mail";

@@ -133,6 +133,11 @@ export const domain = pgTable(
     dkimOrigin: text("dkim_origin"),
     /** Three CNAME tokens for Easy DKIM, or the single selector for an external key. */
     dkimTokens: text("dkim_tokens").array().notNull().default(sql`'{}'::text[]`),
+    /**
+     * Base64 SPKI public key, set only when this app generated the DKIM key.
+     * The private half goes to SES and is never stored.
+     */
+    dkimPublicKey: text("dkim_public_key"),
 
     /** Custom MAIL FROM (return-path) subdomain, e.g. mail.acme.com. */
     mailFromDomain: text("mail_from_domain"),

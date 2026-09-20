@@ -5,6 +5,7 @@ import {
   GetEmailIdentityCommand,
   ListEmailIdentitiesCommand,
   PutEmailIdentityDkimAttributesCommand,
+  PutEmailIdentityDkimSigningAttributesCommand,
   PutEmailIdentityMailFromAttributesCommand,
   SESv2Client,
   SendEmailCommand,
@@ -112,6 +113,31 @@ export async function enableDkim(name: string) {
   );
 }
 
+/**
+ * Switches an identity to a key we generated (BYODKIM).
+ * SES keeps the private key; we never need it again, so the caller drops it.
+ */
+export async function putExternalDkim(options: {
+  domain: string;
+  selector: string;
+  privateKey: string;
+}) {
+  const result = await ses().send(
+    new PutEmailIdentityDkimSigningAttributesCommand({
+      EmailIdentity: options.domain,
+      SigningAttributesOrigin: "EXTERNAL",
+      SigningAttributes: {
+        DomainSigningSelector: options.selector,
+        DomainSigningPrivateKey: options.privateKey,
+      },
+    }),
+  );
+  return {
+    dkimStatus: result.DkimStatus ?? "PENDING",
+    dkimTokens: result.DkimTokens ?? [options.selector],
+  };
+}
+
 /** Custom return-path domain, so bounces come back to a subdomain you control. */
 export async function setMailFromDomain(name: string, mailFromDomain: string) {
   await ses().send(
@@ -183,10 +209,10 @@ export function dnsRecordsFor(options: {
   region: string;
   dkimTokens: string[];
   dkimOrigin?: string | null;
+  /** Base64 SPKI public key, present when this app generated the DKIM key. */
+  dkimPublicKey?: string | null;
   mailFromDomain: string | null;
 }): DnsRecord[] {
-  // With an external key SES only reports the selector. The matching TXT record
-  // holds a public key we never see, so it is shown for reference, not to copy.
   const external = options.dkimOrigin === "EXTERNAL";
 
   const records: DnsRecord[] = options.dkimTokens.map((token) =>
@@ -194,10 +220,15 @@ export function dnsRecordsFor(options: {
       ? {
           kind: "TXT" as const,
           name: `${token}._domainkey.${options.domain}`,
-          value: "already published by whoever set this domain up",
-          purpose: "DKIM signing (external key)",
+          // Only publishable when we hold the public half. A key set up
+          // elsewhere leaves us with the selector alone, so that row is a
+          // reference to a record that already exists.
+          value: options.dkimPublicKey
+            ? `p=${options.dkimPublicKey}`
+            : "already published by whoever set this domain up",
+          purpose: "DKIM signing",
           required: true,
-          informational: true,
+          informational: !options.dkimPublicKey,
         }
       : {
           kind: "CNAME" as const,

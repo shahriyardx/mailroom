@@ -1,0 +1,1 @@
+ALTER TABLE "domain" ADD COLUMN "dkim_public_key" text;

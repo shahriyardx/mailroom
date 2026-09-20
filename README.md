@@ -108,12 +108,24 @@ Add a mailbox per address you want to send from or receive at.
 
 ## 4. Sending domains
 
-A domain is usable once SES reports it verified **and** enabled for sending. For a
-new domain, the app creates the identity and shows you four kinds of record:
+A domain is usable once SES reports it verified **and** enabled for sending.
+
+New domains are set up with a DKIM key this app generates: the private half goes
+to SES and is immediately discarded, only the public half is kept, and you
+publish a single TXT record. Set the selector with `SES_DKIM_SELECTOR`
+(default `mail`).
+
+A domain imported from SES keeps whatever DKIM it already has. One set up with
+Easy DKIM shows its three CNAMEs and offers a **Use one TXT record** button to
+move it onto a generated key. One keyed elsewhere — as useSend does — shows its
+selector as a reference row, since that record is already published and its
+public key is not something SES will tell us.
+
+The records a domain needs:
 
 | Record | Purpose |
 | --- | --- |
-| 3 × CNAME `<token>._domainkey.<domain>` | Easy DKIM signing |
+| TXT on `<selector>._domainkey.<domain>` | DKIM public key |
 | MX on `mail.<domain>` | bounce return path |
 | TXT on `mail.<domain>` | SPF for the return path |
 | TXT on `<domain>` | SPF covering SES sending **and** Cloudflare receiving |

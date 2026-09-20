@@ -21,7 +21,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
-import { addDomain, importFromSes, refreshDomain, removeDomain } from "./domains";
+import { addDomain, importFromSes, refreshDomain, removeDomain, useOwnDkimKey } from "./domains";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
 
@@ -422,6 +422,21 @@ export async function refreshDomainAction(domainId: string) {
     return {
       ok: false as const,
       error: error instanceof Error ? error.message : "Could not refresh the domain",
+    };
+  }
+}
+
+/** Replaces Easy DKIM with a key we generate, so one TXT record replaces three CNAMEs. */
+export async function useOwnDkimKeyAction(domainId: string) {
+  const user = await requireUser();
+  try {
+    const result = await useOwnDkimKey(user.id, domainId);
+    revalidatePath("/settings/domains");
+    return { ok: true as const, selector: result.selector };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "SES refused the new key",
     };
   }
 }

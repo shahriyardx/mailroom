@@ -2,6 +2,7 @@ import "server-only";
 import { resolveTxt } from "node:dns/promises";
 import { db } from "@/db";
 import { domain, type DomainStatus, mailbox } from "@/db/schema";
+import { generateDkimKeyPair, normalizeSelector } from "@/lib/dkim";
 import { env } from "@/lib/env";
 import {
   createDomainIdentity,
@@ -9,6 +10,7 @@ import {
   dnsRecordsFor,
   getIdentity,
   listIdentities,
+  putExternalDkim,
   setMailFromDomain,
   toDomainStatus,
 } from "@/lib/ses";
@@ -30,6 +32,7 @@ export function recordsForDomain(row: {
   region: string;
   dkimTokens: string[];
   dkimOrigin?: string | null;
+  dkimPublicKey?: string | null;
   mailFromDomain: string | null;
 }) {
   return dnsRecordsFor({
@@ -37,8 +40,43 @@ export function recordsForDomain(row: {
     region: row.region,
     dkimTokens: row.dkimTokens,
     dkimOrigin: row.dkimOrigin,
+    dkimPublicKey: row.dkimPublicKey,
     mailFromDomain: row.mailFromDomain,
   });
+}
+
+/**
+ * Moves a domain onto a DKIM key we generate, which is what a single TXT
+ * record requires. The private key is uploaded to SES and then dropped; only
+ * the public half is stored, since that is all the DNS record needs.
+ */
+export async function useOwnDkimKey(userId: string, domainId: string) {
+  const row = await db.query.domain.findFirst({
+    where: and(eq(domain.id, domainId), eq(domain.userId, userId)),
+  });
+  if (!row) throw new Error("Unknown domain");
+
+  const selector = normalizeSelector(env.aws.dkimSelector);
+  const keys = generateDkimKeyPair();
+
+  const result = await putExternalDkim({
+    domain: row.name,
+    selector,
+    privateKey: keys.privateKey,
+  });
+
+  await db
+    .update(domain)
+    .set({
+      dkimOrigin: "EXTERNAL",
+      dkimStatus: toDomainStatus(result.dkimStatus) as DomainStatus,
+      dkimTokens: result.dkimTokens.length ? result.dkimTokens : [selector],
+      dkimPublicKey: keys.publicKey,
+      lastCheckedAt: new Date(),
+    })
+    .where(eq(domain.id, row.id));
+
+  return { selector };
 }
 
 /**
@@ -137,9 +175,25 @@ export async function addDomain(userId: string, rawName: string) {
 
   // Reuse the identity if SES already knows it, rather than failing.
   const known = await getIdentity(name);
-  const created = known
-    ? { dkimTokens: known.dkimTokens, dkimStatus: known.dkimStatus }
-    : await createDomainIdentity(name);
+  if (!known) await createDomainIdentity(name);
+
+  // New domains get a key we generate, so verification is one TXT record
+  // rather than three CNAMEs. An identity that already has an external key
+  // keeps it, since its record is already published.
+  const selector = normalizeSelector(env.aws.dkimSelector);
+  let dkimTokens = known?.dkimTokens ?? [];
+  let dkimStatus = known?.dkimStatus ?? "PENDING";
+  let dkimOrigin = known?.dkimOrigin ?? null;
+  let dkimPublicKey: string | null = null;
+
+  if (dkimOrigin !== "EXTERNAL") {
+    const keys = generateDkimKeyPair();
+    const applied = await putExternalDkim({ domain: name, selector, privateKey: keys.privateKey });
+    dkimTokens = applied.dkimTokens.length ? applied.dkimTokens : [selector];
+    dkimStatus = applied.dkimStatus;
+    dkimOrigin = "EXTERNAL";
+    dkimPublicKey = keys.publicKey;
+  }
 
   const mailFrom = `${env.aws.mailFromPrefix}.${name}`;
   let mailFromSet = true;
@@ -158,9 +212,10 @@ export async function addDomain(userId: string, rawName: string) {
     region: env.aws.region,
     status: toDomainStatus(known?.verificationStatus) as DomainStatus,
     sendingEnabled: known?.sendingEnabled ?? false,
-    dkimStatus: toDomainStatus(created.dkimStatus) as DomainStatus,
-    dkimOrigin: known?.dkimOrigin ?? "AWS_SES",
-    dkimTokens: created.dkimTokens,
+    dkimStatus: toDomainStatus(dkimStatus) as DomainStatus,
+    dkimOrigin,
+    dkimTokens,
+    dkimPublicKey,
     mailFromDomain: mailFromSet ? mailFrom : null,
     mailFromStatus: mailFromSet ? "pending" : null,
     importedAt: known ? new Date() : null,
