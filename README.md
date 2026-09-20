@@ -127,10 +127,9 @@ v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all
 
 ### Getting these records published
 
-Each domain has an **Open in Cloudflare** link that deep-links to that zone's DNS
-page in the Cloudflare dashboard. Click any value in the table to copy it, then
-paste it across. Nothing is written to your DNS provider by this app, and no
-provider credentials are stored.
+Add them at your DNS host by hand. Click any value in the table to copy it; the
+name column shows the short form your host expects and copies the full hostname.
+This app never writes to your DNS provider and stores no provider credentials.
 
 ## 5. Delivery events (bounces and complaints)
 

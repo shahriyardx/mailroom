@@ -17,7 +17,6 @@ import {
   ChevronDown,
   Copy,
   DownloadCloud,
-  ExternalLink,
   Loader2,
   RefreshCw,
   Trash2,
@@ -208,17 +207,6 @@ function DomainRowItem({ row }: { row: DomainRow }) {
           <StatusPill state={row.dmarcVerified ? "ok" : "pending"}>dmarc</StatusPill>
         </div>
 
-        <a
-          href={`https://dash.cloudflare.com/?to=/:account/${row.name}/dns`}
-          target="_blank"
-          rel="noopener noreferrer"
-          title="Open this zone's DNS page in Cloudflare"
-          className="flex items-center gap-1 rounded-[3px] border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
-        >
-          <ExternalLink className="size-3" />
-          Open in Cloudflare
-        </a>
-
         <button
           type="button"
           title="Check status now"
@@ -258,8 +246,8 @@ function DomainRowItem({ row }: { row: DomainRow }) {
       {open && (
         <div className="border-t bg-background px-3 py-2.5">
           <p className="mb-2 text-[11.5px] text-muted-foreground">
-            Open in Cloudflare jumps to that zone's DNS page. Click any value below to copy it. SES
-            usually verifies minutes after the CNAMEs go live.
+            Add these at your DNS host. Click any value to copy it. SES usually verifies minutes
+            after the CNAMEs go live.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full text-left text-[11.5px]">
