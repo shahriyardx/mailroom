@@ -36,6 +36,7 @@ import {
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 const TOKEN_URL = "https://dash.cloudflare.com/profile/api-tokens";
 
@@ -47,15 +48,13 @@ interface Props {
 export function InboundPanel({ status, connection }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
-
+  // One shared note rendered in one panel meant a zone's failure appeared
+  // under the worker's buttons. A toast lands wherever you are looking.
   function act(run: () => Promise<{ ok: boolean; error?: string }>, success: string) {
-    setNote(null);
     start(async () => {
       const result = await run();
-      setNote(
-        result.ok ? { tone: "ok", text: success } : { tone: "bad", text: result.error ?? "" },
-      );
+      if (result.ok) toast.success(success);
+      else toast.error(result.error || "Cloudflare refused that.");
       router.refresh();
     });
   }
@@ -125,17 +124,6 @@ export function InboundPanel({ status, connection }: Props) {
             Uploads the bundled script with its R2 binding and secret. No wrangler, no deploy step.
           </Note>
         </div>
-
-        {note && (
-          <p
-            className={cn(
-              "mt-3 text-[12.5px]",
-              note.tone === "ok" ? "text-ok" : "text-destructive",
-            )}
-          >
-            {note.text}
-          </p>
-        )}
       </Panel>
 
       <Panel
