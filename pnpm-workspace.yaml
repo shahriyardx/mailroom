@@ -1,0 +1,11 @@
+ignoreWorkspaceRootCheck: true
+
+packages:
+  - "."
+  - "worker"
+
+allowBuilds:
+  "@biomejs/biome": true
+  esbuild: true
+  workerd: true
+  sharp: true

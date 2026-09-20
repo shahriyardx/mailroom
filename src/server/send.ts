@@ -1,0 +1,229 @@
+import "server-only";
+import { db } from "@/db";
+import {
+  domain,
+  type Folder,
+  attachment,
+  contact,
+  mailbox,
+  message,
+  suppression,
+  thread,
+} from "@/db/schema";
+import { env } from "@/lib/env";
+import {
+  type EmailAddress,
+  generateMessageId,
+  htmlToText,
+  makeSnippet,
+  textToHtml,
+} from "@/lib/mail";
+import { type MimeAttachment, buildMime } from "@/lib/mime";
+import { getObject } from "@/lib/r2";
+import { sendRawEmail } from "@/lib/ses";
+import { newId } from "@/lib/utils";
+import { and, eq, inArray, sql } from "drizzle-orm";
+import { recomputeThread } from "./aggregate";
+
+export interface DeliverInput {
+  userId: string;
+  mailboxId: string;
+  to: EmailAddress[];
+  cc?: EmailAddress[];
+  bcc?: EmailAddress[];
+  replyTo?: string;
+  subject: string;
+  html?: string | null;
+  text?: string | null;
+  headers?: Record<string, string>;
+  /** Attachment rows already staged in R2. */
+  attachmentIds?: string[];
+  /** Attachments handed straight to us, as the public API does. */
+  inlineAttachments?: MimeAttachment[];
+  threadId?: string;
+  inReplyTo?: string | null;
+  references?: string[];
+  /** Existing draft row to convert into the sent message. */
+  draftId?: string;
+  apiKeyId?: string;
+}
+
+export class SendError extends Error {
+  constructor(
+    message: string,
+    readonly status = 400,
+  ) {
+    super(message);
+    this.name = "SendError";
+  }
+}
+
+/**
+ * The single outbound path: builds MIME, hands it to SES, then records the
+ * message in the Sent folder. Used by the composer and the public API alike.
+ */
+export async function deliverMessage(input: DeliverInput) {
+  const box = await db.query.mailbox.findFirst({
+    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.userId, input.userId)),
+  });
+  if (!box) throw new SendError("Unknown mailbox", 404);
+
+  if (input.to.length === 0) throw new SendError("Add at least one recipient");
+
+  const domainRow = await db.query.domain.findFirst({
+    where: and(eq(domain.userId, input.userId), eq(domain.name, box.domain)),
+  });
+  if (domainRow && !(domainRow.sendingEnabled && domainRow.status === "verified")) {
+    throw new SendError(`${box.domain} is not verified for sending in SES yet`, 409);
+  }
+
+  const recipients = [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])];
+  const blocked = await db
+    .select({ address: suppression.address })
+    .from(suppression)
+    .where(
+      and(
+        eq(suppression.userId, input.userId),
+        inArray(
+          suppression.address,
+          recipients.map((entry) => entry.address),
+        ),
+      ),
+    );
+  if (blocked.length > 0) {
+    throw new SendError(
+      `Blocked after an earlier bounce or complaint: ${blocked.map((row) => row.address).join(", ")}`,
+      409,
+    );
+  }
+
+  const staged = input.attachmentIds?.length
+    ? await db.select().from(attachment).where(inArray(attachment.id, input.attachmentIds))
+    : [];
+
+  const stagedFiles: MimeAttachment[] = await Promise.all(
+    staged.map(async (file) => {
+      const object = await getObject(file.r2Key);
+      const bytes = await object.Body!.transformToByteArray();
+      return {
+        filename: file.filename,
+        content: Buffer.from(bytes),
+        contentType: file.contentType,
+      };
+    }),
+  );
+
+  const html = input.html?.trim() ? input.html : input.text ? textToHtml(input.text) : "";
+  const text = input.text?.trim() ? input.text : html ? htmlToText(html) : "";
+
+  const rfcMessageId = generateMessageId(box.domain);
+  const from: EmailAddress = { name: box.displayName, address: box.address };
+
+  const raw = await buildMime({
+    from,
+    to: input.to,
+    cc: input.cc,
+    bcc: input.bcc,
+    replyTo: input.replyTo,
+    subject: input.subject,
+    html: html || null,
+    text: text || null,
+    messageId: rfcMessageId,
+    inReplyTo: input.inReplyTo,
+    references: input.references,
+    headers: input.headers,
+    attachments: [...stagedFiles, ...(input.inlineAttachments ?? [])],
+  });
+
+  let sesMessageId = "";
+  try {
+    const result = await sendRawEmail({
+      raw,
+      from: box.address,
+      to: recipients.map((entry) => entry.address),
+      configurationSet: env.aws.configurationSet,
+    });
+    sesMessageId = result.messageId;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "SES rejected the message";
+    throw new SendError(detail, 502);
+  }
+
+  let threadId = input.threadId;
+  if (threadId) {
+    const owned = await db.query.thread.findFirst({
+      where: and(eq(thread.id, threadId), eq(thread.mailboxId, box.id)),
+    });
+    if (!owned) threadId = undefined;
+  }
+  if (!threadId) {
+    threadId = newId("thr");
+    await db.insert(thread).values({ id: threadId, mailboxId: box.id, subject: input.subject });
+  }
+
+  const messageId = input.draftId ?? newId("msg");
+  const values = {
+    threadId,
+    mailboxId: box.id,
+    rfcMessageId,
+    inReplyTo: input.inReplyTo ?? null,
+    references: input.references ?? [],
+    fromName: box.displayName,
+    fromAddress: box.address,
+    to: input.to,
+    cc: input.cc ?? [],
+    bcc: input.bcc ?? [],
+    replyTo: input.replyTo ?? null,
+    subject: input.subject,
+    snippet: makeSnippet(text, html),
+    textBody: text || null,
+    htmlBody: html || null,
+    folder: "sent" as Folder,
+    isRead: true,
+    isDraft: false,
+    isOutbound: true,
+    sesMessageId: sesMessageId || null,
+    deliveryStatus: "sent" as const,
+    apiKeyId: input.apiKeyId ?? null,
+    sizeBytes: raw.byteLength,
+    sentAt: new Date(),
+    receivedAt: new Date(),
+  };
+
+  if (input.draftId) {
+    await db.update(message).set(values).where(eq(message.id, input.draftId));
+  } else {
+    await db.insert(message).values({ id: messageId, ...values });
+  }
+
+  if (staged.length > 0) {
+    await db
+      .update(attachment)
+      .set({ messageId })
+      .where(
+        inArray(
+          attachment.id,
+          staged.map((file) => file.id),
+        ),
+      );
+  }
+
+  for (const entry of [...input.to, ...(input.cc ?? [])]) {
+    await db
+      .insert(contact)
+      .values({
+        id: newId("con"),
+        userId: input.userId,
+        address: entry.address,
+        name: entry.name,
+        messageCount: 1,
+      })
+      .onConflictDoUpdate({
+        target: [contact.userId, contact.address],
+        set: { messageCount: sql`${contact.messageCount} + 1`, lastSeenAt: new Date() },
+      });
+  }
+
+  await recomputeThread(threadId);
+  return { threadId, messageId, sesMessageId, rfcMessageId };
+}

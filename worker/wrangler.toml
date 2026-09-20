@@ -1,0 +1,19 @@
+name = "mail-inbound"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+compatibility_flags = ["nodejs_compat"]
+
+# Attachments and raw messages land here.
+[[r2_buckets]]
+binding = "ATTACHMENTS"
+bucket_name = "mail-attachments"
+
+[vars]
+# Where the Next.js app listens for inbound mail.
+APP_INBOUND_URL = "https://mail.example.com/api/inbound"
+# Keep raw .eml copies in R2 for debugging and re-processing.
+STORE_RAW = "true"
+# Max single attachment size to store, in bytes.
+MAX_ATTACHMENT_BYTES = "26214400"
+
+# Secret, set with: wrangler secret put INBOUND_WEBHOOK_SECRET --config worker/wrangler.toml
