@@ -2,7 +2,6 @@ import "server-only";
 import { resolveTxt } from "node:dns/promises";
 import { db } from "@/db";
 import { domain, type DomainStatus, mailbox } from "@/db/schema";
-import { createRecord, findZone, listRecords, updateRecord } from "@/lib/cloudflare";
 import { env } from "@/lib/env";
 import {
   createDomainIdentity,
@@ -13,10 +12,8 @@ import {
   setMailFromDomain,
   toDomainStatus,
 } from "@/lib/ses";
-import { mergeSpf, spfIncludesOf, unquote } from "@/lib/spf";
 import { newId } from "@/lib/utils";
 import { and, asc, eq, sql } from "drizzle-orm";
-import { cloudflareToken } from "./integrations";
 
 /** How long an SES status is trusted before the settings page refreshes it. */
 const STALE_AFTER_MS = 10 * 60 * 1000;
@@ -250,162 +247,4 @@ async function linkOrphanMailboxes(userId: string) {
 /** A domain is usable for sending only when SES says so. */
 export function isSendable(row: { status: string; sendingEnabled: boolean }) {
   return row.sendingEnabled && row.status === "verified";
-}
-
-/* -------------------------------------------------------------------------- */
-/* One-click DNS publishing through Cloudflare                                */
-/* -------------------------------------------------------------------------- */
-
-export type PublishStatus = "created" | "updated" | "unchanged" | "skipped" | "failed";
-
-export interface PublishResult {
-  kind: string;
-  name: string;
-  status: PublishStatus;
-  detail?: string;
-}
-
-/**
- * Publishes every DNS record a domain needs into Cloudflare.
- * Existing records are updated in place; a DMARC policy already in place is
- * left untouched, since overwriting someone's policy is not ours to do.
- */
-export async function publishToCloudflare(userId: string, domainId: string) {
-  const row = await db.query.domain.findFirst({
-    where: and(eq(domain.id, domainId), eq(domain.userId, userId)),
-  });
-  if (!row) throw new Error("Unknown domain");
-
-  const token = await cloudflareToken(userId);
-  if (!token) throw new Error("Connect a Cloudflare token in Settings first");
-
-  const zone = await findZone(token, row.name);
-  if (!zone) {
-    throw new Error(`${row.name} is not a zone in this Cloudflare account`);
-  }
-
-  const records = recordsForDomain(row);
-  const results: PublishResult[] = [];
-
-  for (const record of records) {
-    const label = `${record.kind} ${record.name}`;
-    try {
-      if (record.kind === "CNAME") {
-        const existing = await listRecords(token, zone.id, "CNAME", record.name);
-        const match = existing[0];
-        if (!match) {
-          await createRecord(token, zone.id, {
-            type: "CNAME",
-            name: record.name,
-            content: record.value,
-          });
-          results.push({ kind: record.kind, name: record.name, status: "created" });
-        } else if (match.content === record.value) {
-          results.push({ kind: record.kind, name: record.name, status: "unchanged" });
-        } else {
-          await updateRecord(token, zone.id, match.id, {
-            type: "CNAME",
-            name: record.name,
-            content: record.value,
-          });
-          results.push({ kind: record.kind, name: record.name, status: "updated" });
-        }
-        continue;
-      }
-
-      if (record.kind === "MX") {
-        const [priority, ...rest] = record.value.split(/\s+/);
-        const content = rest.join(" ");
-        const existing = await listRecords(token, zone.id, "MX", record.name);
-        const match = existing.find((item) => item.content === content) ?? existing[0];
-
-        if (!match) {
-          await createRecord(token, zone.id, {
-            type: "MX",
-            name: record.name,
-            content,
-            priority: Number(priority),
-          });
-          results.push({ kind: record.kind, name: record.name, status: "created" });
-        } else if (match.content === content && match.priority === Number(priority)) {
-          results.push({ kind: record.kind, name: record.name, status: "unchanged" });
-        } else {
-          await updateRecord(token, zone.id, match.id, {
-            type: "MX",
-            name: record.name,
-            content,
-            priority: Number(priority),
-          });
-          results.push({ kind: record.kind, name: record.name, status: "updated" });
-        }
-        continue;
-      }
-
-      // TXT: DMARC and SPF need different care.
-      const wanted = unquote(record.value);
-      const existing = await listRecords(token, zone.id, "TXT", record.name);
-
-      if (record.name.startsWith("_dmarc.")) {
-        const current = existing.find((item) =>
-          unquote(item.content).toLowerCase().startsWith("v=dmarc1"),
-        );
-        if (current) {
-          results.push({
-            kind: record.kind,
-            name: record.name,
-            status: "skipped",
-            detail: "a DMARC policy is already published",
-          });
-        } else {
-          await createRecord(token, zone.id, { type: "TXT", name: record.name, content: wanted });
-          results.push({ kind: record.kind, name: record.name, status: "created" });
-        }
-        continue;
-      }
-
-      const currentSpf = existing.find((item) =>
-        unquote(item.content).toLowerCase().startsWith("v=spf1"),
-      );
-
-      if (!currentSpf) {
-        await createRecord(token, zone.id, { type: "TXT", name: record.name, content: wanted });
-        results.push({ kind: record.kind, name: record.name, status: "created" });
-        continue;
-      }
-
-      const merged = mergeSpf(currentSpf.content, spfIncludesOf(wanted));
-      if (!merged) {
-        results.push({
-          kind: record.kind,
-          name: record.name,
-          status: "failed",
-          detail: "existing SPF record could not be parsed",
-        });
-      } else if (merged === unquote(currentSpf.content).trim()) {
-        results.push({ kind: record.kind, name: record.name, status: "unchanged" });
-      } else {
-        await updateRecord(token, zone.id, currentSpf.id, {
-          type: "TXT",
-          name: record.name,
-          content: merged,
-        });
-        results.push({
-          kind: record.kind,
-          name: record.name,
-          status: "updated",
-          detail: "merged into the existing SPF record",
-        });
-      }
-    } catch (error) {
-      results.push({
-        kind: record.kind,
-        name: record.name,
-        status: "failed",
-        detail: error instanceof Error ? error.message : String(error),
-      });
-      console.error(`cloudflare publish failed for ${label}`, error);
-    }
-  }
-
-  return { zone: zone.name, results };
 }

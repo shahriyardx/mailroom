@@ -127,35 +127,10 @@ v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all
 
 ### Getting these records published
 
-Two ways, per domain:
-
-**Open in Cloudflare** — always available, nothing to set up. Deep-links to that
-zone's DNS page in the Cloudflare dashboard, where you paste each value across
-using the copy buttons.
-
-**Publish DNS** — one click, writes every record for you. Needs a Cloudflare API
-token, which you connect in **Settings → Domains → Connect**. The token is
-encrypted with a key derived from `BETTER_AUTH_SECRET` before being stored, and
-is verified against Cloudflare before it is saved. `CLOUDFLARE_API_TOKEN` in the
-environment still works as a server-wide fallback.
-
-Token permissions:
-
-| Permission | Scope |
-| --- | --- |
-| Zone → Zone → Read | the zones you want to manage |
-| Zone → DNS → Edit | the same zones |
-
-It is careful with what is already there:
-
-- DKIM CNAMEs and the MAIL FROM MX are created, or updated if they point elsewhere.
-- An existing SPF record is **merged**, never duplicated — two SPF records on one
-  name is a hard failure. Your other includes and your `-all` / `~all` are kept.
-- An existing DMARC policy is left alone and reported as skipped, since
-  overwriting someone's policy is not the app's call.
-- Records already correct are reported as unchanged and not rewritten.
-
-Each record comes back labelled created, updated, unchanged, skipped or failed.
+Each domain has an **Open in Cloudflare** link that deep-links to that zone's DNS
+page in the Cloudflare dashboard. Click any value in the table to copy it, then
+paste it across. Nothing is written to your DNS provider by this app, and no
+provider credentials are stored.
 
 ## 5. Delivery events (bounces and complaints)
 

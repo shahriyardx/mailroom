@@ -21,14 +21,7 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
-import {
-  addDomain,
-  importFromSes,
-  publishToCloudflare,
-  refreshDomain,
-  removeDomain,
-} from "./domains";
-import { connectCloudflare, disconnectCloudflare } from "./integrations";
+import { addDomain, importFromSes, refreshDomain, removeDomain } from "./domains";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
 
@@ -431,47 +424,6 @@ export async function refreshDomainAction(domainId: string) {
       error: error instanceof Error ? error.message : "Could not refresh the domain",
     };
   }
-}
-
-/** Writes every DNS record this domain needs straight into Cloudflare. */
-export async function publishDnsAction(domainId: string) {
-  const user = await requireUser();
-  try {
-    const result = await publishToCloudflare(user.id, domainId);
-    // Records are live immediately inside Cloudflare, so re-check right away.
-    await refreshDomain(user.id, domainId).catch(() => {});
-    revalidatePath("/settings");
-    return { ok: true as const, zone: result.zone, results: result.results };
-  } catch (error) {
-    return {
-      ok: false as const,
-      error: error instanceof Error ? error.message : "Could not reach Cloudflare",
-    };
-  }
-}
-
-/* -------------------------------------------------------------------------- */
-/* Cloudflare connection                                                      */
-/* -------------------------------------------------------------------------- */
-
-export async function connectCloudflareAction(token: string) {
-  const user = await requireUser();
-  try {
-    const result = await connectCloudflare(user.id, token);
-    revalidatePath("/settings/domains");
-    return { ok: true as const, zones: result.zones };
-  } catch (error) {
-    return {
-      ok: false as const,
-      error: error instanceof Error ? error.message : "Could not verify that token",
-    };
-  }
-}
-
-export async function disconnectCloudflareAction() {
-  const user = await requireUser();
-  await disconnectCloudflare(user.id);
-  revalidatePath("/settings/domains");
 }
 
 export async function removeDomainAction(domainId: string, alsoDeleteInSes: boolean) {
