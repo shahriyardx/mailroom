@@ -210,21 +210,18 @@ function DomainRowItem({ row }: { row: DomainRow }) {
   return (
     <div>
       <ListRow className="gap-2.5">
-        <button
-          type="button"
-          onClick={() => setOpen((value) => !value)}
-          className="-ml-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
-          aria-label={open ? "Hide DNS records" : "Show DNS records"}
-          disabled={Boolean(row.inheritedFrom)}
-        >
-          <ChevronDown
-            className={cn(
-              "size-4 transition-transform",
-              open && "rotate-180",
-              row.inheritedFrom && "opacity-0",
-            )}
-          />
-        </button>
+        {row.inheritedFrom ? (
+          <span className="size-6 shrink-0" aria-hidden />
+        ) : (
+          <button
+            type="button"
+            onClick={() => setOpen((value) => !value)}
+            className="-ml-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
+            aria-label={open ? "Hide DNS records" : "Show DNS records"}
+          >
+            <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+          </button>
+        )}
 
         <div className="min-w-0 flex-1">
           <p className="truncate font-mono text-[13px]">{row.name}</p>
@@ -267,19 +264,22 @@ function DomainRowItem({ row }: { row: DomainRow }) {
         )}
 
         <div className="flex shrink-0 items-center gap-0.5">
-          <Hint label="Check status now">
-            <IconButton
-              label="Check status now"
-              onClick={() =>
-                start(async () => {
-                  await refreshDomainAction(row.id);
-                  router.refresh();
-                })
-              }
-            >
-              {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            </IconButton>
-          </Hint>
+          {/* There is no identity to poll: it stands or falls with its parent. */}
+          {!row.inheritedFrom && (
+            <Hint label="Check status now">
+              <IconButton
+                label="Check status now"
+                onClick={() =>
+                  start(async () => {
+                    await refreshDomainAction(row.id);
+                    router.refresh();
+                  })
+                }
+              >
+                {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+              </IconButton>
+            </Hint>
+          )}
 
           <Hint label="Remove domain">
             <IconButton
