@@ -70,5 +70,6 @@ export {
   SheetTrigger,
 } from "./sheet";
 export { Switch } from "./switch";
+export { Toaster } from "./toast";
 export { Tabs, TabsContent, TabsList, TabsTrigger } from "./tabs";
 export { Hint, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "./tooltip";

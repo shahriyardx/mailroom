@@ -34,7 +34,7 @@ export function SettingsNav() {
   const pathname = usePathname();
 
   return (
-    <nav className="flex gap-1 overflow-x-auto lg:w-52 lg:shrink-0 lg:flex-col lg:overflow-visible">
+    <nav className="flex gap-1 overflow-x-auto lg:w-56 lg:shrink-0 lg:flex-col lg:overflow-visible">
       {ITEMS.map((item) => {
         const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
         const Icon = item.icon;
@@ -43,13 +43,13 @@ export function SettingsNav() {
             key={item.href}
             href={item.href}
             className={cn(
-              "flex shrink-0 items-center gap-2 rounded-lg px-2.5 py-1.5 text-[12.5px] transition",
+              "flex shrink-0 items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-[13px] transition-colors",
               active
-                ? "bg-accent font-medium text-foreground"
+                ? "bg-accent font-semibold text-foreground"
                 : "text-muted-foreground hover:bg-accent/60 hover:text-foreground",
             )}
           >
-            <Icon className="size-3.5 shrink-0" />
+            <Icon className="size-[17px] shrink-0" />
             <span className="truncate">{item.label}</span>
           </Link>
         );

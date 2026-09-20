@@ -1,7 +1,6 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
+import { Button, Input } from "@/components/kit";
 import type { Domain } from "@/db/schema";
 import { type DnsRecord, relativeName } from "@/lib/ses";
 import { cn } from "@/lib/utils";

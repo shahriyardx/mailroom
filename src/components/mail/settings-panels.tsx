@@ -1,18 +1,19 @@
 "use client";
 
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Label } from "@/components/ui/label";
 import {
+  Badge,
+  Button,
+  IconButton,
+  Input,
+  Label,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
-import { Switch } from "@/components/ui/switch";
-import { Textarea } from "@/components/ui/textarea";
+  Switch,
+  Textarea,
+} from "@/components/kit";
 import type { Domain, Label as LabelRow, Mailbox } from "@/db/schema";
 import { cn } from "@/lib/utils";
 import {
@@ -210,14 +211,10 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
           <p className="truncate text-[11.5px] text-muted-foreground">{mailbox.displayName}</p>
         </div>
 
-        {mailbox.isDefault && (
-          <Badge variant="secondary" className="h-5 font-mono text-[9.5px] uppercase">
-            default
-          </Badge>
-        )}
+        {mailbox.isDefault && <Badge size="sm">Default</Badge>}
         {mailbox.isCatchAll && (
-          <Badge variant="outline" className="h-5 font-mono text-[9.5px] uppercase">
-            catch-all
+          <Badge size="sm" tone="outline">
+            Catch-all
           </Badge>
         )}
 
@@ -250,11 +247,9 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
           Signature
         </Button>
 
-        <Button
-          variant="ghost"
-          size="icon"
-          className="size-7 rounded-xl text-muted-foreground hover:text-destructive"
-          aria-label={`Delete ${mailbox.address}`}
+        <IconButton
+          variant="danger"
+          label={`Delete ${mailbox.address}`}
           onClick={() =>
             start(async () => {
               await deleteMailboxAction(mailbox.id);
@@ -263,12 +258,8 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
             })
           }
         >
-          {pending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <Trash2 className="size-3.5" />
-          )}
-        </Button>
+          {pending ? <Loader2 className="animate-spin" /> : <Trash2 />}
+        </IconButton>
       </div>
 
       {open && (
@@ -422,11 +413,9 @@ export function RulePanel({
                 → {rule.actionFolder ?? "keep"}
               </p>
             </div>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-7 rounded-xl text-muted-foreground hover:text-destructive"
-              aria-label={`Delete ${rule.name}`}
+            <IconButton
+              variant="danger"
+              label={`Delete ${rule.name}`}
               onClick={() =>
                 start(async () => {
                   await deleteRuleAction(rule.id);
@@ -434,8 +423,8 @@ export function RulePanel({
                 })
               }
             >
-              <Trash2 className="size-3.5" />
-            </Button>
+              <Trash2 />
+            </IconButton>
           </div>
         ))}
         {rules.length === 0 && (
@@ -477,9 +466,7 @@ export function RulePanel({
           <div className="flex gap-2">
             <Select value={actionFolder} onValueChange={(value) => value && setActionFolder(value)}>
               <SelectTrigger size="sm" className="h-8 flex-1 text-[12px]">
-                <SelectValue>
-                  {(value: string | null) => FOLDER_CHOICES[value ?? "archive"] ?? "Archive"}
-                </SelectValue>
+                <SelectValue placeholder="Archive" />
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="archive">Archive</SelectItem>

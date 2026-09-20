@@ -54,7 +54,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
       <div className="relative w-full max-w-[26rem]">
         <header className="mb-8">
           <p className="eyebrow mb-3">self-hosted mail</p>
-          <h1 className="font-heading text-[2rem] leading-[1.1] tracking-[-0.03em]">
+          <h1 className="font-display text-[2rem] leading-[1.1] tracking-[-0.03em]">
             Your domains.
             <br />
             <span className="text-primary">Your inbox.</span>
@@ -66,7 +66,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
           </p>
         </header>
 
-        <div className="raise rounded-2xl border bg-card p-2">
+        <div className="rounded-2xl border border-border bg-card p-2 shadow-raise">
           <button
             type="button"
             onClick={signInWithGithub}
@@ -85,7 +85,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
           </button>
 
           {error && (
-            <p className="mx-1 mt-2 mb-1 flex items-start gap-2 rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2.5 text-[12px] text-destructive">
+            <p className="mx-1 mt-2 mb-1 flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12px] text-destructive">
               <Lock className="mt-px size-3.5 shrink-0" />
               {error}
             </p>

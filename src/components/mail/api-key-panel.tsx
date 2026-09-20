@@ -1,14 +1,14 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import {
+  Button,
+  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from "@/components/ui/select";
+} from "@/components/kit";
 import type { ApiKey, Mailbox } from "@/db/schema";
 import { createApiKeyAction, deleteApiKeyAction, revokeApiKeyAction } from "@/server/actions";
 import { Check, Copy, KeyRound, Loader2, Trash2 } from "lucide-react";
