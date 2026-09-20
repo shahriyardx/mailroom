@@ -34,6 +34,7 @@ export interface SesIdentity {
   verificationStatus: string;
   sendingEnabled: boolean;
   dkimStatus: string;
+  dkimOrigin: string | null;
   dkimTokens: string[];
   mailFromDomain: string | null;
   mailFromStatus: string | null;
@@ -75,6 +76,7 @@ export async function getIdentity(name: string): Promise<SesIdentity | null> {
       verificationStatus: result.VerificationStatus ?? "PENDING",
       sendingEnabled: result.VerifiedForSendingStatus ?? false,
       dkimStatus: result.DkimAttributes?.Status ?? "PENDING",
+      dkimOrigin: result.DkimAttributes?.SigningAttributesOrigin ?? null,
       dkimTokens: result.DkimAttributes?.Tokens ?? [],
       mailFromDomain: result.MailFromAttributes?.MailFromDomain ?? null,
       mailFromStatus: result.MailFromAttributes?.MailFromDomainStatus ?? null,
@@ -172,21 +174,39 @@ export interface DnsRecord {
   priority?: number;
   purpose: string;
   required: boolean;
+  /** A record already in place that we cannot reproduce, shown for reference only. */
+  informational?: boolean;
 }
 
 export function dnsRecordsFor(options: {
   domain: string;
   region: string;
   dkimTokens: string[];
+  dkimOrigin?: string | null;
   mailFromDomain: string | null;
 }): DnsRecord[] {
-  const records: DnsRecord[] = options.dkimTokens.map((token) => ({
-    kind: "CNAME",
-    name: `${token}._domainkey.${options.domain}`,
-    value: `${token}.dkim.amazonses.com`,
-    purpose: "DKIM signing",
-    required: true,
-  }));
+  // With an external key SES only reports the selector. The matching TXT record
+  // holds a public key we never see, so it is shown for reference, not to copy.
+  const external = options.dkimOrigin === "EXTERNAL";
+
+  const records: DnsRecord[] = options.dkimTokens.map((token) =>
+    external
+      ? {
+          kind: "TXT" as const,
+          name: `${token}._domainkey.${options.domain}`,
+          value: "already published by whoever set this domain up",
+          purpose: "DKIM signing (external key)",
+          required: true,
+          informational: true,
+        }
+      : {
+          kind: "CNAME" as const,
+          name: `${token}._domainkey.${options.domain}`,
+          value: `${token}.dkim.amazonses.com`,
+          purpose: "DKIM signing",
+          required: true,
+        },
+  );
 
   if (options.mailFromDomain) {
     records.push({

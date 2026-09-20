@@ -126,7 +126,12 @@ export const domain = pgTable(
     sendingEnabled: boolean("sending_enabled").notNull().default(false),
 
     dkimStatus: domainStatusEnum("dkim_status").notNull().default("pending"),
-    /** Three CNAME tokens for Easy DKIM. */
+    /**
+     * AWS_SES for Easy DKIM, EXTERNAL when the key was supplied by whoever set
+     * the domain up. The two need completely different DNS records.
+     */
+    dkimOrigin: text("dkim_origin"),
+    /** Three CNAME tokens for Easy DKIM, or the single selector for an external key. */
     dkimTokens: text("dkim_tokens").array().notNull().default(sql`'{}'::text[]`),
 
     /** Custom MAIL FROM (return-path) subdomain, e.g. mail.acme.com. */

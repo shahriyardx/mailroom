@@ -273,7 +273,13 @@ function DomainRowItem({ row }: { row: DomainRow }) {
                       <CopyCell value={relativeName(record.name, row.name)} copy={record.name} />
                     </td>
                     <td className="py-1.5 pr-3">
-                      <CopyCell value={record.value} />
+                      {record.informational ? (
+                        <span className="px-1 py-0.5 text-muted-foreground italic">
+                          {record.value}
+                        </span>
+                      ) : (
+                        <CopyCell value={record.value} />
+                      )}
                     </td>
                     <td className="w-16 py-1.5 pr-2 text-right font-mono text-muted-foreground">
                       {record.priority ?? "—"}

@@ -29,12 +29,14 @@ export function recordsForDomain(row: {
   name: string;
   region: string;
   dkimTokens: string[];
+  dkimOrigin?: string | null;
   mailFromDomain: string | null;
 }) {
   return dnsRecordsFor({
     domain: row.name,
     region: row.region,
     dkimTokens: row.dkimTokens,
+    dkimOrigin: row.dkimOrigin,
     mailFromDomain: row.mailFromDomain,
   });
 }
@@ -62,6 +64,7 @@ export async function importFromSes(userId: string) {
       status: toDomainStatus(detail.verificationStatus) as DomainStatus,
       sendingEnabled: detail.sendingEnabled,
       dkimStatus: toDomainStatus(detail.dkimStatus) as DomainStatus,
+      dkimOrigin: detail.dkimOrigin,
       dkimTokens: detail.dkimTokens,
       mailFromDomain: detail.mailFromDomain,
       mailFromStatus: detail.mailFromStatus
@@ -156,6 +159,7 @@ export async function addDomain(userId: string, rawName: string) {
     status: toDomainStatus(known?.verificationStatus) as DomainStatus,
     sendingEnabled: known?.sendingEnabled ?? false,
     dkimStatus: toDomainStatus(created.dkimStatus) as DomainStatus,
+    dkimOrigin: known?.dkimOrigin ?? "AWS_SES",
     dkimTokens: created.dkimTokens,
     mailFromDomain: mailFromSet ? mailFrom : null,
     mailFromStatus: mailFromSet ? "pending" : null,
@@ -189,6 +193,7 @@ export async function refreshDomain(userId: string, domainId: string) {
       status: toDomainStatus(detail.verificationStatus) as DomainStatus,
       sendingEnabled: detail.sendingEnabled,
       dkimStatus: toDomainStatus(detail.dkimStatus) as DomainStatus,
+      dkimOrigin: detail.dkimOrigin,
       dkimTokens: detail.dkimTokens.length ? detail.dkimTokens : row.dkimTokens,
       mailFromDomain: detail.mailFromDomain,
       mailFromStatus: detail.mailFromStatus
