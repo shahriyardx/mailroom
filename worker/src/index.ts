@@ -51,11 +51,26 @@ function headerValue(headers: { key: string; value: string }[], name: string) {
   return headers.find((header) => header.key.toLowerCase() === lower)?.value ?? null;
 }
 
-/** Cloudflare puts SPF/DKIM/DMARC verdicts in Authentication-Results. */
-function parseAuthResults(raw: string | null) {
+function headerValues(headers: { key: string; value: string }[], name: string) {
+  const lower = name.toLowerCase();
+  return headers
+    .filter((header) => header.key.toLowerCase() === lower)
+    .map((header) => header.value);
+}
+
+/**
+ * Cloudflare puts SPF/DKIM/DMARC verdicts in Authentication-Results. A message
+ * that has been relayed carries one of these per hop, so prefer the one
+ * Cloudflare wrote: an upstream hop's verdict describes a different delivery.
+ */
+function parseAuthResults(all: string[]) {
+  const raw = all.find((value) => /cloudflare/i.test(value)) ?? all[0];
   if (!raw) return {};
+
   const pick = (name: string) => {
-    const match = raw.match(new RegExp(`${name}=(\\w+)`, "i"));
+    // Anchored so "spf" cannot match inside another token, and the value is
+    // read only from a real mechanism=verdict pair.
+    const match = raw.match(new RegExp(`(?:^|[;\\s(])${name}=([a-z]+)`, "i"));
     return match ? match[1]!.toLowerCase() : null;
   };
   return { spf: pick("spf"), dkim: pick("dkim"), dmarc: pick("dmarc") };
@@ -134,7 +149,7 @@ export default {
     }
 
     const attachments = await storeAttachments(env, messageKey, parsed.attachments ?? []);
-    const auth = parseAuthResults(headerValue(headers, "authentication-results"));
+    const auth = parseAuthResults(headerValues(headers, "authentication-results"));
 
     const payload = {
       email: {

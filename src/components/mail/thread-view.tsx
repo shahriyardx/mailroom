@@ -20,6 +20,7 @@ import {
   ReplyAll,
   ShieldAlert,
   ShieldCheck,
+  ShieldOff,
   Star,
   Trash2,
 } from "lucide-react";
@@ -363,12 +364,22 @@ function AuthBadges({ message }: { message: Message }) {
   return (
     <ul className="mb-3 flex flex-wrap items-center gap-1.5">
       {known.map(([name, value]) => {
-        const good = value === "pass";
+        // "none" and "neutral" mean the domain published no policy to check
+        // against, which is not the same as a message failing one.
+        const tone =
+          value === "pass" ? "ok" : value === "none" || value === "neutral" ? "neutral" : "danger";
         return (
           <li key={name}>
-            <Badge size="sm" tone={good ? "ok" : "danger"} title={`${name} ${value}`}>
-              {good ? <ShieldCheck /> : <ShieldAlert />}
+            <Badge size="sm" tone={tone} title={`${name} ${value}`}>
+              {tone === "ok" ? (
+                <ShieldCheck />
+              ) : tone === "danger" ? (
+                <ShieldAlert />
+              ) : (
+                <ShieldOff />
+              )}
               {name}
+              <span className="font-normal opacity-70">{value}</span>
             </Badge>
           </li>
         );
