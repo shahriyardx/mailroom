@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import { FOLDER_LABELS, type ViewFolder } from "@/lib/scope";
+import type { ViewFolder } from "@/lib/scope";
 import { cn, colorOf, initialsOf } from "@/lib/utils";
 import {
   deleteThreadsAction,
@@ -39,8 +39,6 @@ interface Props {
   listQuery: string;
   nextCursor: string | null;
   showMailbox: boolean;
-  /** Which mailboxes this view covers, shown beside the folder name. */
-  scopeLabel: string;
 }
 
 export function ThreadList({
@@ -51,7 +49,6 @@ export function ThreadList({
   listQuery,
   nextCursor,
   showMailbox,
-  scopeLabel,
 }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -122,25 +119,18 @@ export function ThreadList({
             </BulkAction>
           </div>
         ) : (
-          <div className="flex min-w-0 flex-1 items-baseline gap-2">
-            <span className="shrink-0 font-medium text-[13px]">{FOLDER_LABELS[folder]}</span>
-            <span className="truncate font-mono text-[11px] text-muted-foreground">
-              {scopeLabel}
-            </span>
-          </div>
+          <BulkAction label="Refresh" onClick={() => run(async () => {})}>
+            {pending ? (
+              <Loader2 className="size-4 animate-spin" />
+            ) : (
+              <RefreshCw className="size-4" />
+            )}
+          </BulkAction>
         )}
 
-        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+        <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
           {hasSelection ? `${selected.size} selected` : items.length}
         </span>
-
-        <BulkAction label="Refresh" onClick={() => run(async () => {})}>
-          {pending ? (
-            <Loader2 className="size-3.5 animate-spin" />
-          ) : (
-            <RefreshCw className="size-3.5" />
-          )}
-        </BulkAction>
       </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto">

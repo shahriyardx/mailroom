@@ -78,7 +78,6 @@ export default async function MailPage({ params, searchParams }: PageProps) {
         <ThreadList
           items={items}
           folder={folder}
-          scopeLabel={scopeLabel}
           activeThreadId={detail?.id}
           baseHref={base}
           listQuery={suffix}
