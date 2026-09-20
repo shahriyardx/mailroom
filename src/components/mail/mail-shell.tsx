@@ -29,6 +29,7 @@ import {
   type ViewFolder,
   scopeHref,
   scopeKey,
+  supportsUnreadFilter,
 } from "@/lib/scope";
 import { cn, colorOf } from "@/lib/utils";
 import {
@@ -274,23 +275,25 @@ export function MailShell({
               >
                 {/* Filters sit over the list, never over the whole app. */}
                 <div className="flex shrink-0 items-center gap-2 px-4 py-3">
-                  <Tabs
-                    value={unreadOnly ? "unread" : "all"}
-                    onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
-                    className="min-w-0"
-                  >
-                    <TabsList
-                      variant="segmented"
-                      className="h-9 gap-1 rounded-xl border border-border bg-muted/70 p-1"
+                  {supportsUnreadFilter(folder) && (
+                    <Tabs
+                      value={unreadOnly ? "unread" : "all"}
+                      onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
+                      className="min-w-0"
                     >
-                      <TabsTrigger value="all" className="h-7 rounded-lg px-3">
-                        All
-                      </TabsTrigger>
-                      <TabsTrigger value="unread" className="h-7 rounded-lg px-3">
-                        Unread
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
+                      <TabsList
+                        variant="segmented"
+                        className="h-9 gap-1 rounded-xl border border-border bg-muted/70 p-1"
+                      >
+                        <TabsTrigger value="all" className="h-7 rounded-lg px-3">
+                          All
+                        </TabsTrigger>
+                        <TabsTrigger value="unread" className="h-7 rounded-lg px-3">
+                          Unread
+                        </TabsTrigger>
+                      </TabsList>
+                    </Tabs>
+                  )}
 
                   <Hint label="Refresh">
                     <IconButton

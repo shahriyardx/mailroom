@@ -4,7 +4,7 @@ import { ThreadList } from "@/components/mail/thread-list";
 import { ThreadView } from "@/components/mail/thread-view";
 import { db } from "@/db";
 import { label } from "@/db/schema";
-import { FOLDER_LABELS, parseRoute, scopeHref } from "@/lib/scope";
+import { FOLDER_LABELS, parseRoute, scopeHref, supportsUnreadFilter } from "@/lib/scope";
 import { requireUser } from "@/lib/session";
 import { listMailboxes } from "@/server/mailboxes";
 import { getThreadDetail, listThreads } from "@/server/threads";
@@ -51,7 +51,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       query: query.q,
       labelId: query.label,
       cursor: query.cursor,
-      unreadOnly: query.unread === "1",
+      unreadOnly: query.unread === "1" && supportsUnreadFilter(folder),
     }),
     query.t ? getThreadDetail(user.id, query.t) : Promise.resolve(null),
   ]);
@@ -60,7 +60,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
   const listParams = new URLSearchParams();
   if (query.q) listParams.set("q", query.q);
   if (query.label) listParams.set("label", query.label);
-  if (query.unread === "1") listParams.set("unread", "1");
+  if (query.unread === "1" && supportsUnreadFilter(folder)) listParams.set("unread", "1");
   const suffix = listParams.toString();
   const backHref = suffix ? `${base}?${suffix}` : base;
 

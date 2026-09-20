@@ -65,3 +65,11 @@ export const FOLDER_LABELS: Record<ViewFolder, string> = {
   spam: "Spam",
   trash: "Trash",
 };
+
+/**
+ * Sent and drafts hold your own mail, so an unread filter over them would
+ * always come back empty. Everywhere else the filter is meaningful.
+ */
+export function supportsUnreadFilter(folder: ViewFolder) {
+  return folder !== "sent" && folder !== "drafts";
+}
