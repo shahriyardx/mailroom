@@ -218,9 +218,9 @@ export async function deleteThreadsAction(threadIds: string[]) {
   revalidatePath("/mail", "layout");
 }
 
-export async function toggleThreadLabelAction(threadId: string, labelId: string, on: boolean) {
+export async function setThreadsLabelAction(threadIds: string[], labelId: string, on: boolean) {
   const user = await requireUser();
-  const owned = await assertOwnsThreads(user.id, [threadId]);
+  const owned = await assertOwnsThreads(user.id, threadIds);
   if (owned.length === 0) return;
 
   const owns = await db.query.label.findFirst({
@@ -229,13 +229,20 @@ export async function toggleThreadLabelAction(threadId: string, labelId: string,
   if (!owns) return;
 
   if (on) {
-    await db.insert(threadLabel).values({ threadId, labelId }).onConflictDoNothing();
+    await db
+      .insert(threadLabel)
+      .values(owned.map((threadId) => ({ threadId, labelId })))
+      .onConflictDoNothing();
   } else {
     await db
       .delete(threadLabel)
-      .where(and(eq(threadLabel.threadId, threadId), eq(threadLabel.labelId, labelId)));
+      .where(and(inArray(threadLabel.threadId, owned), eq(threadLabel.labelId, labelId)));
   }
   revalidatePath("/mail", "layout");
+}
+
+export async function toggleThreadLabelAction(threadId: string, labelId: string, on: boolean) {
+  await setThreadsLabelAction([threadId], labelId, on);
 }
 
 /* -------------------------------------------------------------------------- */

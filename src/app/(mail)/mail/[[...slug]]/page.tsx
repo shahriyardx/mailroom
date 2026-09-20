@@ -84,11 +84,12 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           listQuery={suffix}
           nextCursor={nextCursor}
           showMailbox={scope.kind !== "mailbox"}
+          labels={labels}
         />
       }
     >
       {detail ? (
-        <ThreadView thread={detail} backHref={backHref} />
+        <ThreadView thread={detail} backHref={backHref} labels={labels} />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-3 bg-card px-6 text-center">
           <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">

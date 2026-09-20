@@ -1,7 +1,7 @@
 "use client";
 
 import { Avatar, Badge, Button, Hint, IconButton, Separator } from "@/components/kit";
-import type { Attachment, Mailbox, Message } from "@/db/schema";
+import type { Attachment, Label as LabelRow, Mailbox, Message } from "@/db/schema";
 import { formatAddress, forwardSubject, quoteForReply, replySubject } from "@/lib/mail";
 import { cn, formatBytes } from "@/lib/utils";
 import {
@@ -28,6 +28,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { useComposer } from "./composer-provider";
 import { EmailFrame } from "./email-frame";
+import { LabelMenu } from "./label-menu";
 
 type MessageWithAttachments = Message & { attachments: Attachment[] };
 
@@ -38,11 +39,14 @@ interface Props {
     isStarred: boolean;
     mailbox: Mailbox;
     messages: MessageWithAttachments[];
+    labels: { labelId: string; label: LabelRow }[];
   };
   backHref: string;
+  /** Every label the user has, so one can be put on this conversation. */
+  labels: LabelRow[];
 }
 
-export function ThreadView({ thread, backHref }: Props) {
+export function ThreadView({ thread, backHref, labels }: Props) {
   const router = useRouter();
   const composer = useComposer();
   const [, startTransition] = useTransition();
@@ -133,6 +137,11 @@ export function ThreadView({ thread, backHref }: Props) {
           <Trash2 />
         </Action>
         <Separator orientation="vertical" className="mx-1.5 h-4 self-center" />
+        <LabelMenu
+          threadIds={[thread.id]}
+          labels={labels}
+          applied={thread.labels.map((entry) => entry.labelId)}
+        />
         <Action
           label={thread.isStarred ? "Unstar" : "Star"}
           onClick={() => run(() => setStarAction([thread.id], !thread.isStarred))}
@@ -234,9 +243,28 @@ export function ThreadView({ thread, backHref }: Props) {
                     {/* The subject belongs to the conversation, so it is
                         stated once, above the message that started it. */}
                     {first && (
-                      <h1 className="mb-3 font-display text-[19px] font-semibold leading-snug tracking-[-0.02em]">
-                        {thread.subject || "(no subject)"}
-                      </h1>
+                      <div className="mb-3">
+                        <h1 className="font-display text-[19px] font-semibold leading-snug tracking-[-0.02em]">
+                          {thread.subject || "(no subject)"}
+                        </h1>
+                        {thread.labels.length > 0 && (
+                          <ul className="mt-2 flex flex-wrap gap-1.5">
+                            {thread.labels.map((entry) => (
+                              <li
+                                key={entry.labelId}
+                                className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11.5px]"
+                              >
+                                <span
+                                  className="size-2 rounded-full"
+                                  style={{ background: entry.label.color }}
+                                  aria-hidden
+                                />
+                                {entry.label.name}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
                     )}
                     {!item.isOutbound && <AuthBadges message={item} />}
                     {item.isOutbound && item.deliveryError && (

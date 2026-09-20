@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, Button, Checkbox, Hint, IconButton } from "@/components/kit";
+import type { Label as LabelRow } from "@/db/schema";
 import type { ViewFolder } from "@/lib/scope";
 import { cn } from "@/lib/utils";
 import {
@@ -30,6 +31,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { LabelMenu } from "./label-menu";
 
 /** What each folder says when it has nothing in it. */
 const EMPTY: Record<ViewFolder, { icon: LucideIcon; title: string; body: string }> = {
@@ -80,6 +82,7 @@ interface Props {
   listQuery: string;
   nextCursor: string | null;
   showMailbox: boolean;
+  labels: LabelRow[];
 }
 
 export function ThreadList({
@@ -90,6 +93,7 @@ export function ThreadList({
   listQuery,
   nextCursor,
   showMailbox,
+  labels,
 }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -153,6 +157,7 @@ export function ThreadList({
           <BulkAction label="Report spam" onClick={() => run(() => moveThreadsAction(ids, "spam"))}>
             <ShieldAlert />
           </BulkAction>
+          <LabelMenu threadIds={ids} labels={labels} onDone={() => setSelected(new Set())} />
           <BulkAction
             label="Delete"
             destructive
