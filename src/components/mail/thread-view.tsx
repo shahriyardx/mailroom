@@ -213,6 +213,7 @@ export function ThreadView({ thread, backHref }: Props) {
                       <span className="truncate font-mono text-[10.5px] text-muted-foreground">
                         {item.fromAddress}
                       </span>
+                      {item.isOutbound && <DeliveryBadge message={item} />}
                       <span className="ml-auto shrink-0 font-mono text-[10.5px] text-muted-foreground">
                         {new Date(item.sentAt ?? item.receivedAt).toLocaleString("en-GB", {
                           day: "2-digit",
@@ -247,6 +248,11 @@ export function ThreadView({ thread, backHref }: Props) {
                 {open && (
                   <div className="mt-2 pl-8.5">
                     {!item.isOutbound && <AuthBadges message={item} />}
+                    {item.isOutbound && item.deliveryError && (
+                      <p className="mb-2 rounded-[3px] border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11.5px] text-destructive">
+                        {item.deliveryError}
+                      </p>
+                    )}
                     <EmailFrame
                       html={item.htmlBody}
                       text={item.textBody}
@@ -288,6 +294,37 @@ export function ThreadView({ thread, backHref }: Props) {
         </ol>
       </div>
     </section>
+  );
+}
+
+/**
+ * What SES has told us about this message so far. Needs the configuration set
+ * and its SNS subscription to be wired up; without those it stays on "sent".
+ */
+function DeliveryBadge({ message }: { message: Message }) {
+  if (!message.deliveryStatus) return null;
+
+  const tone: Record<string, string> = {
+    queued: "border-border text-muted-foreground",
+    sent: "border-border text-muted-foreground",
+    delivered: "border-ok/30 bg-ok/10 text-ok",
+    delayed: "border-warn/30 bg-warn/10 text-warn",
+    bounced: "border-destructive/30 bg-destructive/10 text-destructive",
+    complained: "border-destructive/30 bg-destructive/10 text-destructive",
+    rejected: "border-destructive/30 bg-destructive/10 text-destructive",
+    failed: "border-destructive/30 bg-destructive/10 text-destructive",
+  };
+
+  return (
+    <span
+      title={message.deliveryError ?? `SES reported: ${message.deliveryStatus}`}
+      className={cn(
+        "shrink-0 rounded-[3px] border px-1.5 py-0.5 font-mono text-[10px]",
+        tone[message.deliveryStatus] ?? "border-border text-muted-foreground",
+      )}
+    >
+      {message.deliveryStatus}
+    </span>
   );
 }
 
