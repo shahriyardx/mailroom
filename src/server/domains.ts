@@ -34,7 +34,11 @@ export function recordsForDomain(row: {
   dkimOrigin?: string | null;
   dkimPublicKey?: string | null;
   mailFromDomain: string | null;
+  inheritedFrom?: string | null;
 }) {
+  // A subdomain covered by its parent has no identity, so no records.
+  if (row.inheritedFrom) return [];
+
   return dnsRecordsFor({
     domain: row.name,
     region: row.region,
@@ -173,6 +177,37 @@ export async function addDomain(userId: string, rawName: string) {
   });
   if (existing) throw new Error("That domain is already here");
 
+  // SES inherits a domain's verification down its subdomains, so a subdomain
+  // of something already verified needs no identity and no DNS at all. Record
+  // it as covered by the parent and stop.
+  const owned = await db.query.domain.findMany({ where: eq(domain.userId, userId) });
+  const parent = owned
+    .filter(
+      (row) =>
+        row.status === "verified" &&
+        row.sendingEnabled &&
+        !row.inheritedFrom &&
+        name.endsWith(`.${row.name}`),
+    )
+    // The longest match is the closest parent.
+    .sort((a, b) => b.name.length - a.name.length)[0];
+
+  if (parent) {
+    const id = newId("dom");
+    await db.insert(domain).values({
+      id,
+      userId,
+      name,
+      region: parent.region,
+      status: "verified",
+      sendingEnabled: true,
+      dkimStatus: "verified",
+      inheritedFrom: parent.name,
+      lastCheckedAt: new Date(),
+    });
+    return { id, name, inheritedFrom: parent.name };
+  }
+
   // Reuse the identity if SES already knows it, rather than failing.
   const known = await getIdentity(name);
   if (!known) await createDomainIdentity(name);
@@ -230,6 +265,8 @@ export async function refreshDomain(userId: string, domainId: string) {
     where: and(eq(domain.id, domainId), eq(domain.userId, userId)),
   });
   if (!row) throw new Error("Unknown domain");
+  // There is no identity to ask about; it stands or falls with its parent.
+  if (row.inheritedFrom) return row;
 
   const detail = await getIdentity(row.name);
   if (!detail) {
@@ -270,7 +307,9 @@ export async function removeDomain(userId: string, domainId: string, alsoDeleteI
   });
   if (!row) return;
 
-  if (alsoDeleteInSes) {
+  // An inherited subdomain has no identity of its own; deleting the parent's
+  // would take every other subdomain down with it.
+  if (alsoDeleteInSes && !row.inheritedFrom) {
     try {
       await deleteIdentity(row.name);
     } catch {

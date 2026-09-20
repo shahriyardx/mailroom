@@ -50,6 +50,13 @@
       "when": 1789936237261,
       "tag": "0006_long_rocket_raccoon",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "7",
+      "when": 1789937893832,
+      "tag": "0007_worthless_la_nuit",
+      "breakpoints": true
     }
   ]
 }

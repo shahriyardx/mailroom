@@ -168,3 +168,22 @@ export function quoteForReply(options: {
 export function generateMessageId(domain: string) {
   return `<${crypto.randomUUID()}@${domain}>`;
 }
+
+/**
+ * True when `name` is `parent` or sits beneath it. SES inherits a domain's
+ * verification down its subdomains, so billing.example.com sends on the
+ * strength of example.com being verified, with no records of its own.
+ */
+export function isUnderDomain(name: string, parent: string) {
+  const a = name.toLowerCase();
+  const b = parent.toLowerCase();
+  return a === b || a.endsWith(`.${b}`);
+}
+
+/** The verified domain an address sends on: itself, else its nearest parent. */
+export function coveringDomain<T extends { name: string }>(address: string, domains: T[]) {
+  const name = domainOf(address.toLowerCase());
+  const covering = domains.filter((row) => isUnderDomain(name, row.name));
+  // The longest match is the closest parent.
+  return covering.sort((a, b) => b.name.length - a.name.length)[0] ?? null;
+}

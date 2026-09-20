@@ -13,6 +13,7 @@ import {
 import { env } from "@/lib/env";
 import {
   type EmailAddress,
+  coveringDomain,
   generateMessageId,
   htmlToText,
   makeSnippet,
@@ -70,11 +71,12 @@ export async function deliverMessage(input: DeliverInput) {
 
   if (input.to.length === 0) throw new SendError("Add at least one recipient");
 
-  const domainRow = await db.query.domain.findFirst({
-    where: and(eq(domain.userId, input.userId), eq(domain.name, box.domain)),
-  });
+  // A subdomain sends on its parent's verification, so match the covering
+  // domain rather than an exact name.
+  const owned = await db.query.domain.findMany({ where: eq(domain.userId, input.userId) });
+  const domainRow = coveringDomain(box.address, owned);
   if (domainRow && !(domainRow.sendingEnabled && domainRow.status === "verified")) {
-    throw new SendError(`${box.domain} is not verified for sending in SES yet`, 409);
+    throw new SendError(`${domainRow.name} is not verified for sending in SES yet`, 409);
   }
 
   const recipients = [...input.to, ...(input.cc ?? []), ...(input.bcc ?? [])];

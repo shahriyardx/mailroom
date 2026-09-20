@@ -148,6 +148,13 @@ export const domain = pgTable(
     dmarcVerified: boolean("dmarc_verified").notNull().default(false),
 
     /**
+     * Set to the parent domain's name when this row is a subdomain that sends
+     * on that parent's SES verification. Such a row has no identity of its
+     * own, so there is nothing to verify and no records to publish.
+     */
+    inheritedFrom: text("inherited_from"),
+
+    /**
      * When on, mail to an address on this domain that no mailbox claims
      * creates that mailbox instead of falling through to forwarding. Off by
      * default: it turns every spammed address into a mailbox.

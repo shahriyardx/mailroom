@@ -143,7 +143,7 @@ export function DomainPanel({ domains, account, syncError }: Props) {
         <Field
           label="Domain"
           htmlFor="domain-name"
-          hint="Creates the identity with Easy DKIM and a custom return path."
+          hint="A subdomain of a domain you have already verified is added with no records to publish. Anything else creates an SES identity with its own DKIM and return path."
           className="max-w-md"
         >
           <InputGroup>
@@ -184,6 +184,7 @@ const LABELS: Record<string, string> = {
 
 /** The individual things SES and DNS have to agree on before a domain works. */
 function checksFor(row: DomainRow) {
+  if (row.inheritedFrom) return [];
   return [
     { key: "dkim", ok: row.dkimStatus === "verified", required: true },
     ...(row.mailFromDomain
@@ -202,8 +203,9 @@ function DomainRowItem({ row }: { row: DomainRow }) {
   const checks = checksFor(row);
   const blocking = checks.filter((check) => check.required && !check.ok);
 
-  // Only something that actually stops mail is worth opening a row for.
-  const [open, setOpen] = useState(!verified || blocking.length > 0);
+  // Only something that actually stops mail is worth opening a row for, and an
+  // inherited subdomain has nothing to show at all.
+  const [open, setOpen] = useState(!row.inheritedFrom && (!verified || blocking.length > 0));
 
   return (
     <div>
@@ -213,8 +215,15 @@ function DomainRowItem({ row }: { row: DomainRow }) {
           onClick={() => setOpen((value) => !value)}
           className="-ml-1 shrink-0 rounded-md p-1 text-muted-foreground transition-colors hover:text-foreground"
           aria-label={open ? "Hide DNS records" : "Show DNS records"}
+          disabled={Boolean(row.inheritedFrom)}
         >
-          <ChevronDown className={cn("size-4 transition-transform", open && "rotate-180")} />
+          <ChevronDown
+            className={cn(
+              "size-4 transition-transform",
+              open && "rotate-180",
+              row.inheritedFrom && "opacity-0",
+            )}
+          />
         </button>
 
         <div className="min-w-0 flex-1">
@@ -225,14 +234,19 @@ function DomainRowItem({ row }: { row: DomainRow }) {
               row.lastCheckedAt ? `Last checked ${row.lastCheckedAt.toLocaleString()}` : undefined
             }
           >
-            {row.region}
-            {row.importedAt && " · imported"}
+            {row.inheritedFrom ? `Covered by ${row.inheritedFrom}` : row.region}
+            {!row.inheritedFrom && row.importedAt && " · imported"}
           </p>
         </div>
 
         {/* One pill when a domain is done. The outstanding items only, when it
             is not. Repeating five green chips per row says nothing. */}
-        {verified && blocking.length === 0 ? (
+        {row.inheritedFrom ? (
+          <StatusPill state="ok">
+            <Check />
+            No setup needed
+          </StatusPill>
+        ) : verified && blocking.length === 0 ? (
           <StatusPill state="ok">
             <Check />
             Ready
@@ -287,7 +301,7 @@ function DomainRowItem({ row }: { row: DomainRow }) {
         </div>
       </ListRow>
 
-      {open && (
+      {open && !row.inheritedFrom && (
         <div className="border-t border-border py-3.5">
           <div className="mb-3 flex flex-wrap items-center gap-x-4 gap-y-1.5">
             <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">

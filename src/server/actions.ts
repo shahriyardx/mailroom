@@ -14,7 +14,7 @@ import {
   threadLabel,
 } from "@/db/schema";
 import { generateApiKey } from "@/lib/api-key";
-import { domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
+import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { requireUser } from "@/lib/session";
 import { newId } from "@/lib/utils";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -274,9 +274,13 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   const address = input.address.toLowerCase();
 
   const domainName = domainOf(address);
-  const domainRow = await db.query.domain.findFirst({
-    where: and(eq(domainTable.userId, user.id), eq(domainTable.name, domainName)),
-  });
+  // A subdomain of a domain you own needs no identity of its own: SES lets it
+  // send on the parent's verification.
+  const owned = await db.query.domain.findMany({ where: eq(domainTable.userId, user.id) });
+  const domainRow = coveringDomain(address, owned);
+  if (!domainRow) {
+    throw new Error(`Add ${domainName} under Domains first, or a domain it sits beneath.`);
+  }
 
   const id = newId("mbx");
   await db.insert(mailbox).values({
@@ -284,7 +288,7 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
     userId: user.id,
     address,
     domain: domainName,
-    domainId: domainRow?.id ?? null,
+    domainId: domainRow.id,
     displayName: input.displayName,
     signature: input.signature ?? null,
     isCatchAll: input.isCatchAll ?? false,
