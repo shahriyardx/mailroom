@@ -1,67 +1,65 @@
-# Mail
+# Mailroom
 
-Self-hosted email client. Sends through **Amazon SES**, receives through a
-**Cloudflare Email Worker**, stores everything in **Postgres**.
+Self-hosted email. Sends through **Amazon SES**, receives through a
+**Cloudflare Email Worker**, keeps everything in **Postgres**.
 
-- Next.js 15 (App Router) + React 19
-- Tailwind v4, shadcn/ui, Biome, TypeScript
-- better-auth with GitHub OAuth, locked to a single owner
-- Drizzle ORM + Postgres
-- Amazon SES v2 for sending, domain identities and delivery events
-- Cloudflare R2 for attachments and raw `.eml` copies
+One person owns an instance. The first GitHub account to sign in claims it,
+and nobody else can register after that.
 
-## Features
+![built with Next.js, Postgres, SES and Cloudflare](https://img.shields.io/badge/stack-Next.js%2015%20%C2%B7%20Postgres%20%C2%B7%20SES%20%C2%B7%20Cloudflare-5a45d6)
 
-### Mail client
-- Unlimited mailboxes, across any number of domains
-- Scope switch: **all mail**, **one domain**, or **one mailbox** — applies to every folder
-- Folders: inbox, starred, sent, drafts, archive, spam, trash
-- Conversation threading (`In-Reply-To` / `References`, subject fallback)
-- Compose, reply, reply-all, forward, autosaved drafts, signatures per mailbox
-- Attachments in and out (R2), inline `cid:` images
-- Full-text search (Postgres `tsvector`) scoped to the current view
-- Labels and inbound filter rules
-- Remote images blocked by default; bodies isolated in a script-free sandboxed iframe
-- SPF / DKIM / DMARC verdicts shown per message
-- Keyboard shortcuts: `c` compose, `/` search, `g i|s|d|a|t` jump folder, `⌘↵` send
+## What you get
 
-### SES management
-- **Auto-import**: existing verified SES identities appear on first visit to Settings
-- **Manual import** button, plus per-domain "check status now"
-- Add a domain from the UI: creates the identity with Easy DKIM and a custom MAIL FROM
-- Every DNS record listed with one-click copy (DKIM CNAMEs, MAIL FROM MX + SPF, root SPF, DMARC)
-- Live status per domain: verification, DKIM, MAIL FROM, plus our own SPF/DMARC DNS probe
-- Account panel: production access, enforcement status, 24h quota and send rate
-- Bounce and complaint handling through SNS, with automatic suppression
+- **Unlimited mailboxes** across any number of domains
+- **Scope switching** — read all mail, one domain, or one address, in any folder
+- Threading, search, labels, filters, drafts, signatures, attachments
+- **Live updates** — new mail appears as it lands, no refresh
+- **Domains managed from the app** — add one, get its DNS records, watch it verify
+- **Subdomains for free** — a subdomain of a verified domain needs no records at all
+- **Worker deployed from the app** — no `wrangler`, no separate deploy
+- **Delivery reporting** — delivered, bounced, complained, with automatic suppression
+- **An API** for sending from your own code
 
-### Public API
-- `POST /api/v1/emails` — send, with attachments, from any mailbox you own
-- `GET /api/v1/emails/:id` — delivery status and the SES event trail
-- `GET /api/v1/domains` — sending domains and their DNS records
-- Bearer API keys, stored only as SHA-256 hashes, optionally locked to one mailbox
+## Before you start
 
-## 1. Database
+You need five things:
 
-```bash
-docker compose up -d          # Postgres on localhost:5433
-cp .env.example .env          # then fill it in
-pnpm db:migrate               # create tables
-```
+| | Why | Cost |
+| --- | --- | --- |
+| A **Postgres** database | Everything is stored here | Free locally, ~$0 self-hosted |
+| An **AWS account** with SES | Sending | Pennies. Ask AWS for production access or you can only send to verified addresses |
+| A **Cloudflare account**, domain on it | Receiving | Free |
+| A **Cloudflare R2** bucket | Attachments and raw messages | Free tier is generous |
+| Somewhere to run it | Docker anywhere: Coolify, Fly, a VPS | Your call |
 
-## 2. Environment
+## 1. Create a GitHub OAuth app
 
-```
-DATABASE_URL=postgres://mail:mail@localhost:5433/mail
+GitHub is the only way to sign in.
+
+**github.com → Settings → Developer settings → OAuth Apps → New**
+
+- Homepage: `https://mail.yourdomain.com`
+- Callback: `https://mail.yourdomain.com/api/auth/callback/github`
+
+Keep the client ID and secret.
+
+## 2. Set the environment
+
+```sh
+DATABASE_URL=postgres://user:pass@host:5432/mail
 BETTER_AUTH_SECRET=          # openssl rand -base64 32
-BETTER_AUTH_URL=http://localhost:3000
-NEXT_PUBLIC_APP_URL=http://localhost:3000
+BETTER_AUTH_URL=https://mail.yourdomain.com
+NEXT_PUBLIC_APP_URL=https://mail.yourdomain.com
+
+GITHUB_CLIENT_ID=
+GITHUB_CLIENT_SECRET=
 
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=
 AWS_SECRET_ACCESS_KEY=
-SES_CONFIGURATION_SET=       # optional, needed for delivery events
-SES_SNS_TOPIC_ARN=           # optional, pins which SNS topic may post events
-SES_MAIL_FROM_PREFIX=mail    # mail.acme.com as the return path
+SES_MAIL_FROM_PREFIX=mail    # the return path becomes mail.yourdomain.com
+SES_CONFIGURATION_SET=       # set to mail-events for delivery reporting (step 5)
+SES_SNS_TOPIC_ARN=           # optional: only accept events from this topic
 
 INBOUND_WEBHOOK_SECRET=      # openssl rand -hex 32
 
@@ -69,12 +67,17 @@ R2_ACCOUNT_ID=
 R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET=mail-attachments
+
+FORWARD_TO=                  # optional: also forward everything to this address
 ```
 
-Leave `AWS_ACCESS_KEY_ID` and `AWS_SECRET_ACCESS_KEY` empty to fall back to the
-instance role or your shared AWS config.
+`BETTER_AUTH_SECRET` also derives the key that encrypts your stored Cloudflare
+token. Changing it later makes that token unreadable.
 
-### IAM permissions the app needs
+Leave the AWS keys empty to use an instance role instead.
+
+<details>
+<summary>The IAM policy this needs</summary>
 
 ```json
 {
@@ -89,278 +92,162 @@ instance role or your shared AWS config.
       "ses:CreateEmailIdentity",
       "ses:DeleteEmailIdentity",
       "ses:PutEmailIdentityDkimAttributes",
-      "ses:PutEmailIdentityMailFromAttributes"
+      "ses:PutEmailIdentityDkimSigningAttributes",
+      "ses:PutEmailIdentityMailFromAttributes",
+      "ses:CreateConfigurationSet",
+      "ses:GetConfigurationSetEventDestinations",
+      "ses:CreateConfigurationSetEventDestination",
+      "ses:UpdateConfigurationSetEventDestination",
+      "sns:CreateTopic",
+      "sns:GetTopicAttributes",
+      "sns:SetTopicAttributes",
+      "sns:Subscribe",
+      "sns:ListSubscriptionsByTopic",
+      "sns:GetSubscriptionAttributes"
     ],
     "Resource": "*"
   }]
 }
 ```
+</details>
 
-## 3. Sign-in
+## 3. Deploy it
 
-GitHub is the only way in. Create an OAuth app at **GitHub → Settings →
-Developer settings → OAuth Apps → New OAuth App**:
+The Dockerfile builds everything, including the worker bundle, and applies
+migrations on boot.
 
-| Field | Value |
-| --- | --- |
-| Homepage URL | `https://mail.example.com` |
-| Authorization callback URL | `https://mail.example.com/api/auth/callback/github` |
-
-Put the client id and secret in `GITHUB_CLIENT_ID` and `GITHUB_CLIENT_SECRET`.
-A GitHub OAuth app allows one callback URL, so make a second app for
-`http://localhost:3000/api/auth/callback/github` if you want to sign in locally.
-
-This is a single-operator dashboard. **The first GitHub account to sign in
-becomes the owner and sign-up closes behind it** — every later attempt is
-refused, so an exposed instance cannot be claimed by a stranger.
-
-To hand the dashboard to a different account, clear the current owner:
-
-```bash
-pnpm reset-owner          # shows what would be deleted
-pnpm reset-owner --yes    # actually clears it
+```sh
+docker build -t mailroom .
+docker run -p 3000:3000 --env-file .env mailroom
 ```
 
-Deleting the owner cascades to their mailboxes, domains and mail.
+On Coolify: point it at your fork, build pack **Dockerfile**, port **3000**,
+paste the environment, deploy.
 
-## 4. Run
+Deploy **before** the next steps. SES and Cloudflare both have to reach a real
+URL, so nothing below works against `localhost`.
 
-```bash
-pnpm dev
-```
+## 4. Sign in
 
-Open http://localhost:3000 and sign in with GitHub. **Settings** then imports your
-existing SES domains automatically; press **Import from SES** any time to refresh.
-Add a mailbox per address you want to send from or receive at.
+Open your URL and sign in with GitHub. That first account becomes the owner
+and registration closes behind you.
 
-## 5. Sending domains
+## 5. Add your sending domains
 
-A domain is usable once SES reports it verified **and** enabled for sending.
+**Settings → Domains**
 
-New domains are set up with a DKIM key this app generates: the private half goes
-to SES and is immediately discarded, only the public half is kept, and you
-publish a single TXT record. Set the selector with `SES_DKIM_SELECTOR`
-(default `mail`).
+Domains already verified in SES import themselves. For a new one, type it in
+and publish the DNS records it shows you — one click copies each.
 
-A domain imported from SES keeps whatever DKIM it already has. One set up with
-Easy DKIM shows its three CNAMEs and offers a **Use one TXT record** button to
-move it onto a generated key. One keyed elsewhere — as useSend does — shows its
-selector as a reference row, since that record is already published and its
-public key is not something SES will tell us.
+A **subdomain of a domain you have already verified** needs nothing: add it
+and it is ready, because SES inherits verification downwards.
 
-The records a domain needs:
+Then press **Set up delivery reporting** on the same screen. That builds the
+SNS topic, wires SES to it and subscribes the app.
 
-| Record | Purpose |
-| --- | --- |
-| TXT on `<selector>._domainkey.<domain>` | DKIM public key |
-| MX on `mail.<domain>` | bounce return path |
-| TXT on `mail.<domain>` | SPF for the return path |
-| TXT on `<domain>` | SPF covering SES sending **and** Cloudflare receiving |
-| TXT on `_dmarc.<domain>` | DMARC policy (optional but recommended) |
+One manual step after it: set `SES_CONFIGURATION_SET=mail-events` in your
+environment and redeploy. SES only reports on a message that was sent with a
+configuration set attached, and that variable is what attaches it. The panel
+shows the topic ARN if you also want to pin `SES_SNS_TOPIC_ARN`.
 
-The root SPF record must cover both directions:
+## 6. Turn on receiving
+
+**Settings → Inbound worker**
+
+Create a Cloudflare API token with these permissions:
 
 ```
-v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all
+Account → Workers Scripts     → Edit
+Account → Workers R2 Storage  → Edit
+Zone    → Zone                → Read
+Zone    → Zone Settings       → Edit
+Zone    → Email Routing Rules → Edit
+Zone    → DNS                 → Edit
 ```
 
-### Getting these records published
+**Zone Settings is easy to miss.** Cloudflare gates turning Email Routing on
+behind it, not behind the Email Routing permission.
 
-Add them at your DNS host by hand. Click any value in the table to copy it; the
-name column shows the short form your host expects and copies the full hostname.
-This app never writes to your DNS provider and stores no provider credentials.
+Paste the token, press **Deploy worker**, then **Receive mail here** on each
+domain.
 
-## 6. Delivery events (bounces and complaints)
+> Turning a zone on replaces its MX records with Cloudflare's. Anything
+> receiving mail on that domain today stops. Set `FORWARD_TO` first if you
+> want a copy to keep reaching your old inbox.
 
-Two scripts do this for you, using the keys already in `.env`:
+## 7. Make a mailbox
 
-```bash
-pnpm ses:status    # read-only: account, identities, config sets, topics
-pnpm ses:setup     # creates the configuration set, SNS topic and event destination
-```
+**Settings → Mailboxes.** Add `you@yourdomain.com` and send yourself
+something.
 
-`ses:setup` is safe to re-run — it creates only what is missing and appends to the
-SNS topic policy rather than replacing it. It writes `SES_CONFIGURATION_SET` and
-`SES_SNS_TOPIC_ARN` back into `.env`.
+Tick **Catch-all** to collect every unclaimed address on that domain in one
+inbox, or switch on **Capture every address** for the domain to give each one
+its own mailbox.
 
-Once the app is live on a public HTTPS URL, point SNS at it:
+## Sending from your own code
 
-```bash
-node scripts/ses-setup-events.mjs --endpoint https://your-app/api/ses/events
-```
+**Settings → API keys.** A key that is not locked to one mailbox can send as
+any address on a verified domain, creating the mailbox on first use.
 
-AWS calls that URL straight away and the app confirms the subscription itself.
-
-The endpoint verifies the AWS signature on every payload, confirms the
-subscription itself, records each event, updates the message status, and adds
-hard bounces and complaints to the blocked list so nothing mails them again.
-
-## 7. Receiving mail (Cloudflare)
-
-All of this happens in **Settings → Inbound**. Connect a Cloudflare API token
-once, and the dashboard uploads the worker and switches domains on for you.
-There is no wrangler step and nothing to deploy separately.
-
-The token needs:
-
-| Permission | Scope |
-| --- | --- |
-| Workers Scripts → Edit | account |
-| Workers R2 Storage → Edit | account |
-| Zone → Read | the zones you want to receive on |
-| Email Routing → Edit | the same zones |
-| DNS → Edit | the same zones |
-
-Then:
-
-1. **Deploy worker** uploads the bundled script with its R2 binding, the app
-   URL and the shared secret attached. **Redeploy** pushes a newer bundle;
-   **Delete** removes it from Cloudflare.
-2. **Receive mail here**, per domain, turns on Email Routing and points its
-   catch-all at the worker.
-
-The worker is bundled into the app at build time by `pnpm worker:bundle`,
-which `prebuild` runs for you, so the script the dashboard uploads is always
-the one in `worker/src`.
-
-### Doing it by hand instead
-
-```bash
-cd worker
-npx wrangler r2 bucket create mail-attachments
-# edit worker/wrangler.toml -> APP_INBOUND_URL = "https://mail.yourdomain.com/api/inbound"
-npx wrangler secret put INBOUND_WEBHOOK_SECRET   # same value as the app's .env
-npx wrangler deploy
-```
-
-Then per domain: **Email → Email Routing → Enable**, then a routing rule or
-catch-all with the action **Send to a Worker** → `mail-inbound`.
-
-Flow: Cloudflare receives → worker parses MIME → attachments to R2 → signed JSON
-POST to `/api/inbound` → rows in Postgres.
-
-### Keeping a copy in Gmail
-
-A routing rule has one action, so it cannot both forward and call the worker.
-The worker does the forwarding instead: set `FORWARD_TO` in `worker/wrangler.toml`
-to one or more comma-separated addresses and every message is stored **and**
-sent on.
-
-Each address has to be verified first under **Email Routing → Destination
-addresses**. Forwarding runs after the message is stored, so a forwarding
-failure makes Cloudflare retry the whole delivery; the app deduplicates on
-`Message-ID`, so the message is not stored twice.
-
-With `FORWARD_TO` set, mail for an address no mailbox owns is forwarded rather
-than bounced.
-
-The app answers `202` when no local mailbox owns the address, and the worker then
-rejects with `550 5.1.1`. Any other failure makes the worker throw, so Cloudflare
-retries instead of dropping mail.
-
-## 8. Deploying
-
-The `Dockerfile` is a three-stage build producing a ~330 MB image that runs as a
-non-root user. `NEXT_PUBLIC_APP_URL` is baked in at build time, since it ends up
-in the client bundle; everything else is read at run time.
-
-On Coolify:
-
-1. New resource → **Docker Compose** or **Dockerfile**, pointed at the GitHub repo
-2. Build argument: `NEXT_PUBLIC_APP_URL=https://mail.example.com`
-3. Environment variables: copy `.env.production.example` and fill it in
-4. Port `3000`, domain `mail.example.com`, HTTPS on
-5. Health check path `/api/health`
-
-Migrations run on boot from `src/instrumentation.ts`, so a deploy applies any new
-ones by itself. Drizzle records what it has applied, so restarts are no-ops. Set
-`RUN_MIGRATIONS_ON_BOOT=false` to take that over yourself.
-
-`GET /api/health` returns `{"status":"ok","database":"up"}`, or 503 if the
-database is unreachable.
-
-## 9. Using the API
-
-Create a key in **Settings → API keys**. It is shown once.
-
-```bash
-curl -X POST https://your-app/api/v1/emails \
+```sh
+curl -X POST https://mail.yourdomain.com/api/v1/emails \
   -H "Authorization: Bearer mk_live_..." \
   -H "Content-Type: application/json" \
   -d '{
-    "from": "hello@acme.com",
+    "from": "noreply@yourdomain.com",
     "to": ["someone@example.com"],
-    "cc": ["copy@example.com"],
-    "reply_to": "support@acme.com",
     "subject": "Hello",
-    "html": "<p>Sent through SES</p>",
-    "text": "Sent through SES",
-    "attachments": [
-      { "filename": "invoice.pdf", "content": "<base64>", "content_type": "application/pdf" }
-    ]
+    "html": "<p>Sent through SES</p>"
   }'
 ```
 
-Returns `202` with `{ id, message_id, ses_message_id, thread_id }`. Everything sent
-this way also lands in that mailbox's **Sent** folder.
+- `GET /api/v1/emails/:id` — delivery status and the SES event trail
+- `GET /api/v1/domains` — your sending domains and their records
 
-| Code | Meaning |
-| --- | --- |
-| 401 | missing, unknown, or revoked key |
-| 403 | `from` is not a mailbox on this account, or the key is locked elsewhere |
-| 409 | domain not verified, or a recipient is on the blocked list |
-| 422 | body failed validation |
-| 502 | SES refused the message |
+## Running it locally
 
-## 10. Security notes
+```sh
+pnpm install
+cp .env.example .env     # fill it in
+pnpm db:migrate
+pnpm dev
+```
 
-- `/api/inbound` verifies an HMAC over `timestamp.body` and rejects anything older
-  than 5 minutes, so the endpoint cannot be spoofed or replayed.
-- `/api/ses/events` verifies the AWS SNS signature and only accepts signing
-  certificates served from an `sns.<region>.amazonaws.com` host.
-- API keys are stored as SHA-256 hashes; the raw token exists only in the response
-  that creates it.
-- Email HTML renders in an iframe with no `allow-scripts`, and inline handlers,
-  `<script>`, `<iframe>`, and `javascript:` URLs are stripped before render.
-- Remote images are held back until you click **Show images**, which blocks the
-  usual open-tracking pixels.
-- Attachments are served through short-lived signed R2 URLs, checked against your
-  session first.
+Sending works locally. Receiving does not: Cloudflare cannot reach your
+laptop, so deploy it somewhere to test inbound mail.
 
 ## Commands
 
-| Command | What it does |
+| | |
 | --- | --- |
-| `pnpm dev` | dev server |
-| `pnpm build` | production build |
-| `pnpm lint` / `pnpm format` | Biome check / write |
-| `pnpm typecheck` | `tsc --noEmit` |
-| `pnpm db:generate` | new migration from schema changes |
-| `pnpm db:migrate` | apply migrations |
-| `pnpm db:push` | push the schema straight to a dev database |
-| `pnpm db:studio` | Drizzle Studio |
-| `pnpm worker:dev` | run the email worker locally |
-| `pnpm worker:deploy` | deploy the email worker |
+| `pnpm dev` | Development server |
+| `pnpm build` | Bundle the worker, then build |
+| `pnpm db:generate` | Generate a migration from schema changes |
+| `pnpm db:migrate` | Apply migrations |
+| `pnpm db:studio` | Browse the database |
+| `pnpm lint` / `pnpm format` | Biome |
+| `pnpm typecheck` | TypeScript |
+| `pnpm reset-owner --yes` | Release the owner slot so another account can claim it |
 
-## Layout
+## Worth knowing
 
-```
-src/
-  app/
-    (mail)/mail/[[...slug]]   scope + folder + thread view
-    (mail)/settings           one page each: domains, mailboxes, api-keys,
-                              blocked, labels, filters, account
-    api/inbound               signed webhook from the Cloudflare worker
-    api/ses/events            SNS delivery events
-    api/v1/emails             public send API
-    api/v1/domains            public domain listing
-    api/upload                staged compose attachments
-    api/attachments/[id]      signed R2 download
-    api/counts                sidebar badges
-  components/mail/            shell, list, reading pane, composer, settings panels
-  db/schema.ts                Drizzle schema
-  lib/                        auth, SES, MIME, R2, SNS, scope, sanitiser
-  server/                     queries, actions, domains, send, ingest
-worker/                       Cloudflare Email Worker
-scripts/                      one-off maintenance scripts
-```
+- **One owner.** Later sign-ins are rejected, not queued for approval.
+- **Secrets are encrypted** before storage, keyed from `BETTER_AUTH_SECRET`.
+- **The inbound webhook is signed** — HMAC over timestamp and body, with a
+  freshness window, so only your worker can post mail.
+- **Message bodies are sandboxed** in a script-free iframe and remote images
+  are blocked until you ask for them.
+- **An R2 custom domain makes raw messages public.** Leave the bucket private
+  and let the app serve attachments.
+- **Watch your bounce rate.** SES suspends accounts above 5% bounces or 0.1%
+  complaints. The overview shows both against those thresholds.
+
+## Built with
+
+Next.js 15 · React 19 · Tailwind v4 with a hand-built kit on Radix ·
+Drizzle + Postgres · better-auth · Amazon SES v2 · Cloudflare Workers, Email
+Routing and R2 · Biome
+
+## Licence
+
+MIT
