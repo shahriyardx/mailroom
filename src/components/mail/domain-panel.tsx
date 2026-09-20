@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import type { Domain } from "@/db/schema";
-import type { DnsRecord } from "@/lib/ses";
+import { type DnsRecord, relativeName } from "@/lib/ses";
 import { cn } from "@/lib/utils";
 import {
   addDomainAction,
@@ -262,28 +262,39 @@ function DomainRowItem({ row }: { row: DomainRow }) {
             usually verifies minutes after the CNAMEs go live.
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[52rem] table-auto text-left text-[11.5px]">
+            <table className="w-full text-left text-[11.5px]">
               <thead>
                 <tr className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">
-                  <th className="py-1 pr-3 font-normal">type</th>
+                  <th className="w-14 py-1 pr-2 font-normal">type</th>
                   <th className="py-1 pr-3 font-normal">name</th>
                   <th className="py-1 pr-3 font-normal">value</th>
-                  <th className="w-44 py-1 font-normal">purpose</th>
+                  <th className="w-16 py-1 pr-2 text-right font-normal">priority</th>
+                  <th className="w-40 py-1 font-normal">purpose</th>
                 </tr>
               </thead>
               <tbody>
                 {row.records.map((record) => (
-                  <tr key={`${record.kind}-${record.name}-${record.value}`} className="border-t">
-                    <td className="py-1 pr-3 font-mono">{record.kind}</td>
-                    <td className="py-1 pr-3">
-                      <CopyCell value={record.name} />
+                  <tr
+                    key={`${record.kind}-${record.name}-${record.value}`}
+                    className="border-t align-top"
+                  >
+                    <td className="w-14 py-1.5 pr-2 font-mono text-muted-foreground">
+                      {record.kind}
                     </td>
-                    <td className="py-1 pr-3">
+                    <td className="py-1.5 pr-3">
+                      <CopyCell value={relativeName(record.name, row.name)} copy={record.name} />
+                    </td>
+                    <td className="py-1.5 pr-3">
                       <CopyCell value={record.value} />
                     </td>
-                    <td className="w-44 whitespace-nowrap py-1 text-muted-foreground">
+                    <td className="w-16 py-1.5 pr-2 text-right font-mono text-muted-foreground">
+                      {record.priority ?? "—"}
+                    </td>
+                    <td className="w-40 py-1.5 text-muted-foreground">
                       {record.purpose}
-                      {!record.required && " (optional)"}
+                      {!record.required && (
+                        <span className="text-muted-foreground/60"> (optional)</span>
+                      )}
                     </td>
                   </tr>
                 ))}
@@ -296,25 +307,30 @@ function DomainRowItem({ row }: { row: DomainRow }) {
   );
 }
 
-function CopyCell({ value }: { value: string }) {
+/**
+ * Shows one value and copies it on click. `copy` overrides what lands on the
+ * clipboard, so a name can display as "mail" but copy as the full hostname for
+ * DNS hosts that want it written out.
+ */
+function CopyCell({ value, copy }: { value: string; copy?: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       type="button"
-      title="Copy"
+      title={`Copy ${copy ?? value}`}
       onClick={() => {
-        navigator.clipboard.writeText(value).then(() => {
+        navigator.clipboard.writeText(copy ?? value).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      className="group flex max-w-[20rem] items-center gap-1.5 rounded-[3px] px-1 py-0.5 text-left font-mono hover:bg-accent"
+      className="group flex w-full items-start gap-1.5 rounded-[3px] px-1 py-0.5 text-left font-mono hover:bg-accent"
     >
-      <span className="truncate">{value}</span>
+      <span className="min-w-0 break-all">{value}</span>
       {copied ? (
-        <Check className="size-3 shrink-0 text-ok" />
+        <Check className="mt-0.5 size-3 shrink-0 text-ok" />
       ) : (
-        <Copy className="size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
+        <Copy className="mt-0.5 size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
       )}
     </button>
   );

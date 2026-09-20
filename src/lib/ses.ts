@@ -165,8 +165,11 @@ export async function sendRawEmail(options: {
 /** DNS records the user has to publish for a domain to work end to end. */
 export interface DnsRecord {
   kind: "CNAME" | "TXT" | "MX";
+  /** Fully qualified record name. */
   name: string;
+  /** Record content only. MX priority is kept separate, as DNS hosts ask for it separately. */
   value: string;
+  priority?: number;
   purpose: string;
   required: boolean;
 }
@@ -189,14 +192,15 @@ export function dnsRecordsFor(options: {
     records.push({
       kind: "MX",
       name: options.mailFromDomain,
-      value: `10 feedback-smtp.${options.region}.amazonses.com`,
+      value: `feedback-smtp.${options.region}.amazonses.com`,
+      priority: 10,
       purpose: "Bounce return path",
       required: true,
     });
     records.push({
       kind: "TXT",
       name: options.mailFromDomain,
-      value: '"v=spf1 include:amazonses.com ~all"',
+      value: "v=spf1 include:amazonses.com ~all",
       purpose: "SPF for return path",
       required: true,
     });
@@ -205,7 +209,7 @@ export function dnsRecordsFor(options: {
   records.push({
     kind: "TXT",
     name: options.domain,
-    value: '"v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all"',
+    value: "v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all",
     purpose: "SPF for SES + Cloudflare",
     required: true,
   });
@@ -213,7 +217,7 @@ export function dnsRecordsFor(options: {
   records.push({
     kind: "TXT",
     name: `_dmarc.${options.domain}`,
-    value: `"v=DMARC1; p=none; rua=mailto:dmarc@${options.domain}"`,
+    value: `v=DMARC1; p=none; rua=mailto:dmarc@${options.domain}`,
     purpose: "DMARC policy",
     required: false,
   });
@@ -222,6 +226,15 @@ export function dnsRecordsFor(options: {
 }
 
 /** SES status strings map onto our own enum. */
+/**
+ * Shortens a record name against its zone, the way every DNS dashboard does:
+ * mail.acme.com becomes "mail", and the apex becomes "@".
+ */
+export function relativeName(name: string, zone: string) {
+  if (name === zone) return "@";
+  return name.endsWith(`.${zone}`) ? name.slice(0, -(zone.length + 1)) : name;
+}
+
 export function toDomainStatus(value: string | null | undefined) {
   switch ((value ?? "").toUpperCase()) {
     case "SUCCESS":
