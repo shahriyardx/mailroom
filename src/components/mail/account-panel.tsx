@@ -19,7 +19,7 @@ export function AccountPanel({ name, email, createdAt, mailboxCount, domainCount
   const [pending, setPending] = useState(false);
 
   return (
-    <Panel title="Account" description="The login this mail app is tied to.">
+    <Panel title="Signed in as" description="The login this mail app is tied to.">
       <List>
         <Row label="Name" value={name} />
         <Row label="Email" value={email} mono />

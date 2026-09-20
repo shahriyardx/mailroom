@@ -66,7 +66,7 @@ export function InboundPanel({ status, connection }: Props) {
   return (
     <>
       <Panel
-        title="Inbound worker"
+        title="The worker"
         description="The Cloudflare worker that receives your mail, stores attachments and hands each message to this app."
         action={
           <div className="flex shrink-0 items-center gap-2">

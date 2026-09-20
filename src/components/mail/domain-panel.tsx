@@ -94,7 +94,7 @@ export function DomainPanel({ domains, account, syncError }: Props) {
 
   return (
     <Panel
-      title="Domains"
+      title="Sending identities"
       description="Sending identities in Amazon SES. Import what is already verified, or add a new one."
       action={
         <Button variant="outline" pill onClick={importNow} loading={pending}>

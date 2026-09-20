@@ -81,7 +81,7 @@ export function MailboxPanel({
 
   return (
     <Panel
-      title="Mailboxes"
+      title="Addresses"
       description="One row per address you send from or receive at. There is no limit."
       meta={`${mailboxes.length} active`}
     >
@@ -298,7 +298,7 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
 
   return (
     <Panel
-      title="Labels"
+      title="Your labels"
       description="Tag conversations so you can find them again."
       meta={`${labels.length}`}
     >
@@ -391,7 +391,7 @@ export function RulePanel({
 
   return (
     <Panel
-      title="Filters"
+      title="Rules"
       description="Applied to inbound mail before it reaches the inbox."
       meta={`${rules.length}`}
     >

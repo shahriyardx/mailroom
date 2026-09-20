@@ -19,7 +19,7 @@ export function SuppressionPanel({ rows }: { rows: Row[] }) {
 
   return (
     <Panel
-      title="Blocked addresses"
+      title="Suppression list"
       description="Added automatically after a hard bounce or a spam complaint. Sending to these is refused."
       meta={`${rows.length}`}
     >

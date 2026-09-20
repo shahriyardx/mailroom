@@ -42,7 +42,7 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
 
   return (
     <Panel
-      title="API keys"
+      title="Your keys"
       description="Send from your own code. Keys are stored hashed, so a key is shown once and never again."
       meta={`${keys.filter((item) => !item.revokedAt).length} active`}
     >
