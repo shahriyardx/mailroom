@@ -47,6 +47,7 @@ export {
 export { EmptyState, Skeleton } from "./empty";
 export { Field, InputGroup, Label } from "./field";
 export { Input, Textarea } from "./input";
+export { Logo, MailroomMark, Wordmark } from "./logo";
 export { Fieldset, FieldsetActions, List, ListEmpty, ListRow, Note } from "./list";
 export { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "./popover";
 export { ScrollArea, ScrollBar } from "./scroll-area";

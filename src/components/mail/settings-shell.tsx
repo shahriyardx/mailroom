@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, IconButton, Sheet, SheetContent, SheetTitle } from "@/components/kit";
+import { Avatar, IconButton, Sheet, SheetContent, SheetTitle, Wordmark } from "@/components/kit";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -10,7 +10,6 @@ import {
   Inbox,
   KeyRound,
   Mail,
-  Mails,
   Menu,
   ShieldOff,
   SlidersHorizontal,
@@ -123,14 +122,8 @@ function SettingsNavPanel({
 }) {
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-2 px-4">
-        <span className="grid size-7 place-items-center rounded-[9px] bg-primary text-primary-foreground">
-          <Mails className="size-4" />
-        </span>
-        <span className="font-display text-[15px] tracking-[-0.02em]">
-          <span className="font-semibold">post</span>
-          <span className="text-muted-foreground"> mail</span>
-        </span>
+      <div className="flex h-14 shrink-0 items-center px-4">
+        <Wordmark />
       </div>
 
       <div className="px-2.5 pb-4">

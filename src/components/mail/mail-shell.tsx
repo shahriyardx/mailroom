@@ -18,6 +18,7 @@ import {
   Tabs,
   TabsList,
   TabsTrigger,
+  Wordmark,
 } from "@/components/kit";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
@@ -39,7 +40,6 @@ import {
   Inbox,
   Layers,
   LogOut,
-  Mails,
   Menu,
   Moon,
   PenLine,
@@ -356,14 +356,8 @@ function NavPanel({
 }) {
   return (
     <>
-      <div className="flex h-14 shrink-0 items-center gap-2 px-4">
-        <span className="grid size-7 place-items-center rounded-[9px] bg-primary text-primary-foreground">
-          <Mails className="size-4" />
-        </span>
-        <span className="font-display text-[15px] tracking-[-0.02em]">
-          <span className="font-semibold">post</span>
-          <span className="text-muted-foreground"> mail</span>
-        </span>
+      <div className="flex h-14 shrink-0 items-center px-4">
+        <Wordmark />
       </div>
 
       <div className="px-3 pb-3">

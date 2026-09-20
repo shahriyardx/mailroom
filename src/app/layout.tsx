@@ -26,7 +26,7 @@ const mono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Mail",
+  title: "Mailroom",
   description: "Self-hosted mail on Amazon SES and Cloudflare",
 };
 

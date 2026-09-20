@@ -1,5 +1,6 @@
 "use client";
 
+import { Wordmark } from "@/components/kit";
 import { authClient } from "@/lib/auth-client";
 import { ArrowRight, Github, Loader2, Lock } from "lucide-react";
 import { useState } from "react";
@@ -53,7 +54,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
 
       <div className="relative w-full max-w-[26rem]">
         <header className="mb-8">
-          <p className="eyebrow mb-3">self-hosted mail</p>
+          <Wordmark size="lg" className="mb-6" />
           <h1 className="font-display text-[2rem] leading-[1.1] tracking-[-0.03em]">
             Your domains.
             <br />
