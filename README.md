@@ -125,6 +125,30 @@ The root SPF record must cover both directions:
 v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all
 ```
 
+### Publishing DNS with one click
+
+Set `CLOUDFLARE_API_TOKEN` and each domain gets a **Publish DNS** button that
+writes every record above straight into Cloudflare.
+
+Create the token at **Cloudflare → My Profile → API Tokens → Create Token →
+Custom token** with:
+
+| Permission | Scope |
+| --- | --- |
+| Zone → Zone → Read | the zones you want to manage |
+| Zone → DNS → Edit | the same zones |
+
+It is careful with what is already there:
+
+- DKIM CNAMEs and the MAIL FROM MX are created, or updated if they point elsewhere.
+- An existing SPF record is **merged**, never duplicated — two SPF records on one
+  name is a hard failure. Your other includes and your `-all` / `~all` are kept.
+- An existing DMARC policy is left alone and reported as skipped, since
+  overwriting someone's policy is not the app's call.
+- Records already correct are reported as unchanged and not rewritten.
+
+Each record comes back labelled created, updated, unchanged, skipped or failed.
+
 ## 5. Delivery events (bounces and complaints)
 
 Two scripts do this for you, using the keys already in `.env`:

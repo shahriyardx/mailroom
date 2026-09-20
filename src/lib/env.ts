@@ -33,6 +33,12 @@ export const env = {
       return process.env.SES_MAIL_FROM_PREFIX ?? "mail";
     },
   },
+  cloudflare: {
+    /** Optional: enables one-click DNS publishing. Needs Zone:Read + DNS:Edit. */
+    get apiToken() {
+      return process.env.CLOUDFLARE_API_TOKEN ?? "";
+    },
+  },
   get inboundSecret() {
     return required("INBOUND_WEBHOOK_SECRET");
   },

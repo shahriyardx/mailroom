@@ -8,13 +8,16 @@ import { cn } from "@/lib/utils";
 import {
   addDomainAction,
   importDomainsAction,
+  publishDnsAction,
   refreshDomainAction,
   removeDomainAction,
 } from "@/server/actions";
+import type { PublishResult } from "@/server/domains";
 import {
   AlertTriangle,
   Check,
   ChevronDown,
+  CloudUpload,
   Copy,
   DownloadCloud,
   Loader2,
@@ -31,6 +34,8 @@ export interface DomainRow extends Domain {
 
 interface Props {
   domains: DomainRow[];
+  /** True when CLOUDFLARE_API_TOKEN is set, which enables one-click publishing. */
+  cloudflareReady: boolean;
   account: {
     productionAccess: boolean;
     enforcementStatus: string;
@@ -41,7 +46,7 @@ interface Props {
   syncError?: string;
 }
 
-export function DomainPanel({ domains, account, syncError }: Props) {
+export function DomainPanel({ domains, account, syncError, cloudflareReady }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [name, setName] = useState("");
@@ -123,7 +128,7 @@ export function DomainPanel({ domains, account, syncError }: Props) {
 
       <div className="divide-y rounded-sm border">
         {domains.map((row) => (
-          <DomainRowItem key={row.id} row={row} />
+          <DomainRowItem key={row.id} row={row} cloudflareReady={cloudflareReady} />
         ))}
         {domains.length === 0 && (
           <div className="px-3 py-3">
@@ -161,10 +166,34 @@ export function DomainPanel({ domains, account, syncError }: Props) {
   );
 }
 
-function DomainRowItem({ row }: { row: DomainRow }) {
+function DomainRowItem({
+  row,
+  cloudflareReady,
+}: {
+  row: DomainRow;
+  cloudflareReady: boolean;
+}) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [open, setOpen] = useState(row.status !== "verified");
+  const [publishing, setPublishing] = useState(false);
+  const [published, setPublished] = useState<
+    { zone: string; results: PublishResult[] } | { error: string } | null
+  >(null);
+
+  function publish() {
+    setPublished(null);
+    setPublishing(true);
+    setOpen(true);
+    start(async () => {
+      const result = await publishDnsAction(row.id);
+      setPublished(
+        result.ok ? { zone: result.zone, results: result.results } : { error: result.error },
+      );
+      setPublishing(false);
+      router.refresh();
+    });
+  }
 
   const verified = row.status === "verified" && row.sendingEnabled;
 
@@ -204,6 +233,23 @@ function DomainRowItem({ row }: { row: DomainRow }) {
           <StatusPill state={row.dmarcVerified ? "ok" : "pending"}>dmarc</StatusPill>
         </div>
 
+        {cloudflareReady && (
+          <button
+            type="button"
+            title="Create these records in Cloudflare"
+            className="flex items-center gap-1 rounded-[3px] border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+            onClick={publish}
+            disabled={publishing}
+          >
+            {publishing ? (
+              <Loader2 className="size-3 animate-spin" />
+            ) : (
+              <CloudUpload className="size-3" />
+            )}
+            Publish DNS
+          </button>
+        )}
+
         <button
           type="button"
           title="Check status now"
@@ -242,8 +288,48 @@ function DomainRowItem({ row }: { row: DomainRow }) {
 
       {open && (
         <div className="border-t bg-background px-3 py-2.5">
+          {published && "error" in published && (
+            <p className="mb-2 rounded-[3px] border border-destructive/30 bg-destructive/10 px-2 py-1.5 text-[11.5px] text-destructive">
+              {published.error}
+            </p>
+          )}
+
+          {published && "results" in published && (
+            <div className="mb-2 rounded-[3px] border bg-card p-2">
+              <p className="mb-1 text-[11.5px]">
+                Published into Cloudflare zone <span className="font-mono">{published.zone}</span>
+              </p>
+              <ul className="space-y-0.5">
+                {published.results.map((item) => (
+                  <li
+                    key={`${item.kind}-${item.name}`}
+                    className="flex flex-wrap items-center gap-1.5 text-[11px]"
+                  >
+                    <StatusPill
+                      state={
+                        item.status === "failed"
+                          ? "bad"
+                          : item.status === "skipped"
+                            ? "pending"
+                            : "ok"
+                      }
+                    >
+                      {item.status}
+                    </StatusPill>
+                    <span className="font-mono text-muted-foreground">
+                      {item.kind} {item.name}
+                    </span>
+                    {item.detail && <span className="text-muted-foreground">— {item.detail}</span>}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           <p className="mb-2 text-[11.5px] text-muted-foreground">
-            Publish these at your DNS host. SES usually verifies minutes after the CNAMEs go live.
+            {cloudflareReady
+              ? "Press Publish DNS to create these in Cloudflare, or copy them to another host."
+              : "Publish these at your DNS host. SES usually verifies minutes after the CNAMEs go live."}
           </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-[44rem] text-left text-[11.5px]">

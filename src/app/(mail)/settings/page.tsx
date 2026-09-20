@@ -64,6 +64,7 @@ export default async function SettingsPage() {
           domains={domains}
           account={account}
           syncError={sync.ok ? undefined : sync.error}
+          cloudflareReady={Boolean(env.cloudflare.apiToken)}
         />
         <MailboxPanel mailboxes={mailboxes} domains={sync.rows} />
         <ApiKeyPanel keys={keys} mailboxes={mailboxes} appUrl={env.appUrl} />
