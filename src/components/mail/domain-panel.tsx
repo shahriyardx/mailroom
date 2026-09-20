@@ -85,7 +85,6 @@ export function DomainPanel({ domains, account, syncError }: Props) {
     <Panel
       title="Domains"
       description="Sending identities in Amazon SES. Import what is already verified, or add a new one."
-      meta={`${domains.length}`}
       action={
         <Button
           size="sm"
@@ -165,12 +164,28 @@ export function DomainPanel({ domains, account, syncError }: Props) {
   );
 }
 
+/** The individual things SES and DNS have to agree on before a domain works. */
+function checksFor(row: DomainRow) {
+  return [
+    { key: "dkim", ok: row.dkimStatus === "verified", required: true },
+    ...(row.mailFromDomain
+      ? [{ key: "mail-from", ok: row.mailFromStatus === "verified", required: true }]
+      : []),
+    { key: "spf", ok: row.spfVerified, required: false },
+    { key: "dmarc", ok: row.dmarcVerified, required: false },
+  ];
+}
+
 function DomainRowItem({ row }: { row: DomainRow }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [open, setOpen] = useState(row.status !== "verified");
 
   const verified = row.status === "verified" && row.sendingEnabled;
+  const checks = checksFor(row);
+  const blocking = checks.filter((check) => check.required && !check.ok);
+
+  // Only something that actually stops mail is worth opening a row for.
+  const [open, setOpen] = useState(!verified || blocking.length > 0);
 
   return (
     <div>
@@ -185,43 +200,38 @@ function DomainRowItem({ row }: { row: DomainRow }) {
         </button>
 
         <div className="min-w-0 flex-1">
-          <p className="truncate font-mono text-[12.5px]">{row.name}</p>
-          <p className="truncate text-[11px] text-muted-foreground">
+          <p className="truncate font-mono text-[13px]">{row.name}</p>
+          <p
+            className="truncate text-[11px] text-muted-foreground"
+            title={
+              row.lastCheckedAt ? `Last checked ${row.lastCheckedAt.toLocaleString()}` : undefined
+            }
+          >
             {row.region}
             {row.importedAt && " · imported"}
-            {row.lastCheckedAt && ` · checked ${row.lastCheckedAt.toLocaleTimeString()}`}
           </p>
         </div>
 
-        <div className="flex flex-wrap items-center gap-1">
-          <StatusPill state={verified ? "ok" : row.status === "failed" ? "bad" : "pending"}>
-            {verified && <Check className="size-2.5" />}
-            {verified ? "verified" : row.status}
+        {/* One pill when a domain is done. The outstanding items only, when it
+            is not. Repeating five green chips per row says nothing. */}
+        {verified && blocking.length === 0 ? (
+          <StatusPill state="ok">
+            <Check className="size-2.5" />
+            ready
           </StatusPill>
-          <StatusPill state={row.dkimStatus === "verified" ? "ok" : "pending"}>dkim</StatusPill>
-          {row.mailFromDomain && (
-            <StatusPill state={row.mailFromStatus === "verified" ? "ok" : "pending"}>
-              mail-from
-            </StatusPill>
-          )}
-          <StatusPill state={row.spfVerified ? "ok" : "pending"}>spf</StatusPill>
-          <StatusPill state={row.dmarcVerified ? "ok" : "pending"}>dmarc</StatusPill>
-        </div>
-
-        {row.dkimOrigin !== "EXTERNAL" && row.dkimTokens.length > 1 && (
-          <button
-            type="button"
-            title="Replace the three DKIM CNAMEs with one TXT record"
-            className="whitespace-nowrap rounded-lg border px-1.5 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
-            onClick={() =>
-              start(async () => {
-                await useOwnDkimKeyAction(row.id);
-                router.refresh();
-              })
-            }
-          >
-            Use one TXT record
-          </button>
+        ) : (
+          <div className="flex flex-wrap items-center gap-1">
+            {!verified && (
+              <StatusPill state={row.status === "failed" ? "bad" : "pending"}>
+                {row.status}
+              </StatusPill>
+            )}
+            {blocking.length > 0 && (
+              <StatusPill state="pending">
+                {blocking.map((check) => check.key).join(" · ")} pending
+              </StatusPill>
+            )}
+          </div>
         )}
 
         <button
@@ -262,9 +272,53 @@ function DomainRowItem({ row }: { row: DomainRow }) {
 
       {open && (
         <div className="border-t bg-background px-3 py-2.5">
+          <div className="mb-2.5 flex flex-wrap items-center gap-x-3 gap-y-1.5">
+            <ul className="flex flex-wrap items-center gap-x-3 gap-y-1">
+              {checks.map((check) => (
+                <li
+                  key={check.key}
+                  className={cn(
+                    "flex items-center gap-1.5 text-[11.5px]",
+                    check.ok ? "text-ok" : "text-muted-foreground",
+                  )}
+                >
+                  {check.ok ? (
+                    <Check className="size-3" />
+                  ) : (
+                    <span
+                      className={cn(
+                        "size-1.5 rounded-full",
+                        check.required ? "bg-warn" : "bg-muted-foreground/45",
+                      )}
+                    />
+                  )}
+                  {check.key}
+                  {!check.required && !check.ok && (
+                    <span className="text-muted-foreground/70">optional</span>
+                  )}
+                </li>
+              ))}
+            </ul>
+
+            {row.dkimOrigin !== "EXTERNAL" && row.dkimTokens.length > 1 && (
+              <button
+                type="button"
+                title="Replace the three DKIM CNAMEs with one TXT record"
+                className="ml-auto whitespace-nowrap rounded-lg border px-2 py-1 text-[11px] text-muted-foreground transition hover:bg-accent hover:text-foreground"
+                onClick={() =>
+                  start(async () => {
+                    await useOwnDkimKeyAction(row.id);
+                    router.refresh();
+                  })
+                }
+              >
+                Use one TXT record
+              </button>
+            )}
+          </div>
+
           <p className="mb-2 text-[11.5px] text-muted-foreground">
-            Add these at your DNS host. Click any value to copy it. SES usually verifies minutes
-            after the CNAMEs go live.
+            Add these at your DNS host. Click any value to copy it.
           </p>
           <div className="overflow-x-auto">
             <table className="w-full min-w-max text-left text-[11.5px]">
