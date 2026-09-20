@@ -32,13 +32,14 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en" suppressHydrationWarning>
+    <html lang="en" className="dark" suppressHydrationWarning>
       <head>
         <script
-          // Applies the saved theme before paint so there is no flash of the wrong colours.
+          // Applies the saved theme before paint so there is no flash of the
+          // wrong colours. Dark unless this browser has chosen otherwise.
           // biome-ignore lint/security/noDangerouslySetInnerHtml: required for pre-paint theme
           dangerouslySetInnerHTML={{
-            __html: `try{var t=localStorage.getItem("theme");if(t==="dark"||(!t&&matchMedia("(prefers-color-scheme:dark)").matches))document.documentElement.classList.add("dark")}catch(e){}`,
+            __html: `try{if(localStorage.getItem("theme")!=="light")document.documentElement.classList.add("dark")}catch(e){document.documentElement.classList.add("dark")}`,
           }}
         />
       </head>

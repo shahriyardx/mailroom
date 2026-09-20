@@ -231,11 +231,16 @@ function ConnectCard() {
           <Plug className="size-4 text-muted-foreground" />
           Create a token with these permissions
         </p>
+        <Note className="mb-2">
+          Zone Settings is the one that is easy to miss: Cloudflare gates reading and turning on
+          Email Routing behind it, not behind the Email Routing permission.
+        </Note>
         <ul className="mb-3 space-y-1 font-mono text-[12px] text-muted-foreground">
           <li>Account → Workers Scripts → Edit</li>
           <li>Account → Workers R2 Storage → Edit</li>
           <li>Zone → Zone → Read</li>
-          <li>Zone → Email Routing → Edit</li>
+          <li>Zone → Zone Settings → Edit</li>
+          <li>Zone → Email Routing Rules → Edit</li>
           <li>Zone → DNS → Edit</li>
         </ul>
 
