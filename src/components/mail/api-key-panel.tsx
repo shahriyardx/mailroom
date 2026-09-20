@@ -24,6 +24,7 @@ import { createApiKeyAction, deleteApiKeyAction, revokeApiKeyAction } from "@/se
 import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 const ANY_MAILBOX = "__any__";
 
@@ -61,10 +62,16 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
               variant="outline"
               label="Copy key"
               onClick={() => {
-                navigator.clipboard.writeText(fresh).then(() => {
-                  setCopied(true);
-                  setTimeout(() => setCopied(false), 1500);
-                });
+                navigator.clipboard.writeText(fresh).then(
+                  () => {
+                    setCopied(true);
+                    setTimeout(() => setCopied(false), 1500);
+                    toast.success("API key copied", {
+                      description: "It will not be shown again.",
+                    });
+                  },
+                  () => toast.error("Could not copy. Select the key and copy it by hand."),
+                );
               }}
             >
               {copied ? <Check className="text-ok" /> : <Copy />}

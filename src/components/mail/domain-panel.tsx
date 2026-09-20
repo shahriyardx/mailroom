@@ -40,6 +40,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
+import { toast } from "sonner";
 
 export interface DomainRow extends Domain {
   records: DnsRecord[];
@@ -470,10 +471,17 @@ function CopyCell({ value, copy }: { value: string; copy?: string }) {
       type="button"
       title={`Copy ${copy ?? value}`}
       onClick={() => {
-        navigator.clipboard.writeText(copy ?? value).then(() => {
-          setCopied(true);
-          setTimeout(() => setCopied(false), 1200);
-        });
+        const text = copy ?? value;
+        navigator.clipboard.writeText(text).then(
+          () => {
+            setCopied(true);
+            setTimeout(() => setCopied(false), 1200);
+            toast.success("Copied", { description: text });
+          },
+          // Clipboard access can be refused outright, and a tick that never
+          // appears is not an explanation.
+          () => toast.error("Could not copy. Select the value and copy it by hand."),
+        );
       }}
       className="group inline-flex max-w-full items-center gap-1.5 rounded-lg px-1 py-0.5 text-left font-mono hover:bg-accent"
     >
