@@ -410,7 +410,7 @@ export function MailShell({
 
               <Button
                 size="sm"
-                className="h-8 gap-1.5 px-2.5 text-[12px]"
+                className="h-8 gap-1.5 rounded-full px-3.5 font-medium text-[12px] shadow-none"
                 onClick={() => composer.open()}
               >
                 <PenLine className="size-3.5" />

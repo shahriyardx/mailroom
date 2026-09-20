@@ -18,7 +18,9 @@ import {
   ArchiveRestore,
   Loader2,
   MailOpen,
+  MailQuestion,
   Paperclip,
+  RefreshCw,
   ShieldAlert,
   Star,
   Trash2,
@@ -67,37 +69,79 @@ export function ThreadList({
   }
 
   const ids = [...selected];
+  const hasSelection = selected.size > 0;
+  const allSelected = items.length > 0 && selected.size === items.length;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {selected.size > 0 && (
-        <div className="flex h-9 shrink-0 items-center gap-0.5 border-b bg-accent/60 px-2">
-          <span className="mr-1 font-mono text-[10px] text-muted-foreground">
-            {selected.size} selected
-          </span>
-          <BulkAction label="Archive" onClick={() => run(() => moveThreadsAction(ids, "archive"))}>
-            <Archive className="size-3.5" />
+      {/* Always present, so the actions are learnable rather than discovered
+          only after selecting something. */}
+      <div className="flex h-10 shrink-0 items-center gap-0.5 border-b px-2.5">
+        <Checkbox
+          checked={allSelected}
+          onCheckedChange={() =>
+            setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
+          }
+          aria-label="Select all"
+          className="mr-1.5 size-4 rounded-md"
+        />
+
+        <BulkAction label="Refresh" onClick={() => run(async () => {})}>
+          <RefreshCw className="size-3.5" />
+        </BulkAction>
+
+        <span className="mx-1 h-4 w-px bg-border" />
+
+        <BulkAction
+          label="Mark read"
+          disabled={!hasSelection}
+          onClick={() => run(() => setReadAction(ids, true))}
+        >
+          <MailOpen className="size-3.5" />
+        </BulkAction>
+        <BulkAction
+          label="Mark unread"
+          disabled={!hasSelection}
+          onClick={() => run(() => setReadAction(ids, false))}
+        >
+          <MailQuestion className="size-3.5" />
+        </BulkAction>
+        <BulkAction
+          label="Archive"
+          disabled={!hasSelection}
+          onClick={() => run(() => moveThreadsAction(ids, "archive"))}
+        >
+          <Archive className="size-3.5" />
+        </BulkAction>
+        {folder !== "inbox" && (
+          <BulkAction
+            label="Move to inbox"
+            disabled={!hasSelection}
+            onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
+          >
+            <ArchiveRestore className="size-3.5" />
           </BulkAction>
-          {folder !== "inbox" && (
-            <BulkAction
-              label="Move to inbox"
-              onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
-            >
-              <ArchiveRestore className="size-3.5" />
-            </BulkAction>
-          )}
-          <BulkAction label="Mark read" onClick={() => run(() => setReadAction(ids, true))}>
-            <MailOpen className="size-3.5" />
-          </BulkAction>
-          <BulkAction label="Report spam" onClick={() => run(() => moveThreadsAction(ids, "spam"))}>
-            <ShieldAlert className="size-3.5" />
-          </BulkAction>
-          <BulkAction label="Delete" onClick={() => run(() => deleteThreadsAction(ids))}>
-            <Trash2 className="size-3.5" />
-          </BulkAction>
-          {pending && <Loader2 className="ml-auto size-3.5 animate-spin text-muted-foreground" />}
-        </div>
-      )}
+        )}
+        <BulkAction
+          label="Report spam"
+          disabled={!hasSelection}
+          onClick={() => run(() => moveThreadsAction(ids, "spam"))}
+        >
+          <ShieldAlert className="size-3.5" />
+        </BulkAction>
+        <BulkAction
+          label="Delete"
+          disabled={!hasSelection}
+          onClick={() => run(() => deleteThreadsAction(ids))}
+        >
+          <Trash2 className="size-3.5" />
+        </BulkAction>
+
+        <span className="ml-auto flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground">
+          {pending && <Loader2 className="size-3.5 animate-spin" />}
+          {hasSelection ? `${selected.size} selected` : `${items.length}`}
+        </span>
+      </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto">
         {items.length === 0 && (
@@ -118,38 +162,77 @@ export function ThreadList({
           const checked = selected.has(item.id);
 
           return (
-            <li key={item.id} className="group relative px-1.5 py-px">
-              <Link
-                href={hrefFor(item.id)}
-                className={cn(
-                  "block rounded-xl px-2.5 py-2.5 transition-colors duration-100",
-                  unread && "unread-bar",
-                  active ? "bg-accent text-accent-foreground" : "hover:bg-accent/55",
-                )}
-              >
-                <div className="flex items-center gap-2.5">
-                  <span
-                    className={cn(
-                      "grid size-6 shrink-0 place-items-center rounded-lg font-mono text-[10px] font-semibold text-white transition-opacity",
-                      checked ? "opacity-0" : "group-hover:opacity-0",
-                    )}
-                    style={{ background: colorOf(sender?.address ?? item.id) }}
-                    aria-hidden
-                  >
-                    {initialsOf(sender?.name || sender?.address || "?")}
-                  </span>
+            <li
+              key={item.id}
+              className={cn(
+                "group relative flex items-start gap-2 border-b px-3 py-2 transition-colors duration-100",
+                unread && "unread-bar",
+                active ? "bg-accent" : "hover:bg-accent/45",
+              )}
+            >
+              <Checkbox
+                checked={checked}
+                onCheckedChange={() =>
+                  setSelected((current) => {
+                    const next = new Set(current);
+                    if (next.has(item.id)) next.delete(item.id);
+                    else next.add(item.id);
+                    return next;
+                  })
+                }
+                aria-label={`Select ${item.subject || "conversation"}`}
+                className="mt-1 size-4 shrink-0 rounded-md"
+              />
 
+              <button
+                type="button"
+                onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
+                aria-label={item.isStarred ? "Unstar" : "Star"}
+                className="mt-0.5 shrink-0 rounded-md p-0.5"
+              >
+                <Star
+                  className={cn(
+                    "size-3.5 transition-colors",
+                    item.isStarred
+                      ? "fill-warn text-warn"
+                      : "text-muted-foreground/50 hover:text-foreground",
+                  )}
+                />
+              </button>
+
+              <span
+                className="mt-px grid size-6 shrink-0 place-items-center rounded-lg font-mono text-[10px] font-semibold text-white"
+                style={{ background: colorOf(sender?.address ?? item.id) }}
+                aria-hidden
+              >
+                {initialsOf(sender?.name || sender?.address || "?")}
+              </span>
+
+              {/* Two lines only: who it is, then what it says. */}
+              <Link href={hrefFor(item.id)} className="min-w-0 flex-1">
+                <span className="flex items-center gap-2">
                   <span
                     className={cn(
                       "min-w-0 flex-1 truncate text-[13px]",
-                      unread ? "font-semibold" : "font-medium text-foreground/75",
+                      unread ? "font-semibold text-foreground" : "font-medium text-foreground/75",
                     )}
                   >
                     {sender?.name || sender?.address || "Unknown"}
                   </span>
 
+                  {showMailbox && (
+                    <span
+                      className="shrink-0 rounded-full px-1.5 py-px font-mono text-[10px]"
+                      style={{
+                        background: `color-mix(in oklab, ${item.mailboxColor} 15%, transparent)`,
+                        color: item.mailboxColor,
+                      }}
+                    >
+                      {item.mailboxAddress}
+                    </span>
+                  )}
                   {item.messageCount > 1 && (
-                    <span className="shrink-0 rounded-full border px-1.5 font-mono text-[10px] text-muted-foreground leading-[17px]">
+                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
                       {item.messageCount}
                     </span>
                   )}
@@ -159,80 +242,25 @@ export function ThreadList({
                   <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
                     {formatStamp(item.lastMessageAt)}
                   </span>
-                </div>
+                </span>
 
-                <p
-                  className={cn(
-                    "mt-1 truncate pl-8.5 text-[13px]",
-                    unread ? "font-semibold text-foreground" : "text-foreground/70",
-                  )}
-                >
-                  {item.subject || "(no subject)"}
-                </p>
-
-                <p className="mt-0.5 truncate pl-8.5 text-[12px] text-muted-foreground">
-                  {item.snippet}
-                </p>
-
-                {showMailbox && (
-                  <p className="mt-1.5 pl-8.5">
-                    <span
-                      className="rounded-full px-2 py-0.5 font-mono text-[10.5px]"
-                      style={{
-                        background: `color-mix(in oklab, ${item.mailboxColor} 14%, transparent)`,
-                        color: item.mailboxColor,
-                      }}
-                    >
-                      {item.mailboxAddress}
+                <span className="mt-0.5 flex min-w-0 items-baseline gap-1.5 text-[12.5px]">
+                  <span
+                    className={cn(
+                      "shrink-0 truncate",
+                      unread ? "font-medium text-foreground" : "text-foreground/70",
+                    )}
+                    style={{ maxWidth: "60%" }}
+                  >
+                    {item.subject || "(no subject)"}
+                  </span>
+                  {item.snippet && (
+                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                      &ndash; {item.snippet}
                     </span>
-                  </p>
-                )}
-              </Link>
-
-              {/* The checkbox takes over the avatar slot on hover, so nothing overlaps. */}
-              <div
-                className={cn(
-                  "absolute top-2.5 left-4 grid size-6 place-items-center transition-opacity",
-                  checked
-                    ? "opacity-100"
-                    : "opacity-0 group-hover:opacity-100 focus-within:opacity-100",
-                )}
-              >
-                <Checkbox
-                  checked={checked}
-                  onCheckedChange={() =>
-                    setSelected((current) => {
-                      const next = new Set(current);
-                      if (next.has(item.id)) next.delete(item.id);
-                      else next.add(item.id);
-                      return next;
-                    })
-                  }
-                  aria-label={`Select ${item.subject || "conversation"}`}
-                  className="size-4 rounded-lg"
-                />
-              </div>
-
-              <button
-                type="button"
-                onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
-                aria-label={item.isStarred ? "Unstar" : "Star"}
-                className={cn(
-                  "absolute right-4 bottom-2.5 rounded-lg p-0.5 transition-opacity",
-                  item.isStarred
-                    ? "opacity-100"
-                    : "opacity-0 group-hover:opacity-100 focus:opacity-100",
-                )}
-              >
-                <Star
-                  className={cn(
-                    "size-3.5",
-                    item.isStarred
-                      ? "fill-warn text-warn"
-                      : "text-muted-foreground hover:text-foreground",
                   )}
-                />
-              </button>
+                </span>
+              </Link>
             </li>
           );
         })}
@@ -262,17 +290,25 @@ export function ThreadList({
 function BulkAction({
   label,
   onClick,
+  disabled,
   children,
 }: {
   label: string;
   onClick: () => void;
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button variant="ghost" size="icon" className="size-7 rounded-xl" onClick={onClick}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="size-7 rounded-lg disabled:opacity-35"
+            disabled={disabled}
+            onClick={onClick}
+          >
             {children}
           </Button>
         }
