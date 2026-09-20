@@ -1,10 +1,8 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
-import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
+import { Avatar, Button, Checkbox, Hint, IconButton } from "@/components/kit";
 import type { ViewFolder } from "@/lib/scope";
-import { cn, colorOf, initialsOf } from "@/lib/utils";
+import { cn } from "@/lib/utils";
 import {
   deleteThreadsAction,
   moveThreadsAction,
@@ -16,6 +14,7 @@ import { isThisYear, isToday } from "date-fns";
 import {
   Archive,
   ArchiveRestore,
+  Inbox,
   Loader2,
   MailOpen,
   MailQuestion,
@@ -74,74 +73,71 @@ export function ThreadList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* One bar. It names the view until something is selected, then it
-          becomes the actions for that selection. */}
-      <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
-        <Checkbox
-          checked={allSelected}
-          onCheckedChange={() =>
-            setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
-          }
-          aria-label="Select all"
-          className="size-4 shrink-0 rounded-md"
-        />
-
-        {hasSelection ? (
-          <div className="flex min-w-0 flex-1 items-center gap-0.5">
-            <BulkAction label="Mark read" onClick={() => run(() => setReadAction(ids, true))}>
-              <MailOpen className="size-4" />
+      {/* The toolbar only appears once there is a selection to act on. */}
+      {hasSelection && (
+        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-4">
+          <Checkbox
+            checked={allSelected}
+            onCheckedChange={() =>
+              setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
+            }
+            aria-label="Select all"
+            className="mr-2 shrink-0"
+          />
+          <span className="mr-1 shrink-0 text-[12px] font-medium text-muted-foreground tabular-nums">
+            {selected.size}
+          </span>
+          <BulkAction label="Mark read" onClick={() => run(() => setReadAction(ids, true))}>
+            <MailOpen />
+          </BulkAction>
+          <BulkAction label="Mark unread" onClick={() => run(() => setReadAction(ids, false))}>
+            <MailQuestion />
+          </BulkAction>
+          {folder === "archive" || folder === "spam" || folder === "trash" ? (
+            <BulkAction
+              label="Move to inbox"
+              onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
+            >
+              <ArchiveRestore />
             </BulkAction>
-            <BulkAction label="Mark unread" onClick={() => run(() => setReadAction(ids, false))}>
-              <MailQuestion className="size-4" />
-            </BulkAction>
+          ) : (
             <BulkAction
               label="Archive"
               onClick={() => run(() => moveThreadsAction(ids, "archive"))}
             >
-              <Archive className="size-4" />
+              <Archive />
             </BulkAction>
-            {folder !== "inbox" && (
-              <BulkAction
-                label="Move to inbox"
-                onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
-              >
-                <ArchiveRestore className="size-4" />
-              </BulkAction>
-            )}
-            <BulkAction
-              label="Report spam"
-              onClick={() => run(() => moveThreadsAction(ids, "spam"))}
-            >
-              <ShieldAlert className="size-4" />
-            </BulkAction>
-            <BulkAction label="Delete" onClick={() => run(() => deleteThreadsAction(ids))}>
-              <Trash2 className="size-4" />
-            </BulkAction>
-          </div>
-        ) : (
-          <BulkAction label="Refresh" onClick={() => run(async () => {})}>
-            {pending ? (
-              <Loader2 className="size-4 animate-spin" />
-            ) : (
-              <RefreshCw className="size-4" />
-            )}
+          )}
+          <BulkAction label="Report spam" onClick={() => run(() => moveThreadsAction(ids, "spam"))}>
+            <ShieldAlert />
           </BulkAction>
-        )}
+          <BulkAction
+            label="Delete"
+            destructive
+            onClick={() => run(() => deleteThreadsAction(ids))}
+          >
+            <Trash2 />
+          </BulkAction>
+          <span className="ml-auto">
+            <BulkAction label="Refresh" onClick={() => run(async () => {})}>
+              {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+            </BulkAction>
+          </span>
+        </div>
+      )}
 
-        <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
-          {hasSelection ? `${selected.size} selected` : items.length}
-        </span>
-      </div>
-
-      <ul className="min-h-0 flex-1 overflow-y-auto">
+      <ul className="min-h-0 flex-1 overflow-y-auto pb-3">
         {items.length === 0 && (
-          <li className="px-6 py-16 text-center">
-            <p className="font-mono text-[11px] text-muted-foreground uppercase tracking-[0.1em]">
-              no messages
-            </p>
-            <p className="mx-auto mt-2 max-w-52 text-[12px] text-muted-foreground/70">
-              New mail appears here the moment the Cloudflare worker delivers it.
-            </p>
+          <li className="flex flex-col items-center gap-3 px-6 py-16 text-center">
+            <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+              <Inbox className="size-5" />
+            </span>
+            <span className="max-w-56 space-y-1">
+              <span className="block font-display text-[15px] font-semibold">Nothing here</span>
+              <span className="block text-[13px] leading-relaxed text-muted-foreground">
+                New mail appears the moment the Cloudflare worker delivers it.
+              </span>
+            </span>
           </li>
         )}
 
@@ -155,56 +151,51 @@ export function ThreadList({
             <li
               key={item.id}
               className={cn(
-                "group relative flex items-start gap-2 border-b px-3 py-2 transition-colors duration-100",
-                unread && "unread-bar",
-                active ? "bg-accent" : "hover:bg-accent/45",
+                "group relative flex items-start gap-3 border-b border-border/70 px-4 py-3 transition-colors duration-100",
+                active ? "bg-accent" : "hover:bg-accent/55",
               )}
             >
-              <Checkbox
-                checked={checked}
-                onCheckedChange={() =>
-                  setSelected((current) => {
-                    const next = new Set(current);
-                    if (next.has(item.id)) next.delete(item.id);
-                    else next.add(item.id);
-                    return next;
-                  })
-                }
-                aria-label={`Select ${item.subject || "conversation"}`}
-                className="mt-1 size-4 shrink-0 rounded-md"
-              />
-
-              <button
-                type="button"
-                onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
-                aria-label={item.isStarred ? "Unstar" : "Star"}
-                className="mt-0.5 shrink-0 rounded-md p-0.5"
-              >
-                <Star
+              {/* The avatar becomes a checkbox the moment you reach for it. */}
+              <span className="relative mt-0.5 size-8 shrink-0">
+                <Avatar
+                  size="md"
+                  name={sender?.name}
+                  address={sender?.address ?? item.id}
                   className={cn(
-                    "size-3.5 transition-colors",
-                    item.isStarred
-                      ? "fill-warn text-warn"
-                      : "text-muted-foreground/50 hover:text-foreground",
+                    "pointer-events-none absolute inset-0 transition-opacity duration-100",
+                    checked ? "opacity-0" : "group-hover:opacity-0",
                   )}
                 />
-              </button>
-
-              <span
-                className="mt-px grid size-6 shrink-0 place-items-center rounded-lg font-mono text-[10px] font-semibold text-white"
-                style={{ background: colorOf(sender?.address ?? item.id) }}
-                aria-hidden
-              >
-                {initialsOf(sender?.name || sender?.address || "?")}
+                <span
+                  className={cn(
+                    "absolute inset-0 grid place-items-center transition-opacity duration-100",
+                    checked ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+                  )}
+                >
+                  <Checkbox
+                    checked={checked}
+                    onCheckedChange={() =>
+                      setSelected((current) => {
+                        const next = new Set(current);
+                        if (next.has(item.id)) next.delete(item.id);
+                        else next.add(item.id);
+                        return next;
+                      })
+                    }
+                    aria-label={`Select ${item.subject || "conversation"}`}
+                  />
+                </span>
               </span>
 
-              {/* Two lines only: who it is, then what it says. */}
+              {/* Three lines: who it is, what it is about, how it starts. */}
               <Link href={hrefFor(item.id)} className="min-w-0 flex-1">
                 <span className="flex items-center gap-2">
                   <span
                     className={cn(
-                      "min-w-0 flex-1 truncate text-[13px]",
-                      unread ? "font-semibold text-foreground" : "font-medium text-foreground/75",
+                      "min-w-0 flex-1 truncate text-[12.5px]",
+                      unread
+                        ? "font-semibold text-foreground"
+                        : "font-medium text-muted-foreground",
                     )}
                   >
                     {sender?.name || sender?.address || "Unknown"}
@@ -222,53 +213,80 @@ export function ThreadList({
                     </span>
                   )}
                   {item.messageCount > 1 && (
-                    <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
+                    <span className="shrink-0 rounded-full bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
                       {item.messageCount}
                     </span>
                   )}
                   {item.hasAttachments && (
                     <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
                   )}
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+                  {/* The row actions take the timestamp's place on hover. */}
+                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums group-hover:invisible">
                     {formatStamp(item.lastMessageAt)}
                   </span>
                 </span>
 
-                <span className="mt-0.5 flex min-w-0 items-baseline gap-1.5 text-[12.5px]">
+                <span className="mt-0.5 flex items-center gap-2">
                   <span
                     className={cn(
-                      "shrink-0 truncate",
-                      unread ? "font-medium text-foreground" : "text-foreground/70",
+                      "min-w-0 flex-1 truncate text-[13.5px]",
+                      unread ? "font-semibold text-foreground" : "font-medium text-foreground/85",
                     )}
-                    style={{ maxWidth: "60%" }}
                   >
                     {item.subject || "(no subject)"}
                   </span>
-                  {item.snippet && (
-                    <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                      &ndash; {item.snippet}
-                    </span>
+                  {unread && (
+                    <span
+                      className="size-[7px] shrink-0 rounded-full bg-primary"
+                      aria-label="Unread"
+                    />
                   )}
                 </span>
+
+                {item.snippet && (
+                  <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
+                    {item.snippet}
+                  </span>
+                )}
               </Link>
+
+              <span className="absolute top-2 right-3 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+                <RowAction
+                  label={item.isStarred ? "Unstar" : "Star"}
+                  onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
+                >
+                  <Star className={cn(item.isStarred && "fill-warn text-warn")} />
+                </RowAction>
+                <RowAction
+                  label="Archive"
+                  onClick={() => run(() => moveThreadsAction([item.id], "archive"))}
+                >
+                  <Archive />
+                </RowAction>
+                <RowAction
+                  label={item.unreadCount > 0 ? "Mark read" : "Mark unread"}
+                  onClick={() => run(() => setReadAction([item.id], item.unreadCount > 0))}
+                >
+                  {item.unreadCount > 0 ? <MailOpen /> : <MailQuestion />}
+                </RowAction>
+              </span>
+
+              {/* Starred rows keep their star visible when the row is at rest. */}
+              {item.isStarred && (
+                <Star className="absolute top-3 right-3 size-4 fill-warn text-warn group-hover:hidden" />
+              )}
             </li>
           );
         })}
 
         {nextCursor && (
-          <li className="p-2">
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-7 w-full font-mono text-[11px]"
-              nativeButton={false}
-              render={
-                <Link
-                  href={`${baseHref}?${listQuery ? `${listQuery}&` : ""}cursor=${encodeURIComponent(nextCursor)}`}
-                />
-              }
-            >
-              Load older
+          <li className="px-4 pt-3">
+            <Button variant="subtle" size="sm" block pill asChild>
+              <Link
+                href={`${baseHref}?${listQuery ? `${listQuery}&` : ""}cursor=${encodeURIComponent(nextCursor)}`}
+              >
+                Load older
+              </Link>
             </Button>
           </li>
         )}
@@ -277,7 +295,7 @@ export function ThreadList({
   );
 }
 
-function BulkAction({
+function RowAction({
   label,
   onClick,
   children,
@@ -287,18 +305,37 @@ function BulkAction({
   children: React.ReactNode;
 }) {
   return (
-    <Tooltip>
-      <TooltipTrigger
-        render={
-          <Button variant="ghost" size="icon" className="size-7 rounded-lg" onClick={onClick}>
-            {children}
-          </Button>
-        }
-      />
-      <TooltipContent side="bottom" className="font-mono text-[11px]">
-        {label}
-      </TooltipContent>
-    </Tooltip>
+    <Hint label={label}>
+      <IconButton
+        label={label}
+        size="xs"
+        variant="subtle"
+        className="bg-card shadow-raise hover:bg-accent"
+        onClick={onClick}
+      >
+        {children}
+      </IconButton>
+    </Hint>
+  );
+}
+
+function BulkAction({
+  label,
+  onClick,
+  destructive,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Hint label={label}>
+      <IconButton label={label} variant={destructive ? "danger" : "ghost"} onClick={onClick}>
+        {children}
+      </IconButton>
+    </Hint>
   );
 }
 

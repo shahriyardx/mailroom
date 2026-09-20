@@ -32,14 +32,14 @@
   --shadow-float: 0 0 0 1px color-mix(in oklab, var(--border) 70%, transparent), 0 22px 48px -20px
     oklch(0.2 0.02 80 / 0.24), 0 6px 16px -8px oklch(0.2 0.02 80 / 0.12);
 
-  /* Warm paper, never pure grey. */
-  --background: oklch(0.984 0.003 85);
-  --foreground: oklch(0.24 0.008 75);
+  /* The page is grey; the application sits on it as a white card. */
+  --background: oklch(0.938 0.002 265);
+  --foreground: oklch(0.21 0.006 265);
 
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.24 0.008 75);
+  --card-foreground: oklch(0.21 0.006 265);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.24 0.008 75);
+  --popover-foreground: oklch(0.21 0.006 265);
 
   /* Indigo. State only: active view, unread, focus, primary action. */
   --primary: oklch(0.53 0.17 278);
@@ -48,26 +48,26 @@
   --primary-soft: oklch(0.955 0.02 278);
   --primary-soft-foreground: oklch(0.44 0.16 278);
 
-  --secondary: oklch(0.958 0.004 85);
-  --secondary-foreground: oklch(0.3 0.008 75);
+  --secondary: oklch(0.962 0.002 265);
+  --secondary-foreground: oklch(0.28 0.006 265);
 
-  --muted: oklch(0.966 0.004 85);
-  --muted-foreground: oklch(0.53 0.009 75);
+  --muted: oklch(0.968 0.002 265);
+  --muted-foreground: oklch(0.55 0.006 265);
 
-  --accent: oklch(0.953 0.005 85);
-  --accent-foreground: oklch(0.26 0.008 75);
+  --accent: oklch(0.956 0.002 265);
+  --accent-foreground: oklch(0.22 0.006 265);
 
   --destructive: oklch(0.55 0.18 25);
   --destructive-foreground: oklch(0.99 0 0);
 
-  --border: oklch(0.917 0.004 85);
-  --input: oklch(0.928 0.004 85);
+  --border: oklch(0.918 0.002 265);
+  --input: oklch(0.93 0.002 265);
   --ring: oklch(0.53 0.17 278);
 
   /* Application surfaces */
-  --rail: oklch(0.972 0.004 85);
-  --rail-foreground: oklch(0.38 0.008 75);
-  --statusbar: oklch(0.96 0.004 85);
+  --rail: oklch(0.989 0.001 265);
+  --rail-foreground: oklch(0.36 0.006 265);
+  --statusbar: oklch(0.966 0.002 265);
 
   /* Semantics, low chroma so they read as labels not alarms */
   --ok: oklch(0.53 0.1 158);
@@ -84,13 +84,13 @@
   --chart-4: oklch(0.48 0.09 315);
   --chart-5: oklch(0.6 0.12 72);
 
-  --sidebar: oklch(0.972 0.004 85);
-  --sidebar-foreground: oklch(0.32 0.008 75);
+  --sidebar: oklch(0.989 0.001 265);
+  --sidebar-foreground: oklch(0.36 0.006 265);
   --sidebar-primary: oklch(0.53 0.17 278);
   --sidebar-primary-foreground: oklch(0.99 0.004 278);
-  --sidebar-accent: oklch(0.94 0.005 85);
-  --sidebar-accent-foreground: oklch(0.26 0.008 75);
-  --sidebar-border: oklch(0.912 0.004 85);
+  --sidebar-accent: oklch(0.949 0.002 265);
+  --sidebar-accent-foreground: oklch(0.2 0.006 265);
+  --sidebar-border: oklch(0.922 0.002 265);
   --sidebar-ring: oklch(0.53 0.17 278);
 }
 
@@ -100,38 +100,38 @@
   --shadow-float: 0 0 0 1px color-mix(in oklab, var(--border) 90%, transparent), 0 22px 48px -20px
     oklch(0 0 0 / 0.6), 0 6px 16px -8px oklch(0 0 0 / 0.4);
 
-  --background: oklch(0.176 0.005 75);
-  --foreground: oklch(0.93 0.004 85);
+  --background: oklch(0.152 0.004 265);
+  --foreground: oklch(0.935 0.003 265);
 
-  --card: oklch(0.212 0.006 75);
-  --card-foreground: oklch(0.93 0.004 85);
-  --popover: oklch(0.236 0.006 75);
-  --popover-foreground: oklch(0.93 0.004 85);
+  --card: oklch(0.196 0.005 265);
+  --card-foreground: oklch(0.935 0.003 265);
+  --popover: oklch(0.232 0.006 265);
+  --popover-foreground: oklch(0.935 0.003 265);
 
   --primary: oklch(0.68 0.15 278);
   --primary-foreground: oklch(0.17 0.03 278);
   --primary-soft: oklch(0.29 0.055 278);
   --primary-soft-foreground: oklch(0.85 0.08 278);
 
-  --secondary: oklch(0.262 0.007 75);
-  --secondary-foreground: oklch(0.93 0.004 85);
+  --secondary: oklch(0.258 0.006 265);
+  --secondary-foreground: oklch(0.935 0.003 265);
 
-  --muted: oklch(0.252 0.007 75);
-  --muted-foreground: oklch(0.67 0.008 80);
+  --muted: oklch(0.248 0.006 265);
+  --muted-foreground: oklch(0.66 0.006 265);
 
-  --accent: oklch(0.278 0.007 75);
-  --accent-foreground: oklch(0.95 0.004 85);
+  --accent: oklch(0.272 0.006 265);
+  --accent-foreground: oklch(0.95 0.003 265);
 
   --destructive: oklch(0.66 0.17 25);
   --destructive-foreground: oklch(0.16 0.01 25);
 
-  --border: oklch(0.298 0.007 75);
-  --input: oklch(0.318 0.008 75);
+  --border: oklch(0.288 0.006 265);
+  --input: oklch(0.308 0.007 265);
   --ring: oklch(0.68 0.15 278);
 
-  --rail: oklch(0.198 0.006 75);
-  --rail-foreground: oklch(0.75 0.008 80);
-  --statusbar: oklch(0.192 0.006 75);
+  --rail: oklch(0.182 0.005 265);
+  --rail-foreground: oklch(0.74 0.006 265);
+  --statusbar: oklch(0.182 0.005 265);
 
   --ok: oklch(0.72 0.12 160);
   --ok-soft: oklch(0.29 0.045 160);
@@ -141,13 +141,13 @@
   --info-soft: oklch(0.29 0.04 245);
   --danger-soft: oklch(0.3 0.055 25);
 
-  --sidebar: oklch(0.198 0.006 75);
-  --sidebar-foreground: oklch(0.79 0.006 80);
+  --sidebar: oklch(0.182 0.005 265);
+  --sidebar-foreground: oklch(0.78 0.005 265);
   --sidebar-primary: oklch(0.68 0.15 278);
   --sidebar-primary-foreground: oklch(0.17 0.03 278);
-  --sidebar-accent: oklch(0.262 0.007 75);
-  --sidebar-accent-foreground: oklch(0.95 0.004 85);
-  --sidebar-border: oklch(0.288 0.007 75);
+  --sidebar-accent: oklch(0.256 0.006 265);
+  --sidebar-accent-foreground: oklch(0.96 0.003 265);
+  --sidebar-border: oklch(0.278 0.006 265);
   --sidebar-ring: oklch(0.68 0.15 278);
 }
 
@@ -306,11 +306,6 @@
   /* Section headings in the rail and settings. Language, not data. */
   .eyebrow {
     @apply text-[11px] font-medium uppercase tracking-[0.07em] text-muted-foreground;
-  }
-
-  /* Unread rows get a signal bar, never a coloured dot. */
-  .unread-bar {
-    box-shadow: inset 2px 0 0 0 var(--primary);
   }
 
   .kbd {
