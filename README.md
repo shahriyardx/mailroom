@@ -266,7 +266,8 @@ this way also lands in that mailbox's **Sent** folder.
 src/
   app/
     (mail)/mail/[[...slug]]   scope + folder + thread view
-    (mail)/settings           domains, mailboxes, API keys, filters
+    (mail)/settings           one page each: domains, mailboxes, api-keys,
+                              blocked, labels, filters, account
     api/inbound               signed webhook from the Cloudflare worker
     api/ses/events            SNS delivery events
     api/v1/emails             public send API

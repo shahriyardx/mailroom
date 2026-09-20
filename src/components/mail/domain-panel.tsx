@@ -332,13 +332,13 @@ function DomainRowItem({
               : "Publish these at your DNS host. SES usually verifies minutes after the CNAMEs go live."}
           </p>
           <div className="overflow-x-auto">
-            <table className="w-full min-w-[44rem] text-left text-[11.5px]">
+            <table className="w-full min-w-[52rem] table-auto text-left text-[11.5px]">
               <thead>
                 <tr className="font-mono text-[10.5px] text-muted-foreground uppercase tracking-[0.1em]">
                   <th className="py-1 pr-3 font-normal">type</th>
                   <th className="py-1 pr-3 font-normal">name</th>
                   <th className="py-1 pr-3 font-normal">value</th>
-                  <th className="py-1 pr-3 font-normal">purpose</th>
+                  <th className="w-44 py-1 font-normal">purpose</th>
                 </tr>
               </thead>
               <tbody>
@@ -351,7 +351,7 @@ function DomainRowItem({
                     <td className="py-1 pr-3">
                       <CopyCell value={record.value} />
                     </td>
-                    <td className="py-1 pr-3 text-muted-foreground">
+                    <td className="w-44 whitespace-nowrap py-1 text-muted-foreground">
                       {record.purpose}
                       {!record.required && " (optional)"}
                     </td>

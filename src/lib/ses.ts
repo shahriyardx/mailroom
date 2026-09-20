@@ -197,7 +197,7 @@ export function dnsRecordsFor(options: {
       kind: "TXT",
       name: options.mailFromDomain,
       value: '"v=spf1 include:amazonses.com ~all"',
-      purpose: "SPF for the return path",
+      purpose: "SPF for return path",
       required: true,
     });
   }
@@ -206,7 +206,7 @@ export function dnsRecordsFor(options: {
     kind: "TXT",
     name: options.domain,
     value: '"v=spf1 include:amazonses.com include:_spf.mx.cloudflare.net ~all"',
-    purpose: "SPF covering SES sending and Cloudflare receiving",
+    purpose: "SPF for SES + Cloudflare",
     required: true,
   });
 
