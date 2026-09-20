@@ -373,15 +373,6 @@ export function MailShell({
 
         <div className="flex min-h-0 flex-1">
           <section className="flex w-full min-w-0 flex-col border-r lg:w-[27rem] lg:shrink-0">
-            <div className="flex h-9 shrink-0 items-center gap-2 border-b px-3">
-              <span className="truncate font-medium text-[12.5px]">{FOLDER_LABELS[folder]}</span>
-              <span className="truncate font-mono text-[11px] text-muted-foreground">
-                {scopeLabel}
-              </span>
-              <span className="ml-auto shrink-0 font-mono text-[10.5px] text-muted-foreground">
-                {threadCount}
-              </span>
-            </div>
             <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
           </section>
 

@@ -3,7 +3,7 @@
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
-import type { ViewFolder } from "@/lib/scope";
+import { FOLDER_LABELS, type ViewFolder } from "@/lib/scope";
 import { cn, colorOf, initialsOf } from "@/lib/utils";
 import {
   deleteThreadsAction,
@@ -39,6 +39,8 @@ interface Props {
   listQuery: string;
   nextCursor: string | null;
   showMailbox: boolean;
+  /** Which mailboxes this view covers, shown beside the folder name. */
+  scopeLabel: string;
 }
 
 export function ThreadList({
@@ -49,6 +51,7 @@ export function ThreadList({
   listQuery,
   nextCursor,
   showMailbox,
+  scopeLabel,
 }: Props) {
   const router = useRouter();
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -74,73 +77,70 @@ export function ThreadList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      {/* Always present, so the actions are learnable rather than discovered
-          only after selecting something. */}
-      <div className="flex h-10 shrink-0 items-center gap-0.5 border-b px-2.5">
+      {/* One bar. It names the view until something is selected, then it
+          becomes the actions for that selection. */}
+      <div className="flex h-11 shrink-0 items-center gap-2 border-b px-3">
         <Checkbox
           checked={allSelected}
           onCheckedChange={() =>
             setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
           }
           aria-label="Select all"
-          className="mr-1.5 size-4 rounded-md"
+          className="size-4 shrink-0 rounded-md"
         />
 
-        <BulkAction label="Refresh" onClick={() => run(async () => {})}>
-          <RefreshCw className="size-3.5" />
-        </BulkAction>
-
-        <span className="mx-1 h-4 w-px bg-border" />
-
-        <BulkAction
-          label="Mark read"
-          disabled={!hasSelection}
-          onClick={() => run(() => setReadAction(ids, true))}
-        >
-          <MailOpen className="size-3.5" />
-        </BulkAction>
-        <BulkAction
-          label="Mark unread"
-          disabled={!hasSelection}
-          onClick={() => run(() => setReadAction(ids, false))}
-        >
-          <MailQuestion className="size-3.5" />
-        </BulkAction>
-        <BulkAction
-          label="Archive"
-          disabled={!hasSelection}
-          onClick={() => run(() => moveThreadsAction(ids, "archive"))}
-        >
-          <Archive className="size-3.5" />
-        </BulkAction>
-        {folder !== "inbox" && (
-          <BulkAction
-            label="Move to inbox"
-            disabled={!hasSelection}
-            onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
-          >
-            <ArchiveRestore className="size-3.5" />
-          </BulkAction>
+        {hasSelection ? (
+          <div className="flex min-w-0 flex-1 items-center gap-0.5">
+            <BulkAction label="Mark read" onClick={() => run(() => setReadAction(ids, true))}>
+              <MailOpen className="size-4" />
+            </BulkAction>
+            <BulkAction label="Mark unread" onClick={() => run(() => setReadAction(ids, false))}>
+              <MailQuestion className="size-4" />
+            </BulkAction>
+            <BulkAction
+              label="Archive"
+              onClick={() => run(() => moveThreadsAction(ids, "archive"))}
+            >
+              <Archive className="size-4" />
+            </BulkAction>
+            {folder !== "inbox" && (
+              <BulkAction
+                label="Move to inbox"
+                onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
+              >
+                <ArchiveRestore className="size-4" />
+              </BulkAction>
+            )}
+            <BulkAction
+              label="Report spam"
+              onClick={() => run(() => moveThreadsAction(ids, "spam"))}
+            >
+              <ShieldAlert className="size-4" />
+            </BulkAction>
+            <BulkAction label="Delete" onClick={() => run(() => deleteThreadsAction(ids))}>
+              <Trash2 className="size-4" />
+            </BulkAction>
+          </div>
+        ) : (
+          <div className="flex min-w-0 flex-1 items-baseline gap-2">
+            <span className="shrink-0 font-medium text-[13px]">{FOLDER_LABELS[folder]}</span>
+            <span className="truncate font-mono text-[11px] text-muted-foreground">
+              {scopeLabel}
+            </span>
+          </div>
         )}
-        <BulkAction
-          label="Report spam"
-          disabled={!hasSelection}
-          onClick={() => run(() => moveThreadsAction(ids, "spam"))}
-        >
-          <ShieldAlert className="size-3.5" />
-        </BulkAction>
-        <BulkAction
-          label="Delete"
-          disabled={!hasSelection}
-          onClick={() => run(() => deleteThreadsAction(ids))}
-        >
-          <Trash2 className="size-3.5" />
-        </BulkAction>
 
-        <span className="ml-auto flex items-center gap-2 font-mono text-[10.5px] text-muted-foreground">
-          {pending && <Loader2 className="size-3.5 animate-spin" />}
-          {hasSelection ? `${selected.size} selected` : `${items.length}`}
+        <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums">
+          {hasSelection ? `${selected.size} selected` : items.length}
         </span>
+
+        <BulkAction label="Refresh" onClick={() => run(async () => {})}>
+          {pending ? (
+            <Loader2 className="size-3.5 animate-spin" />
+          ) : (
+            <RefreshCw className="size-3.5" />
+          )}
+        </BulkAction>
       </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto">
@@ -290,25 +290,17 @@ export function ThreadList({
 function BulkAction({
   label,
   onClick,
-  disabled,
   children,
 }: {
   label: string;
   onClick: () => void;
-  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button
-            variant="ghost"
-            size="icon"
-            className="size-7 rounded-lg disabled:opacity-35"
-            disabled={disabled}
-            onClick={onClick}
-          >
+          <Button variant="ghost" size="icon" className="size-7 rounded-lg" onClick={onClick}>
             {children}
           </Button>
         }
