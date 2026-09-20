@@ -1,5 +1,6 @@
 import { Toaster } from "@/components/kit";
 import { ComposerProvider } from "@/components/mail/composer-provider";
+import { LiveUpdates } from "@/components/mail/live-updates";
 import { db } from "@/db";
 import { label } from "@/db/schema";
 import { requireUser } from "@/lib/session";
@@ -15,6 +16,7 @@ export default async function MailLayout({ children }: { children: React.ReactNo
   return (
     <ComposerProvider mailboxes={mailboxes}>
       {children}
+      <LiveUpdates />
       {/* Nothing was rendering the toasts the actions raise. */}
       <Toaster />
     </ComposerProvider>

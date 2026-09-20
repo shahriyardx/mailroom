@@ -15,6 +15,7 @@ import { domainOf, makeSnippet, normalizeSubject } from "@/lib/mail";
 import { colorOf, newId } from "@/lib/utils";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
+import { publish } from "./realtime";
 
 export interface InboundAttachment {
   filename: string;
@@ -178,6 +179,13 @@ async function applyRules(
 export async function ingestInbound(payload: InboundPayload, attachments: InboundAttachment[]) {
   const deliveredTo = (payload.recipients ?? [payload.to]).map((a) => a.toLowerCase());
   const stored: string[] = [];
+  const announce: {
+    userId: string;
+    mailboxId: string;
+    threadId: string;
+    from: string;
+    subject: string;
+  }[] = [];
 
   for (const address of deliveredTo) {
     const box = await resolveMailbox(address);
@@ -285,6 +293,18 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
 
     await recomputeThread(threadId);
     stored.push(messageId);
+    announce.push({
+      userId: box.userId,
+      mailboxId: box.id,
+      threadId,
+      from: payload.from.name || payload.from.address,
+      subject: payload.subject ?? "",
+    });
+  }
+
+  // Tell any open browser on this account, so the list fills in by itself.
+  for (const entry of announce) {
+    await publish({ type: "mail:received", ...entry });
   }
 
   return { stored };

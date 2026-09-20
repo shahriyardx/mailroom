@@ -120,10 +120,16 @@ export function MailShell({
         .catch(() => {});
 
     load();
-    const timer = setInterval(load, 30_000);
+
+    // The live stream drives this; the interval is only a fallback for when
+    // it cannot connect at all.
+    const timer = setInterval(load, 120_000);
+    window.addEventListener("mailroom:refresh", load);
+
     return () => {
       cancelled = true;
       clearInterval(timer);
+      window.removeEventListener("mailroom:refresh", load);
     };
   }, [pathname]);
 

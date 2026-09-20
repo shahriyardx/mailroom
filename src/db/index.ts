@@ -18,7 +18,7 @@ function connect(): Database {
   // Postgres. The Drizzle client is not: it is built from the schema, and
   // caching it there would keep serving a stale one after a table is added.
   const sql = globalForDb.sql ?? postgres(connectionString, { max: 10 });
-  if (process.env.NODE_ENV !== "production") globalForDb.sql = sql;
+  globalForDb.sql = sql;
 
   instance = drizzle(sql, { schema });
   return instance;
@@ -37,5 +37,18 @@ export const db = new Proxy({} as Database, {
     return typeof value === "function" ? value.bind(client) : value;
   },
 });
+
+/**
+ * The raw driver, for the two things Drizzle does not cover: LISTEN and
+ * NOTIFY. Shares the pool with everything else.
+ */
+export function rawSql() {
+  const connectionString = process.env.DATABASE_URL;
+  if (!connectionString) throw new Error("DATABASE_URL is not set");
+  if (!globalForDb.sql) {
+    globalForDb.sql = postgres(connectionString, { max: 10 });
+  }
+  return globalForDb.sql;
+}
 
 export { schema };

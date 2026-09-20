@@ -25,6 +25,7 @@ import { sendRawEmail } from "@/lib/ses";
 import { newId } from "@/lib/utils";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
+import { publish } from "./realtime";
 
 export interface DeliverInput {
   userId: string;
@@ -227,5 +228,7 @@ export async function deliverMessage(input: DeliverInput) {
   }
 
   await recomputeThread(threadId);
+  await publish({ type: "mail:sent", userId: input.userId, mailboxId: box.id, threadId });
+
   return { threadId, messageId, sesMessageId, rfcMessageId };
 }
