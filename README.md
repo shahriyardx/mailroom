@@ -1,59 +1,50 @@
 # Mailroom
 
 Self-hosted email. Sends through **Amazon SES**, receives through a
-**Cloudflare Email Worker**, keeps everything in **Postgres**.
+**Cloudflare Email Worker**, stores everything in **Postgres**.
 
-One company runs one instance. The first person to sign in becomes its
-owner; everyone else joins by invitation, with a role and their own view of
-the mailboxes they may reach. There is no public sign-up, so a stranger who
-finds the sign-in page cannot give themselves an inbox.
+One instance per company. First sign-in becomes owner; everyone else joins by
+invitation. No public sign-up.
 
 ![built with Next.js, Postgres, SES and Cloudflare](https://img.shields.io/badge/stack-Next.js%2015%20%C2%B7%20Postgres%20%C2%B7%20SES%20%C2%B7%20Cloudflare-5a45d6)
 
 ## What you get
 
 - **Unlimited mailboxes** across any number of domains
-- **People and teams** — invite colleagues, give each a role, and grant
-  mailboxes one by one or a team at a time
-- **Scope switching** — read all mail, one domain, or one address, in any folder
+- **People and teams** — roles, plus mailbox access one by one or a team at a time
+- **Scope switching** — all mail, one domain, or one address
 - Threading, search, labels, filters, drafts, signatures, attachments
-- **Live updates** — new mail appears as it lands, no refresh
-- **Domains managed from the app** — add one, get its DNS records, watch it verify
-- **Subdomains for free** — a subdomain of a verified domain needs no records at all
-- **Worker deployed from the app** — no `wrangler`, no separate deploy
-- **Delivery reporting** — delivered, bounced, complained, with automatic suppression
-- **A complete API** — 28 endpoints for sending, reading, filing and replying,
-  with scoped keys and signed webhooks
+- **Live updates** — new mail appears without a refresh
+- **Domains managed from the app** — add, get DNS records, watch it verify
+- **Subdomains for free** — a subdomain of a verified domain needs no records
+- **Worker deployed from the app** — no `wrangler`
+- **Delivery reporting** — delivered, bounced, complained, automatic suppression
+- **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
 
 ## Install
 
-Run the published image. Do not build from a clone — a release is already
-built, for `amd64` and `arm64`, and a clone follows `main` rather than a
-version somebody decided was ready.
+Run the published image — multi-arch, `amd64` and `arm64`.
 
 ```sh
 docker run -d --name mailroom -p 3000:3000 --env-file .env \
   ghcr.io/shahriyardx/mailroom:latest
 ```
 
-Or take a Postgres with it: [`compose.yaml`](compose.yaml).
+With Postgres included: [`compose.yaml`](compose.yaml).
 
-Nothing about your install is inside the image — every setting is read when
-the container starts, and migrations run on boot. Full walkthrough in the
-[self-hosting guide](https://mailroom-docs.shahriyar.dev/guide/self-hosting).
+Settings are read at container start, not baked in. Migrations run on boot.
+Full walkthrough: [self-hosting guide](https://mailroom-docs.shahriyar.dev/guide/self-hosting).
 
 ## Before you start
 
-You need five things:
-
 | | Why | Cost |
 | --- | --- | --- |
-| A **Postgres** database | Everything is stored here | Free locally, ~$0 self-hosted |
-| An **AWS account** with SES | Sending | Pennies. Ask AWS for production access or you can only send to verified addresses |
+| A **Postgres** database | Storage | Free locally, ~$0 self-hosted |
+| An **AWS account** with SES | Sending | Pennies. Needs production access, or you can only send to verified addresses |
 | A **Cloudflare account**, domain on it | Receiving | Free |
-| A **Cloudflare R2** bucket | Attachments and raw messages | Free tier is generous |
-| Somewhere to run it | Docker anywhere: Coolify, Fly, a VPS | Your call |
+| A **Cloudflare R2** bucket | Attachments and raw messages | Free tier |
+| Somewhere to run it | Coolify, Fly, a VPS | Your call |
 
 ## 1. Create a GitHub OAuth app
 
@@ -136,48 +127,38 @@ Leave the AWS keys empty to use an instance role instead.
 
 ## 3. Deploy it
 
-The Dockerfile builds everything, including the worker bundle, and applies
-migrations on boot.
+Run the image from [Install](#install) with the environment above.
 
-```sh
-docker build -t mailroom .
-docker run -p 3000:3000 --env-file .env mailroom
-```
-
-On Coolify: point it at your fork, build pack **Dockerfile**, port **3000**,
+On Coolify: Docker image `ghcr.io/shahriyardx/mailroom:latest`, port **3000**,
 paste the environment, deploy.
 
-Deploy **before** the next steps. SES and Cloudflare both have to reach a real
-URL, so nothing below works against `localhost`.
+Deploy **before** the next steps. SES and Cloudflare must reach a real URL —
+nothing below works against `localhost`.
 
 ## 4. Sign in
 
-Open your URL and sign in with GitHub. That first account becomes the
-**owner**, and public sign-up closes behind you — everyone after that joins
-through an invitation you send them.
-
-Invited people set a **password** rather than needing a GitHub account of
-their own.
+Open your URL, sign in with GitHub. That account becomes **owner** and public
+sign-up closes. Everyone after joins by invitation and sets a **password**, so
+they do not need a GitHub account.
 
 ## 5. Add your sending domains
 
 **Settings → Domains**
 
 Domains already verified in SES import themselves. For a new one, type it in
-and publish the DNS records it shows you — one click copies each.
+and publish the DNS records shown — one click copies each.
 
-A **subdomain of a domain you have already verified** needs nothing: add it
-and it is ready, because SES inherits verification downwards.
+A subdomain of an already-verified domain needs no records: SES inherits
+verification downwards.
 
-Then press **Set up delivery reporting** on the same screen. That builds the
-SNS topic, wires SES to it and subscribes the app.
+Then press **Set up delivery reporting**. That builds the SNS topic, wires SES
+to it and subscribes the app.
 
-One manual step after it: set `SES_CONFIGURATION_SET=mail-events` in your
-environment and redeploy. SES only reports on a message that was sent with a
-configuration set attached, and that variable is what attaches it. The panel
-then gains an **SNS topic** row: click it to copy the ARN, and put that in
-`SES_SNS_TOPIC_ARN` so no other topic is accepted. `pnpm ses:setup` does the
-same from the command line and writes both variables into `.env` for you.
+One manual step after: set `SES_CONFIGURATION_SET=mail-events` and redeploy.
+SES only reports on messages sent with a configuration set attached. The panel
+then shows an **SNS topic** row — click to copy the ARN into `SES_SNS_TOPIC_ARN`
+so no other topic is accepted. `pnpm ses:setup` does the same from the command
+line and writes both variables into `.env`.
 
 ## 6. Turn on receiving
 
@@ -201,22 +182,20 @@ Paste the token, press **Deploy worker**, then **Receive mail here** on each
 domain.
 
 > Turning a zone on replaces its MX records with Cloudflare's. Anything
-> receiving mail on that domain today stops. Set `FORWARD_TO` first if you
-> want a copy to keep reaching your old inbox.
+> receiving mail on that domain today stops. Set `FORWARD_TO` first for a copy
+> to keep reaching your old inbox.
 
 ## 7. Make a mailbox
 
-**Settings → Mailboxes.** Add `you@yourdomain.com` and send yourself
-something.
+**Settings → Mailboxes.** Add `you@yourdomain.com` and send yourself something.
 
 Tick **Catch-all** to collect every unclaimed address on that domain in one
-inbox, or switch on **Capture every address** for the domain to give each one
-its own mailbox.
+inbox, or **Capture every address** to give each one its own mailbox.
 
 ## Sending from your own code
 
-**Settings → API keys.** A key that is not locked to one mailbox can send as
-any address on a verified domain, creating the mailbox on first use.
+**Settings → API keys.** A key not locked to one mailbox can send as any
+address on a verified domain, creating the mailbox on first use.
 
 ```sh
 curl -X POST https://mail.yourdomain.com/api/v1/emails \
@@ -235,7 +214,7 @@ curl -X POST https://mail.yourdomain.com/api/v1/emails \
 
 ### The Node SDK
 
-The whole API, typed, with retries, pagination and webhook signature checking:
+The whole API, typed, with retries, pagination and webhook signature checking.
 
 ```sh
 npm install @shahriyardx/mailroom
@@ -257,10 +236,11 @@ await mail.emails.send({
 });
 ```
 
-It lives in [`packages/sdk`](packages/sdk#readme), in this repository, so it
-cannot drift away from the API it talks to.
+Source: [`packages/sdk`](packages/sdk#readme).
 
-## Running it locally
+## Development
+
+For working on Mailroom itself. To run it, use the image above.
 
 ```sh
 pnpm install
@@ -269,10 +249,8 @@ pnpm db:migrate
 pnpm dev
 ```
 
-Sending works locally. Receiving does not: Cloudflare cannot reach your
-laptop, so deploy it somewhere to test inbound mail.
-
-## Commands
+Sending works locally. Receiving does not — Cloudflare cannot reach your
+laptop.
 
 | | |
 | --- | --- |
@@ -283,21 +261,19 @@ laptop, so deploy it somewhere to test inbound mail.
 | `pnpm db:studio` | Browse the database |
 | `pnpm lint` / `pnpm format` | Biome |
 | `pnpm typecheck` | TypeScript |
-| `pnpm reset-owner --yes` | Release the owner slot so another account can claim it |
+| `pnpm reset-owner --yes` | Release the owner slot |
 | `pnpm sdk:build` | Build the Node SDK |
 | `pnpm sdk:test` | Test the Node SDK |
 
 ## Worth knowing
 
-- **No public sign-up.** An uninvited sign-in is rejected outright, not queued
-  for approval. Invitations are the only way in after the first account.
+- **No public sign-up.** Uninvited sign-in is rejected, not queued for approval.
 - **Secrets are encrypted** before storage, keyed from `BETTER_AUTH_SECRET`.
 - **The inbound webhook is signed** — HMAC over timestamp and body, with a
-  freshness window, so only your worker can post mail.
-- **Message bodies are sandboxed** in a script-free iframe and remote images
-  are blocked until you ask for them.
-- **An R2 custom domain makes raw messages public.** Leave the bucket private
-  and let the app serve attachments.
+  freshness window.
+- **Message bodies are sandboxed** in a script-free iframe; remote images
+  blocked until you ask for them.
+- **An R2 custom domain makes raw messages public.** Keep the bucket private.
 - **Watch your bounce rate.** SES suspends accounts above 5% bounces or 0.1%
   complaints. The overview shows both against those thresholds.
 
@@ -309,11 +285,10 @@ Routing and R2 · Biome
 
 ## Licence
 
-[PolyForm Noncommercial 1.0.0](LICENSE). Free for personal projects,
-research, teaching, and charitable work — install it, change it, share it.
+[PolyForm Noncommercial 1.0.0](LICENSE). Free for personal projects, research,
+teaching and charitable work.
 
-Any use by or for a business needs a commercial licence, including running
-it as a company's own mail. Write to <mdshahriyaralam552@gmail.com>.
+Any use by or for a business needs a commercial licence, including running it
+as a company's own mail. Write to <mdshahriyaralam552@gmail.com>.
 
-The Node SDK in [`packages/sdk`](packages/sdk) stays MIT, so it can be
-embedded in anything.
+The Node SDK in [`packages/sdk`](packages/sdk) stays MIT.
