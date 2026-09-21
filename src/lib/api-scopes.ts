@@ -20,6 +20,8 @@ export const SCOPES = [
   "labels:read",
   "labels:write",
   "contacts:read",
+  "templates:read",
+  "templates:write",
   "suppressions:read",
   "suppressions:write",
   "webhooks:read",
@@ -43,6 +45,7 @@ const IMPLIES: Partial<Record<Scope, Scope[]>> = {
   "labels:write": ["labels:read"],
   "suppressions:write": ["suppressions:read"],
   "webhooks:write": ["webhooks:read"],
+  "templates:write": ["templates:read"],
   "emails:send": ["emails:read"],
 };
 
@@ -79,7 +82,7 @@ export const PRESETS: { id: string; label: string; hint: string; scopes: string[
     id: "send",
     label: "Send only",
     hint: "Send mail and check what happened to it. Cannot read your inbox.",
-    scopes: ["emails:send", "emails:read"],
+    scopes: ["emails:send", "emails:read", "templates:read"],
   },
   {
     id: "read",
@@ -92,6 +95,7 @@ export const PRESETS: { id: string; label: string; hint: string; scopes: string[
       "domains:read",
       "labels:read",
       "contacts:read",
+      "templates:read",
       "suppressions:read",
       "webhooks:read",
       "stats:read",
@@ -110,6 +114,7 @@ export const PRESETS: { id: string; label: string; hint: string; scopes: string[
       "labels:read",
       "labels:write",
       "contacts:read",
+      "templates:read",
       "stats:read",
     ],
   },
@@ -191,6 +196,16 @@ export const SCOPE_AREAS: ScopeArea[] = [
     levels: [
       { label: "None", scopes: [] },
       { label: "Read", scopes: ["contacts:read"] },
+    ],
+  },
+  {
+    id: "templates",
+    label: "Templates",
+    hint: "Saved subjects and bodies to send by name",
+    levels: [
+      { label: "None", scopes: [] },
+      { label: "Read", scopes: ["templates:read"] },
+      { label: "Manage", scopes: ["templates:read", "templates:write"] },
     ],
   },
   {

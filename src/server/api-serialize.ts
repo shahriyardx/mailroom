@@ -8,10 +8,12 @@ import type {
   Message,
   MessageEvent,
   Suppression,
+  Template,
   Thread,
   Webhook,
   WebhookDelivery,
 } from "@/db/schema";
+import { templateVariables } from "@/lib/template";
 import { recordsForDomain } from "./domains";
 
 /**
@@ -206,6 +208,23 @@ export function serializeSuppression(row: Suppression) {
     address: row.address,
     reason: row.reason,
     created_at: row.createdAt,
+  };
+}
+
+export function serializeTemplate(row: Template) {
+  return {
+    object: "template" as const,
+    id: row.id,
+    name: row.name,
+    slug: row.slug,
+    description: row.description,
+    subject: row.subject,
+    html: row.html,
+    text: row.text,
+    /** Every name this template asks for, so a caller knows what to send. */
+    variables: templateVariables(row.subject, row.html, row.text),
+    created_at: row.createdAt,
+    updated_at: row.updatedAt,
   };
 }
 

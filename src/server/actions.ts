@@ -44,6 +44,7 @@ import { resolveScope } from "./mailboxes";
 import { cancelJobForMessage } from "./outbox";
 import { deliverMessage } from "./send";
 import { markCanceled } from "./sent";
+import { createTemplate, deleteTemplate, updateTemplate } from "./templates";
 import { checkWebhookUrl, makeWebhookSecret, pingWebhook } from "./webhooks";
 
 async function assertOwnsThreads(orgId: string, threadIds: string[], allowed?: string[]) {
@@ -1063,4 +1064,47 @@ export async function recentDeliveriesAction(limit = 20) {
     .where(eq(webhookDelivery.organizationId, access.orgId))
     .orderBy(sql`${webhookDelivery.createdAt} desc`)
     .limit(Math.min(limit, 100));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Templates                                                                  */
+/* -------------------------------------------------------------------------- */
+
+const templateSchema = z.object({
+  name: z.string().min(1),
+  slug: z.string().optional(),
+  description: z.string().optional(),
+  subject: z.string().default(""),
+  html: z.string().optional(),
+  text: z.string().optional(),
+});
+
+export async function createTemplateAction(raw: z.input<typeof templateSchema>) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  const input = templateSchema.parse(raw);
+
+  const row = await createTemplate(access.orgId, input, access.userId);
+  revalidatePath("/settings/templates");
+  return { id: row.id, slug: row.slug };
+}
+
+export async function updateTemplateAction(
+  id: string,
+  raw: Partial<z.input<typeof templateSchema>>,
+) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  const input = templateSchema.partial().parse(raw);
+
+  const row = await updateTemplate(access.orgId, id, input);
+  revalidatePath("/settings/templates");
+  return { id: row.id, slug: row.slug };
+}
+
+export async function deleteTemplateAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await deleteTemplate(access.orgId, id);
+  revalidatePath("/settings/templates");
 }

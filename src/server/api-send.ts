@@ -5,11 +5,13 @@ import { domain, mailbox } from "@/db/schema";
 import { type EmailAddress, coveringDomain, parseAddress, parseAddressList } from "@/lib/mail";
 import type { MimeAttachment } from "@/lib/mime";
 import { parseSchedule } from "@/lib/schedule";
+import { TemplateError } from "@/lib/template";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { ApiCaller } from "./api-auth";
 import { mailboxForSending } from "./mailboxes";
 import { SendError, deliverMessage } from "./send";
+import { TemplateNotFound, renderFor } from "./templates";
 
 const addresses = z.union([z.string(), z.array(z.string())]);
 
@@ -25,6 +27,14 @@ export const emailSchema = z.object({
   subject: z.string().default(""),
   html: z.string().optional(),
   text: z.string().optional(),
+  /**
+   * A saved template to send instead of a body written here, by id or by
+   * slug. `data` fills its holes. A `subject` given alongside it wins, so a
+   * one-off can override the saved line without a second template.
+   */
+  template: z.string().optional(),
+  template_id: z.string().optional(),
+  data: z.record(z.unknown()).optional(),
   headers: z.record(z.string()).optional(),
   /**
    * Hold the message until this time. An ISO 8601 timestamp, a Unix time, or
@@ -155,6 +165,8 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     scheduledAt = parsed.at;
   }
 
+  const body = await resolveBody(caller.orgId, input);
+
   const to = toList(input.to);
   const files: MimeAttachment[] = (input.attachments ?? []).map((file) => ({
     filename: file.filename,
@@ -170,9 +182,9 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     cc: toList(input.cc),
     bcc: toList(input.bcc),
     replyTo: input.reply_to,
-    subject: input.subject,
-    html: input.html ?? null,
-    text: input.text ?? null,
+    subject: body.subject,
+    html: body.html,
+    text: body.text,
     headers: input.headers,
     inlineAttachments: files,
     threadId: input.thread_id,
@@ -189,10 +201,45 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     thread_id: result.threadId,
     from: box.address,
     to: to.map((entry) => entry.address),
-    subject: input.subject,
+    subject: body.subject,
     status: result.status,
     scheduled_at: result.scheduledAt ? result.scheduledAt.toISOString() : null,
   };
+}
+
+/**
+ * The subject and body this message is actually made of.
+ *
+ * Without a template that is whatever the request wrote. With one, it is the
+ * saved wording with the values filled in — except the subject, which the
+ * request may still override, because a one-off variation on a saved subject
+ * is a real thing and making a second template for it is not.
+ */
+async function resolveBody(orgId: string, input: EmailInput) {
+  const reference = input.template_id ?? input.template;
+
+  if (!reference) {
+    return {
+      subject: input.subject,
+      html: input.html ?? null,
+      text: input.text ?? null,
+    };
+  }
+
+  try {
+    const rendered = await renderFor(orgId, reference, input.data ?? {});
+    return {
+      // `subject` has a default of "", so an untouched request cannot be told
+      // from one that meant an empty subject. Only a non-empty one overrides.
+      subject: input.subject || rendered.subject,
+      html: input.html ?? rendered.html,
+      text: input.text ?? rendered.text,
+    };
+  } catch (error) {
+    if (error instanceof TemplateNotFound) throw new SendError(error.message, 404);
+    if (error instanceof TemplateError) throw new SendError(error.message, 422);
+    throw error;
+  }
 }
 
 function decodeBase64(value: string, filename: string) {

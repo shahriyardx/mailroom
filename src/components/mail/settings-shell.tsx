@@ -5,6 +5,7 @@ import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
   ArrowLeft,
+  FileText,
   Gauge,
   Globe,
   Inbox,
@@ -43,6 +44,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     items: [
       { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
       { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:settings" },
+      { href: "/settings/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
       {
         href: "/settings/blocked",
         label: "Blocked addresses",
