@@ -49,12 +49,25 @@ import {
   revokeApiKeyAction,
   updateApiKeyAction,
 } from "@/server/actions";
-import { Ban, Check, Copy, KeyRound, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import {
+  ArrowUpRight,
+  Ban,
+  BookOpen,
+  Check,
+  Copy,
+  KeyRound,
+  MoreHorizontal,
+  Pencil,
+  Trash2,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
 const CUSTOM = "custom";
+
+/** Where the full API reference lives, so this screen does not have to be it. */
+const DOCS_URL = "https://mailroom-docs.shahriyar.dev/api/";
 
 interface Props {
   keys: ApiKey[];
@@ -813,122 +826,6 @@ function EditKeyDialog({
 
 /* -------------------------------------------------------------------------- */
 
-interface Endpoint {
-  method: string;
-  path: string;
-  what: string;
-  scope: string;
-}
-
-const ENDPOINTS: { group: string; rows: Endpoint[] }[] = [
-  {
-    group: "Sending",
-    rows: [
-      { method: "POST", path: "/emails", what: "Send one message", scope: "emails:send" },
-      {
-        method: "POST",
-        path: "/emails/batch",
-        what: "Send up to 100 at once",
-        scope: "emails:send",
-      },
-      { method: "GET", path: "/emails", what: "List what was sent", scope: "emails:read" },
-      {
-        method: "GET",
-        path: "/emails/:id",
-        what: "One send and its delivery events",
-        scope: "emails:read",
-      },
-    ],
-  },
-  {
-    group: "Reading mail",
-    rows: [
-      {
-        method: "GET",
-        path: "/threads",
-        what: "Search and list conversations",
-        scope: "mail:read",
-      },
-      {
-        method: "GET",
-        path: "/threads/:id",
-        what: "A thread and its messages",
-        scope: "mail:read",
-      },
-      {
-        method: "PATCH",
-        path: "/threads/:id",
-        what: "Move, read, star, label",
-        scope: "mail:write",
-      },
-      { method: "DELETE", path: "/threads/:id", what: "Trash or delete", scope: "mail:write" },
-      { method: "POST", path: "/threads/:id/reply", what: "Reply in thread", scope: "mail:write" },
-      { method: "GET", path: "/messages", what: "Messages, flat", scope: "mail:read" },
-      { method: "GET", path: "/messages/:id", what: "One message", scope: "mail:read" },
-      { method: "GET", path: "/messages/:id/raw", what: "The original MIME", scope: "mail:read" },
-      {
-        method: "GET",
-        path: "/attachments/:id",
-        what: "File details and a download link",
-        scope: "mail:read",
-      },
-    ],
-  },
-  {
-    group: "Setup",
-    rows: [
-      { method: "GET", path: "/mailboxes", what: "List addresses", scope: "mailboxes:read" },
-      { method: "POST", path: "/mailboxes", what: "Add an address", scope: "mailboxes:write" },
-      { method: "GET", path: "/domains", what: "Domains and their DNS", scope: "domains:read" },
-      { method: "POST", path: "/domains", what: "Add a domain", scope: "domains:write" },
-      {
-        method: "POST",
-        path: "/domains/:id/verify",
-        what: "Re-check with SES",
-        scope: "domains:write",
-      },
-      { method: "GET", path: "/labels", what: "List labels", scope: "labels:read" },
-      {
-        method: "GET",
-        path: "/contacts",
-        what: "Everyone you have mailed",
-        scope: "contacts:read",
-      },
-      {
-        method: "GET",
-        path: "/suppressions",
-        what: "Blocked addresses",
-        scope: "suppressions:read",
-      },
-    ],
-  },
-  {
-    group: "Events and numbers",
-    rows: [
-      {
-        method: "GET",
-        path: "/webhooks",
-        what: "Endpoints you are told through",
-        scope: "webhooks:read",
-      },
-      { method: "POST", path: "/webhooks", what: "Add one", scope: "webhooks:write" },
-      {
-        method: "GET",
-        path: "/webhook-deliveries",
-        what: "Every attempt, with replies",
-        scope: "webhooks:read",
-      },
-      {
-        method: "GET",
-        path: "/stats",
-        what: "Totals and a day-by-day series",
-        scope: "stats:read",
-      },
-      { method: "GET", path: "/me", what: "What this key is allowed to do", scope: "any key" },
-    ],
-  },
-];
-
 function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
   const origin = appUrl.replace(/\/+$/, "");
   const base = `${origin}/api/v1`;
@@ -980,30 +877,25 @@ await mail.emails.send({
         </pre>
       </div>
 
-      {ENDPOINTS.map((group) => (
-        <div key={group.group} className="mt-5">
-          <p className="eyebrow pb-1.5">{group.group}</p>
-          <div className="divide-y divide-border border-border border-t">
-            {group.rows.map((row) => (
-              <div
-                key={`${row.method} ${row.path}`}
-                className="flex items-baseline gap-3 py-[7px] text-[12.5px]"
-              >
-                <span className="w-14 shrink-0 font-mono text-[11px] text-muted-foreground">
-                  {row.method}
-                </span>
-                <code className="w-[13rem] shrink-0 truncate font-mono text-[12px]">
-                  {row.path}
-                </code>
-                <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.what}</span>
-                <code className="hidden shrink-0 font-mono text-[11px] text-muted-foreground sm:block">
-                  {row.scope}
-                </code>
-              </div>
-            ))}
-          </div>
-        </div>
-      ))}
+      {/* The endpoint list used to be printed here in full, which made this
+          screen a copy of the documentation that could fall behind it. What
+          is worth having beside a key you have just made is the one request
+          that proves the key works; the rest is a link. */}
+      <a
+        href={DOCS_URL}
+        target="_blank"
+        rel="noreferrer noopener"
+        className="mt-4 flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 transition-colors hover:bg-accent/50"
+      >
+        <BookOpen className="size-4 shrink-0 text-muted-foreground" />
+        <span className="min-w-0 flex-1">
+          <span className="block text-[12.5px] font-medium">Every endpoint, in the docs</span>
+          <span className="block text-[11.5px] text-muted-foreground">
+            Sending, threads, templates, webhooks, and which scope each one needs
+          </span>
+        </span>
+        <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />
+      </a>
     </div>
   );
 }

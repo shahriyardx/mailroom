@@ -6,6 +6,8 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   ArrowLeft,
+  ArrowUpRight,
+  BookOpen,
   FileText,
   Gauge,
   Globe,
@@ -33,6 +35,8 @@ interface NavItem {
   icon: LucideIcon;
   /** Hidden unless the person holds this capability. */
   needs?: string;
+  /** Leaves the app. Never highlights, and opens in its own tab. */
+  external?: boolean;
 }
 
 /** Grouped the way you think about the system, not the way it is stored. */
@@ -85,6 +89,12 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
       { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
       { href: "/settings/account", label: "Account", icon: User },
+      {
+        href: "https://mailroom-docs.shahriyar.dev",
+        label: "Documentation",
+        icon: BookOpen,
+        external: true,
+      },
     ],
   },
 ];
@@ -187,12 +197,15 @@ function SettingsNavPanel({
             {group.title && <p className="eyebrow px-2 pt-3 pb-1.5">{group.title}</p>}
             <ul className="space-y-0.5">
               {group.items.map((item) => {
-                const active = pathname === item.href || pathname.startsWith(`${item.href}/`);
+                const active =
+                  !item.external &&
+                  (pathname === item.href || pathname.startsWith(`${item.href}/`));
                 const Icon = item.icon;
                 return (
                   <li key={item.href}>
                     <Link
                       href={item.href}
+                      {...(item.external ? { target: "_blank", rel: "noreferrer noopener" } : {})}
                       className={cn(
                         "flex items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-[13px] transition-colors",
                         active
@@ -202,6 +215,9 @@ function SettingsNavPanel({
                     >
                       <Icon className="size-[17px] shrink-0" />
                       <span className="truncate">{item.label}</span>
+                      {item.external && (
+                        <ArrowUpRight className="ml-auto size-3.5 shrink-0 text-muted-foreground" />
+                      )}
                     </Link>
                   </li>
                 );
