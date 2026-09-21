@@ -257,15 +257,18 @@ Since nothing reaches SES, no event will ever arrive to say what became of the m
 
 Your webhook endpoint hears `email.sent` and then the matching event, in the same shape SES would have produced, with `simulated: true` added. That is the point: a receiver you test against this needs no special case.
 
-Test and live mail are kept apart. A test key sees only its own test mail. A live key sees real mail unless it asks:
+Listings and statistics show the side the key is on, and either can ask for the other:
 
 ```ts
-await mail.emails.list();                // real mail
-await mail.emails.list({ test: true });  // test mail
-await mail.emails.list({ test: "all" }); // both
+await mail.emails.list();                 // this key's side
+await mail.emails.list({ test: true });   // the test side
+await mail.emails.list({ test: false });  // the live side
+await mail.emails.list({ test: "all" });  // both
 ```
 
-Statistics follow the same rule — a bounce rate must never count a bounce somebody asked for.
+Statistics are the reason this exists — a bounce rate must never count a bounce somebody asked for.
+
+Note that this is a view, not an access boundary. Test mode governs *sending*: a test key cannot put a message in front of a real person. What it may read is decided by its scopes and reach like any other key, so narrow those as you would for any key you did not fully trust.
 
 ## Reading mail
 

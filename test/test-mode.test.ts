@@ -222,14 +222,16 @@ describe("keeping the two apart", () => {
     );
   });
 
-  it("lets a live key ask for the test side, or for both", async () => {
+  it("lets either side ask for the other, or for both", async () => {
     const { testFilter } = await import("@/server/api-auth");
 
     assert.equal(testFilter(caller(false), new URL("https://x.test/?test=all")), null);
+    assert.equal(testFilter(caller(true), new URL("https://x.test/?test=all")), null);
     assert.ok(testFilter(caller(false), new URL("https://x.test/?test=true")));
+    assert.ok(testFilter(caller(true), new URL("https://x.test/?test=false")));
   });
 
-  it("does not let a test key see real mail by asking", async () => {
+  it("shows both sides to a key that asks for both", async () => {
     const { testFilter } = await import("@/server/api-auth");
     const { db } = await import("@/db");
     const { message } = await import("@/db/schema");
@@ -238,12 +240,12 @@ describe("keeping the two apart", () => {
     const testSend = await sendAs(true);
 
     const filter = testFilter(caller(true), new URL("https://x.test/?test=all"));
-    assert.ok(filter, "a test key is filtered whatever it asks for");
+    assert.equal(filter, null, "nothing is filtered out");
 
-    const rows = await db.select({ id: message.id }).from(message).where(filter);
+    const rows = await db.select({ id: message.id }).from(message);
     const ids = rows.map((row) => row.id);
     assert.ok(ids.includes(testSend.id));
-    assert.ok(!ids.includes(liveSend.id), "the live send stays out of reach");
+    assert.ok(ids.includes(liveSend.id));
   });
 });
 

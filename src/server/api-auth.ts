@@ -319,17 +319,23 @@ export async function creatableDomainIdsFor(caller: ApiCaller): Promise<string[]
 /**
  * Which side of the line a listing should show.
  *
- * A test key sees its own test mail and nothing else — anything else would
- * make the sandbox a window onto real traffic. A live key sees real mail,
- * unless it asks: `?test=true` for the test side, `?test=all` for both.
+ * This is a view, not a boundary. What a key may *reach* is decided by its
+ * scopes and its mailboxes; what this decides is which mail is worth showing
+ * by default, and the default follows the key: a test key is looking at its
+ * own test sends, a live key is looking at real traffic.
+ *
+ * Either can ask for the other side — `?test=true`, `?test=false`, or
+ * `?test=all` for both. Pretending otherwise would be worse than useless,
+ * since a test key can still read a real message through its thread.
  *
  * Returns a condition to add to a query, or null for "no restriction".
  */
 export function testFilter(caller: ApiCaller, url: URL) {
-  if (caller.testMode) return eq(message.isTest, true);
-
   const asked = url.searchParams.get("test");
+
   if (asked === "all") return null;
   if (asked === "true" || asked === "1") return eq(message.isTest, true);
-  return eq(message.isTest, false);
+  if (asked === "false" || asked === "0") return eq(message.isTest, false);
+
+  return eq(message.isTest, caller.testMode);
 }

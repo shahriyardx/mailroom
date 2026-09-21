@@ -34,9 +34,9 @@ export interface ListEmailsParams {
   mailbox?: string;
   domain?: string;
   /**
-   * Which side of the line to list. A live key sees real mail by default;
-   * `true` shows the test side and `"all"` shows both. A test key sees its
-   * own test mail whatever this says.
+   * Which side of the line to list. The default follows the key — a live key
+   * sees real mail, a test key sees its own test sends — and either can ask
+   * for the other side, or for `"all"`.
    */
   test?: boolean | "all";
 }

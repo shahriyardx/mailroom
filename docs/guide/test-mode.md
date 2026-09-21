@@ -63,19 +63,29 @@ same there as a real one, next to a **test** badge.
 
 ## Keeping the two apart
 
-A test key sees only its own test mail. Asking for the live side does nothing
-— a sandbox that could read real traffic would not be one.
-
-A live key sees real mail, unless it asks:
+Listings and statistics show the side the key is on. A live key sees real
+mail; a test key sees its own test sends. Either can ask for the other:
 
 ```sh
-curl "https://mail.yourdomain.com/api/v1/emails"             # real mail
-curl "https://mail.yourdomain.com/api/v1/emails?test=true"   # test mail
+curl "https://mail.yourdomain.com/api/v1/emails"             # this key's side
+curl "https://mail.yourdomain.com/api/v1/emails?test=true"   # the test side
+curl "https://mail.yourdomain.com/api/v1/emails?test=false"  # the live side
 curl "https://mail.yourdomain.com/api/v1/emails?test=all"    # both
 ```
 
-`GET /api/v1/messages` and `GET /api/v1/stats` follow the same rule. A bounce
-rate is the one number that must never count a bounce somebody asked for.
+`GET /api/v1/messages` and `GET /api/v1/stats` follow the same rule. Statistics
+are the reason it exists: a bounce rate must never count a bounce somebody
+asked for.
+
+::: warning This is a view, not a boundary
+Test mode governs **sending** — a test key cannot put a message in front of a
+real person. It is not an access control. What a key may read is decided by
+its [scopes and reach](/api/scopes), the same as any other key, and a test key
+with `mail:read` can read real mail through its threads.
+
+Give a test key the narrow scopes you would give any key you did not fully
+trust.
+:::
 
 ## What it is good for
 
@@ -83,8 +93,9 @@ rate is the one number that must never count a bounce somebody asked for.
   sandbox to get out of.
 - Pointing a webhook receiver at a real send and watching what it does with a
   bounce, without bouncing a real message.
-- Letting somebody try an integration against your instance before you trust
-  them with a key that can actually send.
+- Letting somebody try an integration against your instance without a key
+  that can put a message in front of a real person. Narrow its scopes as you
+  would any other key — test mode stops the sending, not the reading.
 
 ## What it is not
 
