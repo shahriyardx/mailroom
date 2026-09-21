@@ -482,35 +482,32 @@ function NavPanel({
 
 /** One row of the navigation list. Active state is a filled pill, not a border. */
 /**
- * All or Unread, as one control rather than two rows.
+ * All or Unread, as two words under the inbox.
  *
- * Stacked underneath, each was the same shape and weight as the folder above
- * them, so the sidebar appeared to have grown a second level of navigation
- * where it had only gained a choice between two things.
+ * This went through a pair of rows and then a segmented control, and both
+ * were wrong the same way: given a shape and a fill, they read as navigation,
+ * and the sidebar appeared to have grown a level it had not. It is a filter on
+ * the folder already open, so it is written the way a caption is.
  */
 function UnreadSwitch({ base, unreadOnly }: { base: string; unreadOnly: boolean }) {
-  const options = [
-    { label: "All", href: base, active: !unreadOnly },
-    { label: "Unread", href: `${base}?unread=1`, active: unreadOnly },
-  ];
+  const link = (active: boolean) =>
+    cn(
+      "transition-colors",
+      active ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
+    );
 
   return (
-    <div className="mt-1 ml-[30px] flex gap-0.5 rounded-[9px] bg-sidebar-accent/50 p-0.5">
-      {options.map((option) => (
-        <Link
-          key={option.label}
-          href={option.href}
-          className={cn(
-            "flex-1 rounded-[7px] px-2 py-1 text-center text-[12px] transition-colors",
-            option.active
-              ? "bg-card font-semibold text-foreground shadow-raise"
-              : "text-muted-foreground hover:text-foreground",
-          )}
-        >
-          {option.label}
-        </Link>
-      ))}
-    </div>
+    <p className="mt-1 mb-0.5 flex items-center gap-1.5 pl-[30px] text-[12px]">
+      <Link href={base} className={link(!unreadOnly)}>
+        All
+      </Link>
+      <span className="text-border" aria-hidden>
+        ·
+      </span>
+      <Link href={`${base}?unread=1`} className={link(unreadOnly)}>
+        Unread
+      </Link>
+    </p>
   );
 }
 
