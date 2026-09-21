@@ -73,6 +73,59 @@ describe("a plain message on a dark page", () => {
   });
 });
 
+describe("a reply with something quoted under it", () => {
+  // What the screenshot showed: two lines of your own, then the newsletter
+  // you were replying to, carried along whole with its own white card.
+  const reply = [
+    `<div style="color:#27272a">Thanks for the information</div>`,
+    `<div style="color:#27272a">On Tue, billing@ccbot.app wrote:</div>`,
+    `<blockquote style="border-left:1px solid #ccc;padding-left:12px">`,
+    `<div style="background:#f4f4f5;padding:32px">`,
+    `<div style="background:#ffffff"><p style="color:#18181b">Advanced is live</p></div>`,
+    "</div>",
+    "</blockquote>",
+  ].join("");
+
+  it("is not treated as designed just because the quote was", () => {
+    const out = prepare(reply);
+    assert.equal(out.ownsBackground, false, "the lines you wrote painted no page");
+  });
+
+  it("frees your own words to follow the theme", () => {
+    const out = prepare(reply);
+    assert.doesNotMatch(
+      out.html.slice(0, out.html.indexOf("<blockquote")),
+      /color:#27272a/,
+      "the reply's own dark text is dropped",
+    );
+  });
+
+  it("leaves the quoted message exactly as it arrived", () => {
+    const out = prepare(reply);
+    const quote = out.html.slice(out.html.indexOf("<blockquote"));
+    assert.match(quote, /background:#f4f4f5/);
+    assert.match(quote, /color:#18181b/, "the quote keeps the colours its page needs");
+  });
+
+  it("still rescues a quote that brought no page of its own", () => {
+    const plain = `<p style="color:#111">Mine</p><blockquote><p style="color:#111">Theirs</p></blockquote>`;
+    const out = prepare(plain);
+    assert.doesNotMatch(out.html, /color:#111/, "both halves would have been invisible");
+  });
+
+  it("treats a quote inside a quote as part of the same carried message", () => {
+    const nested = [
+      `<p style="color:#27272a">Mine</p>`,
+      `<blockquote><div style="background:#fff">`,
+      `<blockquote><p style="color:#18181b">Older</p></blockquote>`,
+      "</div></blockquote>",
+    ].join("");
+    const out = prepare(nested);
+    assert.equal(out.ownsBackground, false);
+    assert.match(out.html, /color:#18181b/, "the inner quote rides on the outer one's page");
+  });
+});
+
 describe("in light mode", () => {
   it("changes nothing, whatever the message chose", () => {
     const html = `<p style="color:#27272a">Hello</p>`;

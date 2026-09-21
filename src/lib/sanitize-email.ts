@@ -120,6 +120,47 @@ function dropUnreadableColours(html: string) {
   return output;
 }
 
+/**
+ * Splits a message into the part somebody wrote and the parts they quoted.
+ *
+ * A reply is two things in one document: a few lines of your own, and below
+ * them somebody else's message carried along whole. They were written against
+ * different pages and have to be treated separately — otherwise two lines of
+ * "Thanks" inherit the styling of whatever newsletter they were sent under.
+ */
+function splitQuotes(html: string) {
+  const parts: { quoted: boolean; text: string }[] = [];
+  const tags = /<\/?blockquote\b[^>]*>/gi;
+
+  let depth = 0;
+  let start = 0;
+  let match = tags.exec(html);
+
+  while (match) {
+    const closing = match[0].startsWith("</");
+    if (closing) {
+      depth = Math.max(0, depth - 1);
+      if (depth === 0) {
+        const end = match.index + match[0].length;
+        parts.push({ quoted: true, text: html.slice(start, end) });
+        start = end;
+      }
+    } else {
+      // Only the outermost quote is a boundary; one nested inside another is
+      // part of the same carried-along message.
+      if (depth === 0 && match.index > start) {
+        parts.push({ quoted: false, text: html.slice(start, match.index) });
+        start = match.index;
+      }
+      depth += 1;
+    }
+    match = tags.exec(html);
+  }
+
+  if (start < html.length) parts.push({ quoted: depth > 0, text: html.slice(start) });
+  return parts;
+}
+
 export function prepareEmailHtml(
   html: string,
   options: { showRemoteImages: boolean; inlineImages?: Record<string, string>; dark?: boolean },
@@ -171,11 +212,26 @@ export function prepareEmailHtml(
     return `<a ${cleaned} target="_blank" rel="noopener noreferrer nofollow">`;
   });
 
-  const ownsBackground = declaresBackground(output);
+  const parts = splitQuotes(output);
 
-  // A message that paints its own page keeps every colour it chose; one that
-  // does not is about to inherit a dark page it was never written for.
-  if (options.dark && !ownsBackground) output = dropUnreadableColours(output);
+  /**
+   * Whether the message paints its own page is asked of what the sender
+   * actually wrote, not of what they quoted. A reply to a newsletter carries
+   * that newsletter's background along with it, and answering yes there put a
+   * lit slab behind two lines of "Thanks for the information".
+   */
+  const ownsBackground = parts
+    .filter((part) => !part.quoted)
+    .some((part) => declaresBackground(part.text));
+
+  if (options.dark) {
+    // Each part is judged on its own: a quoted newsletter keeps its colours
+    // because it brought a page to put them on, while a plain quote is as
+    // unreadable on a dark page as the reply above it would be.
+    output = parts
+      .map((part) => (declaresBackground(part.text) ? part.text : dropUnreadableColours(part.text)))
+      .join("");
+  }
 
   return { html: output, blockedImages, ownsBackground };
 }
