@@ -7,6 +7,7 @@ import { cn } from "@/lib/utils";
 import {
   deleteThreadsAction,
   moveThreadsAction,
+  restoreThreadsAction,
   setReadAction,
   setStarAction,
 } from "@/server/actions";
@@ -246,12 +247,18 @@ export function ThreadList({
           >
             <Star className={cn(item.isStarred && "fill-warn text-warn")} />
           </RowAction>
-          <RowAction
-            label="Archive"
-            onClick={() => run(() => moveThreadsAction([item.id], "archive"))}
-          >
-            <Archive />
-          </RowAction>
+          {folder === "trash" ? (
+            <RowAction label="Put back" onClick={() => run(() => restoreThreadsAction([item.id]))}>
+              <ArchiveRestore />
+            </RowAction>
+          ) : (
+            <RowAction
+              label="Archive"
+              onClick={() => run(() => moveThreadsAction([item.id], "archive"))}
+            >
+              <Archive />
+            </RowAction>
+          )}
           <RowAction
             label={item.unreadCount > 0 ? "Mark read" : "Mark unread"}
             onClick={() => run(() => setReadAction([item.id], item.unreadCount > 0))}

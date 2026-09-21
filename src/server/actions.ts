@@ -32,8 +32,9 @@ import {
 } from "@/server/grants";
 import { rememberImageChoice } from "@/server/image-trust";
 import { assertCan, can } from "@/server/permissions";
+import { restoreThreads, trashThreads } from "@/server/trash";
 import type { EventType } from "@aws-sdk/client-sesv2";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
@@ -298,29 +299,27 @@ export async function setImageChoiceAction(sender: string, allowed: boolean) {
   await rememberImageChoice(access, sender, allowed);
 }
 
+/**
+ * Puts a conversation back where it came from.
+ *
+ * Each message returns to its own folder, which is the whole point: a reply
+ * you wrote goes back to Sent and the message it answered goes back to the
+ * inbox, and the conversation reads the way it did before. Anything with no
+ * record of where it was — deleted before this was kept — goes to the inbox,
+ * which is where "move to inbox" would have put it anyway.
+ */
+export async function restoreThreadsAction(threadIds: string[]) {
+  const access = await requireAccess();
+  const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
+  await restoreThreads(owned);
+  revalidatePath("/mail", "layout");
+}
+
 /** Trash first, permanent delete only from trash. */
 export async function deleteThreadsAction(threadIds: string[]) {
   const access = await requireAccess();
   const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
-  if (owned.length === 0) return;
-
-  const rows = await db.select().from(thread).where(inArray(thread.id, owned));
-  const purge = rows.filter((row) => row.folders.length === 1 && row.folders[0] === "trash");
-  const trash = rows.filter((row) => !purge.includes(row));
-
-  if (purge.length > 0) {
-    await db.delete(thread).where(
-      inArray(
-        thread.id,
-        purge.map((row) => row.id),
-      ),
-    );
-  }
-  if (trash.length > 0) {
-    const ids = trash.map((row) => row.id);
-    await db.update(message).set({ folder: "trash" }).where(inArray(message.threadId, ids));
-    for (const id of ids) await recomputeThread(id);
-  }
+  await trashThreads(owned);
   revalidatePath("/mail", "layout");
 }
 

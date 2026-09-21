@@ -448,6 +448,14 @@ export const message = pgTable(
     htmlBody: text("html_body"),
 
     folder: folderEnum("folder").notNull().default("inbox"),
+    /**
+     * Where this message sat before it was thrown away.
+     *
+     * Deleting overwrites `folder`, so without this there is nothing left to
+     * say where a message came from — and putting a reply you wrote back into
+     * the inbox is not putting it back.
+     */
+    previousFolder: folderEnum("previous_folder"),
     isRead: boolean("is_read").notNull().default(false),
     isStarred: boolean("is_starred").notNull().default(false),
     isDraft: boolean("is_draft").notNull().default(false),

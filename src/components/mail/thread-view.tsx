@@ -18,11 +18,13 @@ import {
   cancelScheduledAction,
   deleteThreadsAction,
   moveThreadsAction,
+  restoreThreadsAction,
   setReadAction,
   setStarAction,
 } from "@/server/actions";
 import {
   Archive,
+  ArchiveRestore,
   ArrowLeft,
   ChevronDown,
   Eye,
@@ -90,6 +92,9 @@ export function ThreadView({ thread, backHref, labels, imageChoices = {} }: Prop
     });
   }
 
+  /** Every message of it is in the trash, so the only way on is back. */
+  const inTrash = thread.messages.every((item) => item.folder === "trash");
+
   function toggle(id: string) {
     setOpenIds((current) => {
       const next = new Set(current);
@@ -145,12 +150,23 @@ export function ThreadView({ thread, backHref, labels, imageChoices = {} }: Prop
           </Link>
         </IconButton>
 
-        <Action
-          label="Archive"
-          onClick={() => run(() => moveThreadsAction([thread.id], "archive"), true)}
-        >
-          <Archive />
-        </Action>
+        {/* A conversation in the trash has one thing worth doing to it that
+            is not deleting it again. */}
+        {inTrash ? (
+          <Action
+            label="Put back"
+            onClick={() => run(() => restoreThreadsAction([thread.id]), true)}
+          >
+            <ArchiveRestore />
+          </Action>
+        ) : (
+          <Action
+            label="Archive"
+            onClick={() => run(() => moveThreadsAction([thread.id], "archive"), true)}
+          >
+            <Archive />
+          </Action>
+        )}
         <Action
           label="Report spam"
           onClick={() => run(() => moveThreadsAction([thread.id], "spam"), true)}

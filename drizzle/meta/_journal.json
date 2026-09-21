@@ -183,6 +183,13 @@
       "when": 1789976110306,
       "tag": "0025_image_trust",
       "breakpoints": true
+    },
+    {
+      "idx": 26,
+      "version": "7",
+      "when": 1789976170306,
+      "tag": "0026_previous_folder",
+      "breakpoints": true
     }
   ]
 }
