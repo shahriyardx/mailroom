@@ -46,13 +46,6 @@ export default async function MailPage({ params, searchParams }: PageProps) {
     mailboxes.length === 0 &&
     (can(access, "mailbox:manage") || creatable === "all" || creatable.length > 0);
 
-  const scopeLabel =
-    scope.kind === "all"
-      ? "All mail"
-      : scope.kind === "domain"
-        ? scope.domain
-        : (mailboxes.find((box) => box.id === scope.mailboxId)?.address ?? "Mailbox");
-
   const [{ items, nextCursor }, detail] = await Promise.all([
     listThreads({
       orgId: access.orgId,
@@ -81,8 +74,6 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       labels={labels}
       scope={scope}
       folder={folder}
-      scopeLabel={scopeLabel}
-      threadCount={items.length}
       user={{ name: access.name, email: access.email }}
       canAddMailbox={mayAddMailbox}
       openSubject={detail?.subject || undefined}

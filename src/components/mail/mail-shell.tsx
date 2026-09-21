@@ -78,8 +78,6 @@ interface Props {
   labels: LabelRow[];
   scope: Scope;
   folder: ViewFolder;
-  scopeLabel: string;
-  threadCount: number;
   user: { name: string; email: string };
   list: React.ReactNode;
   children: React.ReactNode;
@@ -95,8 +93,6 @@ export function MailShell({
   labels,
   scope,
   folder,
-  scopeLabel,
-  threadCount,
   user,
   list,
   children,
@@ -233,7 +229,8 @@ export function MailShell({
         </Sheet>
 
         <div className="flex min-w-0 flex-1 flex-col">
-          {/* The view is named once, across both columns. */}
+          {/* One row across both columns, holding the two things that apply
+              to whatever is below it: what to search for, and reloading. */}
           <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-5">
             <IconButton
               size="md"
@@ -243,28 +240,11 @@ export function MailShell({
             >
               <Menu />
             </IconButton>
-            {/* The folder names the view; the scope only qualifies it, and
-                  only when it is narrower than everything. On a phone none of
-                  it appears: you just tapped the folder in the drawer to get
-                  here, and the one row of space is worth more as search. */}
-            <h1 className="hidden shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em] md:block">
-              {FOLDER_LABELS[folder]}
-            </h1>
-            {threadCount > 0 && (
-              <span className="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums md:block">
-                {threadCount}
-              </span>
-            )}
-            {scope.kind !== "all" && (
-              <span className="hidden min-w-0 shrink truncate text-[12.5px] text-muted-foreground lg:block">
-                in <span className="font-mono">{scopeLabel}</span>
-              </span>
-            )}
-
-            {/* Search belongs over the thing it searches, not in the list of
-                places to go. There is exactly one of these, so no second copy
-                can hold a different term than the one the results are for. */}
-            <div className="ml-auto min-w-0 flex-1 md:max-w-64 lg:max-w-80">
+            {/* No name for the view here. The sidebar already has the folder
+                lit up and the mailbox chosen, and repeating it in the header
+                spends the only row this pane has on something you can see
+                without it. The row goes to search instead. */}
+            <div className="min-w-0 flex-1 md:max-w-[28rem]">
               <SearchField defaultValue={searchValue} onCommit={(value) => setParam("q", value)} />
             </div>
 
@@ -272,7 +252,7 @@ export function MailShell({
               <IconButton
                 size="md"
                 label="Refresh"
-                className="shrink-0"
+                className="ml-auto shrink-0"
                 onClick={() => router.refresh()}
               >
                 <RefreshCw />
