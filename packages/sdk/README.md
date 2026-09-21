@@ -398,6 +398,18 @@ const hook = await mail.webhooks.create({
 console.log(hook.secret);
 ```
 
+An endpoint hears about the whole account unless it is scoped. Pass
+`domain_id` for every address on one domain (including ones added later), or
+`mailbox_id` for a single address. One or the other, never both.
+
+```ts
+await mail.webhooks.create({
+  url: "https://api.example.com/hooks/acme",
+  events: ["*"],
+  domain_id: "dom_…", // everything sent from or to @acme.com
+});
+```
+
 The URL must be `https` and must not point inside a private network.
 
 ```ts

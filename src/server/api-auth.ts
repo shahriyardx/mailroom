@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { apiKey, mailbox, message, webhook } from "@/db/schema";
+import { domain, apiKey, mailbox, message, webhook } from "@/db/schema";
 import { BodyError, fail, serverError } from "@/lib/api-http";
 import { bearerToken, hashApiKey } from "@/lib/api-key";
 import { type Scope, expandScopes, hasScope } from "@/lib/api-scopes";
@@ -302,6 +302,31 @@ export async function mayWatchMailbox(caller: ApiCaller, mailboxId: string | nul
     return { ok: false as const, reason: "No such mailbox" };
   }
   return { ok: true as const };
+}
+
+/**
+ * Whether a key may make a webhook scoped to a whole domain.
+ *
+ * A domain covers every mailbox on it, including ones made later, so this
+ * needs the same reach a whole-account webhook does. A key restricted to
+ * named mailboxes could otherwise use a domain webhook to receive mail it
+ * cannot read.
+ */
+export async function mayWatchDomain(caller: ApiCaller, domainId: string | null | undefined) {
+  if (!domainId) return { ok: true as const };
+
+  const owns = await db.query.domain.findFirst({
+    where: and(eq(domain.id, domainId), eq(domain.organizationId, caller.orgId)),
+    columns: { id: true },
+  });
+  if (!owns) return { ok: false as const, reason: "No such domain" };
+
+  if (caller.reach.unrestricted) return { ok: true as const };
+  if (caller.reach.domainIds.includes(domainId)) return { ok: true as const };
+  return {
+    ok: false as const,
+    reason: "This API key does not reach that domain",
+  };
 }
 
 /** The domains a key may create new addresses on. Null means every one. */

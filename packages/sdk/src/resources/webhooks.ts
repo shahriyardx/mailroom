@@ -15,8 +15,13 @@ export interface CreateWebhookInput {
   description?: string;
   /** Event names, or `["*"]` for everything, including events added later. */
   events?: (WebhookEventName | "*")[];
-  /** Only fire for mail in this one mailbox. */
+  /** Only fire for mail in this one mailbox. Not with `domain_id`. */
   mailbox_id?: string;
+  /**
+   * Only fire for mail on this domain — every address on it, including ones
+   * added later. Not with `mailbox_id`.
+   */
+  domain_id?: string;
   enabled?: boolean;
 }
 
@@ -25,7 +30,10 @@ export interface UpdateWebhookInput {
   description?: string | null;
   events?: (WebhookEventName | "*")[];
   enabled?: boolean;
+  /** Pass null to widen back to the whole account. Not with `domain_id`. */
   mailbox_id?: string | null;
+  /** Pass null to widen back to the whole account. Not with `mailbox_id`. */
+  domain_id?: string | null;
   /** Replaces the signing secret and returns the new one, once. */
   rotate_secret?: boolean;
 }

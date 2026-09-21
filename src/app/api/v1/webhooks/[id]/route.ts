@@ -1,7 +1,13 @@
 import { db } from "@/db";
 import { webhook } from "@/db/schema";
 import { boolOf, fail, ok, readBody } from "@/lib/api-http";
-import { type ApiCaller, apiRoute, mayWatchMailbox, reachableWebhookIds } from "@/server/api-auth";
+import {
+  type ApiCaller,
+  apiRoute,
+  mayWatchDomain,
+  mayWatchMailbox,
+  reachableWebhookIds,
+} from "@/server/api-auth";
 import { serializeWebhook } from "@/server/api-serialize";
 import {
   WEBHOOK_EVENTS,
@@ -40,6 +46,7 @@ const patchSchema = z
     events: z.array(z.string()).min(1).optional(),
     enabled: z.boolean().optional(),
     mailbox_id: z.string().nullable().optional(),
+    domain_id: z.string().nullable().optional(),
     /** Replaces the signing secret and returns the new one, once. */
     rotate_secret: z.boolean().optional(),
   })
@@ -83,6 +90,22 @@ export const PATCH = apiRoute<{ id: string }>(
       }
     }
 
+    if (input.domain_id !== undefined) {
+      const watching = await mayWatchDomain(caller, input.domain_id);
+      if (!watching.ok) {
+        return fail(
+          watching.reason === "No such domain" ? "not_found" : "forbidden",
+          watching.reason,
+        );
+      }
+    }
+
+    const nextMailbox = input.mailbox_id === undefined ? row.mailboxId : input.mailbox_id;
+    const nextDomain = input.domain_id === undefined ? row.domainId : input.domain_id;
+    if (nextMailbox && nextDomain) {
+      return fail("invalid_request", "Give a mailbox_id or a domain_id, not both");
+    }
+
     const secret = input.rotate_secret ? makeWebhookSecret() : row.secret;
 
     await db
@@ -92,7 +115,8 @@ export const PATCH = apiRoute<{ id: string }>(
         description: input.description === undefined ? row.description : input.description,
         events: input.events ?? row.events,
         enabled: input.enabled ?? row.enabled,
-        mailboxId: input.mailbox_id === undefined ? row.mailboxId : input.mailbox_id,
+        mailboxId: nextMailbox,
+        domainId: nextDomain,
         secret,
         ...(input.enabled === true ? { consecutiveFailures: 0, lastError: null } : {}),
       })

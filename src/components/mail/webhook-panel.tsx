@@ -18,7 +18,9 @@ import {
   Panel,
   Select,
   SelectContent,
+  SelectGroup,
   SelectItem,
+  SelectLabel,
   SelectTrigger,
   SelectValue,
   StatusPill,
@@ -50,15 +52,37 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
 
-const ANY_MAILBOX = "__any__";
+/**
+ * One control, three kinds of answer.
+ *
+ * The scope used to be a mailbox or nothing, which meant an account sending
+ * for several domains had to make one endpoint per mailbox to hear about a
+ * single domain — and another one every time a mailbox was added to it.
+ */
+const EVERYTHING = "__all__";
+
+function scopeValue(scope: { mailboxId?: string | null; domainId?: string | null }) {
+  if (scope.mailboxId) return `mailbox:${scope.mailboxId}`;
+  if (scope.domainId) return `domain:${scope.domainId}`;
+  return EVERYTHING;
+}
+
+function scopeParts(value: string) {
+  const [kind, id] = value.split(":");
+  return {
+    mailboxId: kind === "mailbox" ? (id ?? null) : null,
+    domainId: kind === "domain" ? (id ?? null) : null,
+  };
+}
 
 interface Props {
   webhooks: Webhook[];
   deliveries: WebhookDelivery[];
   mailboxes: Mailbox[];
+  domains: { id: string; name: string }[];
 }
 
-export function WebhookPanel({ webhooks, deliveries, mailboxes }: Props) {
+export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [saving, submit] = useSubmit();
@@ -67,7 +91,7 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes }: Props) {
   const [description, setDescription] = useState("");
   const [all, setAll] = useState(true);
   const [events, setEvents] = useState<string[]>([]);
-  const [mailboxId, setMailboxId] = useState(ANY_MAILBOX);
+  const [scope, setScope] = useState(EVERYTHING);
   const [fresh, setFresh] = useState<{ id: string; secret: string } | null>(null);
 
   function toggleEvent(event: string) {
@@ -116,8 +140,20 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes }: Props) {
                   {hook.description && (
                     <p className="truncate text-[12px] text-muted-foreground">{hook.description}</p>
                   )}
-                  <p className="mt-0.5 truncate font-mono text-[11.5px] text-muted-foreground">
-                    {hook.events.includes("*") ? "all events" : hook.events.join("  ")}
+                  <p className="mt-0.5 flex items-center gap-1.5 truncate font-mono text-[11.5px] text-muted-foreground">
+                    {/* Scope first: which mail an endpoint hears about decides
+                        whether it is the one you are looking at. */}
+                    <span className="shrink-0 rounded bg-muted px-1.5 py-px">
+                      {hook.mailboxId
+                        ? (mailboxes.find((box) => box.id === hook.mailboxId)?.address ??
+                          "one mailbox")
+                        : hook.domainId
+                          ? `@${domains.find((entry) => entry.id === hook.domainId)?.name ?? "one domain"}`
+                          : "whole account"}
+                    </span>
+                    <span className="truncate">
+                      {hook.events.includes("*") ? "all events" : hook.events.join("  ")}
+                    </span>
                   </p>
                   {hook.lastError && !hook.enabled && (
                     <p className="mt-0.5 truncate text-[11.5px] text-destructive">
@@ -216,21 +252,36 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes }: Props) {
 
           <Field
             className="mt-4"
-            label="Only for one mailbox"
-            htmlFor="hook-mailbox"
-            hint="Leave as any to hear about every address."
+            label="What it hears about"
+            htmlFor="hook-scope"
+            hint="A domain covers every address on it, including ones added later."
           >
-            <Select value={mailboxId} onValueChange={(value) => value && setMailboxId(value)}>
-              <SelectTrigger id="hook-mailbox" className="font-mono text-[12.5px]">
+            <Select value={scope} onValueChange={(value) => value && setScope(value)}>
+              <SelectTrigger id="hook-scope" className="text-[12.5px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={ANY_MAILBOX}>Any mailbox</SelectItem>
-                {mailboxes.map((box) => (
-                  <SelectItem key={box.id} value={box.id} className="font-mono">
-                    {box.address}
-                  </SelectItem>
-                ))}
+                <SelectItem value={EVERYTHING}>Everything in this account</SelectItem>
+                {domains.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>One domain</SelectLabel>
+                    {domains.map((entry) => (
+                      <SelectItem key={entry.id} value={`domain:${entry.id}`} className="font-mono">
+                        @{entry.name}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
+                {mailboxes.length > 0 && (
+                  <SelectGroup>
+                    <SelectLabel>One mailbox</SelectLabel>
+                    {mailboxes.map((box) => (
+                      <SelectItem key={box.id} value={`mailbox:${box.id}`} className="font-mono">
+                        {box.address}
+                      </SelectItem>
+                    ))}
+                  </SelectGroup>
+                )}
               </SelectContent>
             </Select>
           </Field>
@@ -295,7 +346,7 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes }: Props) {
                     url: url.trim(),
                     description: description.trim() || undefined,
                     events: all ? ["*"] : events,
-                    mailboxId: mailboxId === ANY_MAILBOX ? null : mailboxId,
+                    ...scopeParts(scope),
                   });
                   if (!result.ok) {
                     toast.error(result.error);
@@ -304,6 +355,7 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes }: Props) {
                   setFresh({ id: result.id, secret: result.secret });
                   setUrl("");
                   setDescription("");
+                  setScope(EVERYTHING);
                   toast.success("Endpoint added");
                   router.refresh();
                 })

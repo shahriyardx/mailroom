@@ -271,7 +271,10 @@ export interface Webhook {
   /** Event names, or `["*"]` for everything, including events added later. */
   events: string[];
   enabled: boolean;
+  /** Scoped to one mailbox. Null unless `domain_id` is also null and it hears everything. */
   mailbox_id: string | null;
+  /** Scoped to every address on one domain, including ones added later. */
+  domain_id: string | null;
   last_status: number | null;
   last_delivered_at: string | null;
   last_error_at: string | null;

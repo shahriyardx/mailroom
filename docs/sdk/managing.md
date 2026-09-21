@@ -113,6 +113,18 @@ const hook = await mail.webhooks.create({
 console.log(hook.secret); // shown once. Store it now.
 ```
 
+An endpoint hears about the whole account unless it is scoped. Pass
+`domain_id` for every address on one domain (including ones added later), or
+`mailbox_id` for a single address. One or the other, never both.
+
+```ts
+await mail.webhooks.create({
+  url: "https://api.example.com/hooks/acme",
+  events: ["*"],
+  domain_id: "dom_…", // everything sent from or to @acme.com
+});
+```
+
 ```ts
 await mail.webhooks.update(id, { enabled: true });          // also clears failures
 await mail.webhooks.update(id, { rotate_secret: true });    // new secret, once

@@ -732,8 +732,16 @@ export const webhook = pgTable(
      */
     secret: text("secret").notNull(),
     enabled: boolean("enabled").notNull().default(true),
-    /** Only fire for mail in this mailbox. Null means every mailbox. */
+    /**
+     * What this endpoint hears about. At most one of these is set; both null
+     * means the whole account.
+     *
+     * A domain is the useful middle: an account that sends for several
+     * domains usually wants one endpoint per domain, and pinning per mailbox
+     * meant making a new endpoint every time a mailbox was added.
+     */
     mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
+    domainId: text("domain_id").references(() => domain.id, { onDelete: "cascade" }),
     /** Rolling health, so a broken endpoint can be spotted without reading deliveries. */
     lastStatus: integer("last_status"),
     lastDeliveredAt: timestamp("last_delivered_at", { withTimezone: true }),
@@ -742,7 +750,10 @@ export const webhook = pgTable(
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [index("webhook_org_idx").on(t.organizationId)],
+  (t) => [
+    index("webhook_org_idx").on(t.organizationId),
+    index("webhook_domain_idx").on(t.domainId),
+  ],
 );
 
 /** One attempt at calling an endpoint, kept so a failure can be read and replayed. */

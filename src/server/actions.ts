@@ -955,6 +955,7 @@ export async function createWebhookAction(input: {
   description?: string;
   events: string[];
   mailboxId?: string | null;
+  domainId?: string | null;
 }) {
   const access = await requireAccess();
   assertCan(access, "apikey:manage");
@@ -969,11 +970,24 @@ export async function createWebhookAction(input: {
     return { ok: false as const, error: "Choose at least one event to send" };
   }
 
+  // One scope or the other, never both: two answers to "what does this hear
+  // about" is a rule nobody can read off the screen.
+  if (input.mailboxId && input.domainId) {
+    return { ok: false as const, error: "Choose a mailbox or a domain, not both" };
+  }
+
   if (input.mailboxId) {
     const owns = await db.query.mailbox.findFirst({
       where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, access.orgId)),
     });
     if (!owns) return { ok: false as const, error: "Unknown mailbox" };
+  }
+
+  if (input.domainId) {
+    const owns = await db.query.domain.findFirst({
+      where: and(eq(domainTable.id, input.domainId), eq(domainTable.organizationId, access.orgId)),
+    });
+    if (!owns) return { ok: false as const, error: "Unknown domain" };
   }
 
   const id = newId("whk");
@@ -986,6 +1000,7 @@ export async function createWebhookAction(input: {
     events,
     secret,
     mailboxId: input.mailboxId || null,
+    domainId: input.domainId || null,
   });
 
   revalidatePath("/settings");
@@ -995,7 +1010,14 @@ export async function createWebhookAction(input: {
 
 export async function updateWebhookAction(
   webhookId: string,
-  patch: { url?: string; description?: string | null; events?: string[]; enabled?: boolean },
+  patch: {
+    url?: string;
+    description?: string | null;
+    events?: string[];
+    enabled?: boolean;
+    mailboxId?: string | null;
+    domainId?: string | null;
+  },
 ) {
   const access = await requireAccess();
   assertCan(access, "apikey:manage");
@@ -1015,10 +1037,30 @@ export async function updateWebhookAction(
     : owns.events;
   if (events.length === 0) return { ok: false as const, error: "Choose at least one event" };
 
+  const mailboxId = patch.mailboxId === undefined ? owns.mailboxId : patch.mailboxId;
+  const domainId = patch.domainId === undefined ? owns.domainId : patch.domainId;
+  if (mailboxId && domainId) {
+    return { ok: false as const, error: "Choose a mailbox or a domain, not both" };
+  }
+  if (patch.mailboxId) {
+    const box = await db.query.mailbox.findFirst({
+      where: and(eq(mailbox.id, patch.mailboxId), eq(mailbox.organizationId, access.orgId)),
+    });
+    if (!box) return { ok: false as const, error: "Unknown mailbox" };
+  }
+  if (patch.domainId) {
+    const found = await db.query.domain.findFirst({
+      where: and(eq(domainTable.id, patch.domainId), eq(domainTable.organizationId, access.orgId)),
+    });
+    if (!found) return { ok: false as const, error: "Unknown domain" };
+  }
+
   await db
     .update(webhook)
     .set({
       url: target?.ok ? target.url.toString() : owns.url,
+      mailboxId,
+      domainId,
       description: patch.description === undefined ? owns.description : patch.description,
       events,
       enabled: patch.enabled ?? owns.enabled,

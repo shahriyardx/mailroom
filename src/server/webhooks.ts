@@ -2,7 +2,7 @@ import "server-only";
 
 import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
-import { webhook, webhookDelivery } from "@/db/schema";
+import { mailbox, webhook, webhookDelivery } from "@/db/schema";
 import { newId } from "@/lib/utils";
 import type { WebhookEvent } from "@/lib/webhook-events";
 
@@ -186,7 +186,11 @@ export async function dispatchWebhooks(
   data: Record<string, unknown>,
   options: { mailboxId?: string | null } = {},
 ) {
-  let hooks: (Hook & { events: string[]; mailboxId: string | null })[];
+  let hooks: (Hook & {
+    events: string[];
+    mailboxId: string | null;
+    domainId: string | null;
+  })[];
   try {
     hooks = await db
       .select({
@@ -196,6 +200,7 @@ export async function dispatchWebhooks(
         secret: webhook.secret,
         events: webhook.events,
         mailboxId: webhook.mailboxId,
+        domainId: webhook.domainId,
       })
       .from(webhook)
       .where(and(eq(webhook.organizationId, orgId), eq(webhook.enabled, true)));
@@ -204,12 +209,29 @@ export async function dispatchWebhooks(
     return;
   }
 
+  // Only worth a query when something is actually scoped to a domain, which
+  // for most accounts is never: every caller already knows its mailbox, and
+  // the domain has to be looked up from it.
+  let domainId: string | null = null;
+  if (options.mailboxId && hooks.some((hook) => hook.domainId)) {
+    const box = await db.query.mailbox
+      .findFirst({ where: eq(mailbox.id, options.mailboxId) })
+      .catch(() => null);
+    domainId = box?.domainId ?? null;
+  }
+
   const wanted = hooks.filter((hook) => {
     if (!hook.events.includes("*") && !hook.events.includes(event)) return false;
-    // A webhook pinned to one mailbox hears only about that mailbox. Events
-    // with no mailbox of their own reach every endpoint.
-    if (hook.mailboxId && options.mailboxId && hook.mailboxId !== options.mailboxId) return false;
-    if (hook.mailboxId && !options.mailboxId) return false;
+
+    // An endpoint scoped to a mailbox or a domain hears only about that one.
+    // An event with no mailbox of its own cannot be placed, so a scoped
+    // endpoint does not get it; an unscoped endpoint gets everything.
+    if (hook.mailboxId) {
+      return Boolean(options.mailboxId) && hook.mailboxId === options.mailboxId;
+    }
+    if (hook.domainId) {
+      return Boolean(domainId) && hook.domainId === domainId;
+    }
     return true;
   });
 

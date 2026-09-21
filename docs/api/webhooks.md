@@ -20,6 +20,7 @@ Scope: `webhooks:read`
   "events": ["mail.received", "email.bounced"],
   "enabled": true,
   "mailbox_id": null,
+  "domain_id": null,
   "last_status": 200,
   "last_delivered_at": "2026-09-21T09:58:02.000Z",
   "last_error_at": null,
@@ -45,7 +46,7 @@ Scope: `webhooks:write`
   "url": "https://api.example.com/hooks/mail",
   "description": "Production receiver",
   "events": ["mail.received", "email.bounced"],
-  "mailbox_id": null,
+  "domain_id": "dom_…",
   "enabled": true
 }
 ```
@@ -54,8 +55,13 @@ Scope: `webhooks:write`
 | --- | --- |
 | `url` | **required**. Must be `https` |
 | `events` | Event names, or `["*"]` for everything **including events added later**. Defaults to `["*"]` |
-| `mailbox_id` | Only fire for mail in this mailbox |
+| `mailbox_id` | Only fire for mail in this one mailbox |
+| `domain_id` | Only fire for mail on this domain — every address on it, including ones added later |
 | `description` | For your own reference |
+
+Give one of `mailbox_id` or `domain_id`, or neither. Both together is a
+`400`: two answers to "what does this hear about" is a rule nobody can read
+back off the endpoint.
 
 Returns `201` **with the signing secret**:
 
@@ -82,12 +88,30 @@ service — from outside.
 `localhost` and `127.0.0.1` are allowed **off production**, because a local
 receiver is how one gets tried out.
 
+### Scope
+
+Three widths, narrowest first:
+
+| Scope | Hears about |
+| --- | --- |
+| `mailbox_id` | That one address |
+| `domain_id` | Every address on that domain, including ones added later |
+| neither | The whole account |
+
+A domain is usually what you want when an account sends for more than one
+of them: one endpoint per domain, rather than one per mailbox plus another
+every time a mailbox is added.
+
 ### Reach applies
 
-A webhook with **no mailbox** hears about every address. A key that reaches
-only part of the account cannot create one, and cannot clear the `mailbox_id`
-of an existing one, because either would be a way to receive mail the key
-cannot read.
+An unscoped webhook hears about every address, and a domain-scoped one hears
+about every address on that domain. A key that reaches only part of the
+account cannot create either, and cannot widen an existing one, because
+either would be a way to receive mail the key cannot read.
+
+A key restricted to named domains **may** scope a webhook to one of those
+domains. A key restricted to named mailboxes may not scope to a domain at
+all — the domain covers addresses the key was not given.
 
 ## Change
 

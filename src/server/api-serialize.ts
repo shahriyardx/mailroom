@@ -238,6 +238,7 @@ export function serializeWebhook(row: Webhook, options: { secret?: boolean } = {
     events: row.events,
     enabled: row.enabled,
     mailbox_id: row.mailboxId,
+    domain_id: row.domainId,
     last_status: row.lastStatus,
     last_delivered_at: row.lastDeliveredAt,
     last_error_at: row.lastErrorAt,
