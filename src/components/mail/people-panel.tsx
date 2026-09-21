@@ -111,10 +111,12 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                 </Badge>
               ))}
 
-              {/* An owner's role is only editable by another owner. Without
-                  this the last change to owner was one way, with no control
-                  left to undo it. */}
-              {canManage && (person.role !== "owner" || me.role === "owner") ? (
+              {/* An owner's role is editable only by another owner, and
+                  nobody edits their own: that is how an instance ends up with
+                  nobody able to run it. */}
+              {canManage &&
+              person.userId !== me.userId &&
+              (person.role !== "owner" || me.role === "owner") ? (
                 <Select
                   value={person.role}
                   onValueChange={(value) =>

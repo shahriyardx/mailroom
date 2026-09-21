@@ -150,6 +150,13 @@ export async function setMemberRoleAction(memberId: string, role: Role) {
     .where(and(eq(member.id, memberId), eq(member.organizationId, access.orgId)));
   if (!target) return { ok: false as const, error: "No such person" };
 
+  // Nobody changes their own role. Demoting yourself is how an instance ends
+  // up with nobody able to run it, and raising yourself would make every
+  // restriction on an admin optional.
+  if (target.userId === access.userId) {
+    return { ok: false as const, error: "You cannot change your own role" };
+  }
+
   if (target.role === "owner" || role === "owner") {
     if (access.role !== "owner") {
       return { ok: false as const, error: "Only the owner can change who owns this instance" };
