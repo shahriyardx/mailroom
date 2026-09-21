@@ -18,6 +18,7 @@ import {
 } from "@/components/kit";
 import type { Domain } from "@/db/schema";
 import { type DnsRecord, relativeName } from "@/lib/ses";
+import { useSubmit } from "@/lib/use-submit";
 import { cn } from "@/lib/utils";
 import {
   addDomainAction,
@@ -61,6 +62,7 @@ interface Props {
 export function DomainPanel({ domains, account, syncError }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [sending, submit] = useSubmit();
   const [name, setName] = useState("");
   const [note, setNote] = useState<{ tone: "ok" | "bad"; text: string } | null>(null);
 
@@ -82,7 +84,7 @@ export function DomainPanel({ domains, account, syncError }: Props) {
 
   function add() {
     setNote(null);
-    start(async () => {
+    submit(async () => {
       const result = await addDomainAction(name);
       if (result.ok) {
         setName("");
@@ -167,7 +169,13 @@ export function DomainPanel({ domains, account, syncError }: Props) {
                 if (event.key === "Enter" && name.trim()) add();
               }}
             />
-            <Button variant="solid" pill onClick={add} loading={pending} disabled={!name.trim()}>
+            <Button
+              variant="solid"
+              pill
+              onClick={add}
+              loading={sending}
+              disabled={!name.trim() || sending}
+            >
               Add domain
             </Button>
           </InputGroup>

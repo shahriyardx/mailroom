@@ -20,6 +20,7 @@ import {
   StatusPill,
 } from "@/components/kit";
 import type { ApiKey, Mailbox } from "@/db/schema";
+import { useSubmit } from "@/lib/use-submit";
 import { createApiKeyAction, deleteApiKeyAction, revokeApiKeyAction } from "@/server/actions";
 import { Check, ChevronRight, Copy, KeyRound, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -37,6 +38,7 @@ interface Props {
 export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [sending, submit] = useSubmit();
   const [name, setName] = useState("");
   const [mailboxId, setMailboxId] = useState(ANY_MAILBOX);
   const [fresh, setFresh] = useState<string | null>(null);
@@ -192,10 +194,10 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
           <Button
             variant="solid"
             pill
-            loading={pending}
-            disabled={!name.trim()}
+            loading={sending}
+            disabled={!name.trim() || sending}
             onClick={() =>
-              start(async () => {
+              submit(async () => {
                 const result = await createApiKeyAction(
                   name.trim(),
                   mailboxId === ANY_MAILBOX ? undefined : mailboxId,

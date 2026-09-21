@@ -13,6 +13,7 @@ import {
   Panel,
   StatusPill,
 } from "@/components/kit";
+import { useSubmit } from "@/lib/use-submit";
 import { cn } from "@/lib/utils";
 import {
   connectCloudflareAction,
@@ -217,7 +218,7 @@ export function InboundPanel({ status, connection }: Props) {
 
 function ConnectCard() {
   const router = useRouter();
-  const [pending, start] = useTransition();
+  const [sending, submit] = useSubmit();
   const [token, setToken] = useState("");
   const [error, setError] = useState<string | null>(null);
 
@@ -272,11 +273,11 @@ function ConnectCard() {
             <Button
               variant="solid"
               pill
-              loading={pending}
-              disabled={!token.trim()}
+              loading={sending}
+              disabled={!token.trim() || sending}
               onClick={() => {
                 setError(null);
-                start(async () => {
+                submit(async () => {
                   const result = await connectCloudflareAction(token);
                   if (result.ok) {
                     setToken("");

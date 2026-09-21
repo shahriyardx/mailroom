@@ -26,6 +26,7 @@ import {
   SelectValue,
   StatusPill,
 } from "@/components/kit";
+import { useSubmit } from "@/lib/use-submit";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/server/access";
 import {
@@ -87,6 +88,10 @@ export function PeoplePanel({
   // Teams start shut, so the page opens as a list of teams rather than a
   // wall of everyone in them.
   const [opened, setOpened] = useState<string[]>([]);
+
+  // The forms that clear themselves do not go through a transition; see
+  // useSubmit for why.
+  const [sending, submit] = useSubmit();
 
   type Result = { ok: boolean; error?: string } | undefined;
 
@@ -313,10 +318,10 @@ export function PeoplePanel({
               <Button
                 variant="solid"
                 pill
-                loading={busy}
-                disabled={!email.trim()}
+                loading={sending}
+                disabled={!email.trim() || sending}
                 onClick={() =>
-                  start(async () => {
+                  submit(async () => {
                     const result = await inviteMemberAction(
                       email,
                       role,
@@ -338,7 +343,7 @@ export function PeoplePanel({
                   })
                 }
               >
-                {!busy && <UserPlus />}
+                {!sending && <UserPlus />}
                 Invite
               </Button>
             </FieldsetActions>
@@ -531,17 +536,22 @@ export function PeoplePanel({
               <Button
                 variant="solid"
                 pill
-                loading={busy}
-                disabled={!teamName.trim()}
+                loading={sending}
+                disabled={!teamName.trim() || sending}
                 onClick={() =>
-                  run(async () => {
+                  submit(async () => {
                     const result = await createTeamAction(teamName);
-                    if (result.ok) setTeamName("");
-                    return result;
-                  }, "Team created")
+                    if (!result.ok) {
+                      toast.error(result.error ?? "That did not work");
+                      return;
+                    }
+                    setTeamName("");
+                    toast.success("Team created");
+                    router.refresh();
+                  })
                 }
               >
-                {!busy && <Plus />}
+                {!sending && <Plus />}
                 Add team
               </Button>
             </FieldsetActions>

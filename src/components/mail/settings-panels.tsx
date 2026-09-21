@@ -30,6 +30,7 @@ import {
   Textarea,
 } from "@/components/kit";
 import type { Domain, Label as LabelRow, Mailbox } from "@/db/schema";
+import { useSubmit } from "@/lib/use-submit";
 import { cn } from "@/lib/utils";
 import {
   createLabelAction,
@@ -80,6 +81,7 @@ export function MailboxPanel({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [sending, submit] = useSubmit();
   const [local, setLocal] = useState("");
   // One group per domain. A company with six domains and thirty addresses
   // reads as thirty rows otherwise.
@@ -109,7 +111,7 @@ export function MailboxPanel({
   const [color, setColor] = useState<string>(PALETTE[0]);
 
   function add() {
-    start(async () => {
+    submit(async () => {
       try {
         const result = await createMailboxAction({
           address: `${local.trim()}@${domain}`,
@@ -283,10 +285,10 @@ export function MailboxPanel({
               variant="solid"
               pill
               onClick={add}
-              loading={pending}
-              disabled={!local.trim() || !domain}
+              loading={sending}
+              disabled={!local.trim() || !domain || sending}
             >
-              {!pending && <Plus />}
+              {!sending && <Plus />}
               Add mailbox
             </Button>
           </FieldsetActions>
@@ -464,6 +466,7 @@ function MailboxRow({
 export function LabelPanel({ labels }: { labels: LabelRow[] }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [sending, submit] = useSubmit();
   const [name, setName] = useState("");
   const [color, setColor] = useState<string>(PALETTE[2]);
 
@@ -522,17 +525,17 @@ export function LabelPanel({ labels }: { labels: LabelRow[] }) {
           <Button
             variant="solid"
             pill
-            loading={pending}
-            disabled={!name.trim()}
+            loading={sending}
+            disabled={!name.trim() || sending}
             onClick={() =>
-              start(async () => {
+              submit(async () => {
                 await createLabelAction(name.trim(), color);
                 setName("");
                 router.refresh();
               })
             }
           >
-            {!pending && <Plus />}
+            {!sending && <Plus />}
             Add label
           </Button>
         </div>
@@ -554,6 +557,7 @@ export function RulePanel({
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [sending, submit] = useSubmit();
   const [name, setName] = useState("");
   const [matchFrom, setMatchFrom] = useState("");
   const [matchSubject, setMatchSubject] = useState("");
@@ -650,10 +654,10 @@ export function RulePanel({
           <Button
             variant="solid"
             pill
-            loading={pending}
-            disabled={!name.trim() || (!matchFrom.trim() && !matchSubject.trim())}
+            loading={sending}
+            disabled={!name.trim() || sending || (!matchFrom.trim() && !matchSubject.trim())}
             onClick={() =>
-              start(async () => {
+              submit(async () => {
                 await createRuleAction({
                   name: name.trim(),
                   matchFrom: matchFrom.trim() || undefined,
@@ -667,7 +671,7 @@ export function RulePanel({
               })
             }
           >
-            {!pending && <Plus />}
+            {!sending && <Plus />}
             Add filter
           </Button>
         </FieldsetActions>
