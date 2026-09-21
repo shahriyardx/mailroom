@@ -22,6 +22,8 @@ export interface Access {
   memberId: string;
   role: Role;
   teamIds: string[];
+  /** The teams this person leads, which lets them run those teams' people. */
+  leadsTeamIds: string[];
   /** In the root team, which reaches everything without a grant. */
   isRoot: boolean;
 }
@@ -57,7 +59,7 @@ export async function getAccess(): Promise<Access | null> {
   if (!row) return null;
 
   const teams = await db
-    .select({ id: team.id, isRoot: team.isRoot })
+    .select({ id: team.id, isRoot: team.isRoot, role: teamMember.role })
     .from(teamMember)
     .innerJoin(team, eq(team.id, teamMember.teamId))
     .where(eq(teamMember.userId, session.user.id));
@@ -70,6 +72,7 @@ export async function getAccess(): Promise<Access | null> {
     memberId: row.id,
     role: row.role as Role,
     teamIds: teams.map((entry) => entry.id),
+    leadsTeamIds: teams.filter((entry) => entry.role === "lead").map((entry) => entry.id),
     // An owner or admin reaches everything whether or not they sit in the
     // root team, so that an instance can never lock its own operator out.
     isRoot: teams.some((entry) => entry.isRoot) || row.role === "owner" || row.role === "admin",

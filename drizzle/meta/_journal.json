@@ -99,6 +99,13 @@
       "when": 1789975195965,
       "tag": "0013_member_default_mailbox",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1789975450306,
+      "tag": "0014_team_member_role",
+      "breakpoints": true
     }
   ]
 }

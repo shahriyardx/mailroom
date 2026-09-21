@@ -215,6 +215,12 @@ export const teamMember = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    /**
+     * "lead" or "member", within this team only. Somebody can lead one team
+     * and simply belong to another, which an organisation-wide role cannot
+     * express.
+     */
+    role: text("role").notNull().default("member"),
     /** better-auth's own uniqueness key for a membership. */
     membershipKey: text("membership_key").unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),

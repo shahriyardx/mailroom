@@ -23,7 +23,7 @@ import {
   newInvitationId,
   sendInvitationEmail,
 } from "./invitations";
-import { assertCan } from "./permissions";
+import { assertCan, can } from "./permissions";
 
 export interface PersonRow {
   memberId: string;
@@ -32,12 +32,15 @@ export interface PersonRow {
   email: string;
   role: Role;
   joinedAt: Date;
-  teams: { id: string; name: string; isRoot: boolean }[];
+  teams: { id: string; name: string; isRoot: boolean; lead: boolean }[];
 }
 
 export async function listPeople() {
   const access = await requireAccess();
-  assertCan(access, "member:manage");
+  // A lead needs to see the people they can put in their team.
+  if (!can(access, "member:manage") && access.leadsTeamIds.length === 0) {
+    assertCan(access, "member:manage");
+  }
 
   const members = await db
     .select({
@@ -53,7 +56,13 @@ export async function listPeople() {
     .where(eq(member.organizationId, access.orgId));
 
   const memberships = await db
-    .select({ userId: teamMember.userId, id: team.id, name: team.name, isRoot: team.isRoot })
+    .select({
+      userId: teamMember.userId,
+      id: team.id,
+      name: team.name,
+      isRoot: team.isRoot,
+      role: teamMember.role,
+    })
     .from(teamMember)
     .innerJoin(team, eq(team.id, teamMember.teamId))
     .where(eq(team.organizationId, access.orgId));
@@ -63,7 +72,7 @@ export async function listPeople() {
     role: row.role as Role,
     teams: memberships
       .filter((entry) => entry.userId === row.userId)
-      .map(({ id, name, isRoot }) => ({ id, name, isRoot })),
+      .map(({ id, name, isRoot, role }) => ({ id, name, isRoot, lead: role === "lead" })),
   }));
 
   const pending = await db
@@ -237,13 +246,19 @@ export async function deleteTeamAction(teamId: string) {
 
 export async function setTeamMembershipAction(teamId: string, userId: string, member_: boolean) {
   const access = await requireAccess();
-  assertCan(access, "team:manage");
 
   const [target] = await db
     .select()
     .from(team)
     .where(and(eq(team.id, teamId), eq(team.organizationId, access.orgId)));
   if (!target) return { ok: false as const, error: "No such team" };
+
+  // Leading a team means running its people. It does not mean deciding what
+  // the team reaches, which stays with the people who administer the
+  // instance — otherwise a lead could grant their own team anything.
+  if (!can(access, "team:manage") && !access.leadsTeamIds.includes(teamId)) {
+    return { ok: false as const, error: "You do not lead that team" };
+  }
 
   if (member_) {
     await db
@@ -509,4 +524,33 @@ export async function resendInvitationAction(invitationId: string) {
     sent: delivery.sent,
     reason: delivery.sent ? undefined : delivery.reason,
   };
+}
+
+/** Makes someone a lead of a team, or an ordinary member of it again. */
+export async function setTeamRoleAction(teamId: string, userId: string, lead: boolean) {
+  const access = await requireAccess();
+
+  const [target] = await db
+    .select()
+    .from(team)
+    .where(and(eq(team.id, teamId), eq(team.organizationId, access.orgId)));
+  if (!target) return { ok: false as const, error: "No such team" };
+
+  if (!can(access, "team:manage") && !access.leadsTeamIds.includes(teamId)) {
+    return { ok: false as const, error: "You do not lead that team" };
+  }
+
+  // A lead cannot step themselves down: a team is left without one that way,
+  // and the same reasoning applies as to an owner demoting themselves.
+  if (userId === access.userId && !lead && !can(access, "team:manage")) {
+    return { ok: false as const, error: "Ask an admin to change your own role in a team" };
+  }
+
+  await db
+    .update(teamMember)
+    .set({ role: lead ? "lead" : "member" })
+    .where(and(eq(teamMember.teamId, teamId), eq(teamMember.userId, userId)));
+
+  revalidatePath("/settings/people");
+  return { ok: true as const };
 }

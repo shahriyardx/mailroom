@@ -26,6 +26,7 @@ import {
   SelectValue,
   StatusPill,
 } from "@/components/kit";
+import { cn } from "@/lib/utils";
 import type { Role } from "@/server/access";
 import {
   type PersonRow,
@@ -37,6 +38,7 @@ import {
   resendInvitationAction,
   setMemberRoleAction,
   setTeamMembershipAction,
+  setTeamRoleAction,
 } from "@/server/team";
 import { ChevronDown, Plus, RotateCw, Trash2, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
@@ -54,7 +56,10 @@ interface Props {
   pending: { id: string; email: string; role: string | null; teamId: string | null }[];
   teams: TeamRow[];
   me: { userId: string; role: Role };
+  /** True for an administrator: roles, invitations, removing people. */
   canManage: boolean;
+  /** Teams this person leads, whose membership they may change. */
+  leadsTeamIds?: string[];
 }
 
 const ROLE_NOTE: Record<Role, string> = {
@@ -63,7 +68,9 @@ const ROLE_NOTE: Record<Role, string> = {
   member: "Only the mailboxes they are given.",
 };
 
-export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
+export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamIds = [] }: Props) {
+  // A lead may put people in and out of their own team, and nothing else.
+  const mayChangeTeam = (teamId: string) => canManage || leadsTeamIds.includes(teamId);
   const router = useRouter();
   const [busy, start] = useTransition();
   const [email, setEmail] = useState("");
@@ -110,7 +117,7 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                 </span>
               </span>
 
-              {canManage ? (
+              {canManage || leadsTeamIds.length > 0 ? (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
                     <button
@@ -121,7 +128,7 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                         {person.teams.length === 0
                           ? "No team"
                           : person.teams.length === 1
-                            ? person.teams[0].name
+                            ? `${person.teams[0].name}${person.teams[0].lead ? " ★" : ""}`
                             : `${person.teams[0].name}, +${person.teams.length - 1}`}
                       </span>
                       <ChevronDown className="size-3.5 shrink-0" />
@@ -130,11 +137,13 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                   <DropdownMenuContent align="end" className="w-52">
                     <DropdownMenuLabel>Teams</DropdownMenuLabel>
                     {teams.map((entry) => {
-                      const inTeam = person.teams.some((t) => t.id === entry.id);
+                      const membership = person.teams.find((t) => t.id === entry.id);
+                      const inTeam = Boolean(membership);
                       return (
                         <DropdownMenuCheckboxItem
                           key={entry.id}
                           checked={inTeam}
+                          disabled={!mayChangeTeam(entry.id)}
                           // Several teams can be set without the menu closing
                           // between each one.
                           onSelect={(event) => event.preventDefault()}
@@ -146,8 +155,34 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                           }
                         >
                           <span className="truncate">{entry.name}</span>
-                          {entry.isRoot && (
-                            <span className="ml-auto text-[11px] text-muted-foreground">all</span>
+                          {inTeam && (
+                            // The role is per team, so it is set beside the
+                            // team rather than on the person.
+                            <button
+                              type="button"
+                              title={
+                                membership?.lead
+                                  ? `Make an ordinary member of ${entry.name}`
+                                  : `Make a lead of ${entry.name}`
+                              }
+                              onClick={(event) => {
+                                event.preventDefault();
+                                event.stopPropagation();
+                                run(
+                                  () =>
+                                    setTeamRoleAction(entry.id, person.userId, !membership?.lead),
+                                  "Team role changed",
+                                );
+                              }}
+                              className={cn(
+                                "ml-auto rounded-full px-1.5 py-0.5 text-[10.5px] font-medium",
+                                membership?.lead
+                                  ? "bg-primary-soft text-primary-soft-foreground"
+                                  : "bg-muted text-muted-foreground",
+                              )}
+                            >
+                              {membership?.lead ? "lead" : "member"}
+                            </button>
                           )}
                         </DropdownMenuCheckboxItem>
                       );
