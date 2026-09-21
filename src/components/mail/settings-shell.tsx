@@ -138,7 +138,7 @@ export function SettingsShell({
         </header>
 
         <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl divide-y divide-border px-5 pb-16 sm:px-7">
+          <div className="mx-auto max-w-6xl divide-y divide-border px-5 pb-16 sm:px-7">
             {children}
           </div>
         </div>
