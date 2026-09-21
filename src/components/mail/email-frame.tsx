@@ -35,28 +35,23 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
   }, []);
 
   const prepared = useMemo(() => {
-    if (!html) return { html: null, blockedImages: 0 };
-    return prepareEmailHtml(html, { showRemoteImages: showImages, inlineImages });
-  }, [html, showImages, inlineImages]);
+    if (!html) return { html: null, blockedImages: 0, ownsBackground: false };
+    return prepareEmailHtml(html, { showRemoteImages: showImages, inlineImages, dark });
+  }, [html, showImages, inlineImages, dark]);
 
   /**
-   * An HTML message brought its own colours, and it chose them against a white
-   * page — that is what every mail client has rendered on for thirty years.
-   * Mirroring the app's dark theme into the frame only half-applies: our rules
-   * set a light body colour, the message's own inline `color:#27272a` wins, and
-   * the reader gets near-black text on a near-black background.
-   *
-   * So a message that styles itself is always shown on white, in either theme.
-   * Only the plain-text fallback follows the app, because there we wrote the
-   * markup and know what colour it is.
+   * A newsletter that paints its own page chose those colours together, so it
+   * is shown on white in either theme and otherwise left alone. Everything
+   * else — which is most mail — is a few paragraphs that inherit whatever the
+   * client puts behind them, and those follow the app like the rest of it.
    */
-  const ownsColours = Boolean(prepared.html);
+  const ownsColours = prepared.ownsBackground;
 
   const srcDoc = useMemo(() => {
     const body = prepared.html ?? `<pre>${escapeHtml(text ?? "")}</pre>`;
-    const theme = dark && !prepared.html ? "dark" : "";
+    const theme = dark && !prepared.ownsBackground ? "dark" : "";
     return `<!doctype html><html class="${theme}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}</style></head><body>${body}</body></html>`;
-  }, [prepared.html, text, dark]);
+  }, [prepared.html, prepared.ownsBackground, text, dark]);
 
   const measure = useCallback(() => {
     const frame = frameRef.current;
