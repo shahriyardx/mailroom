@@ -1,0 +1,37 @@
+# A whole instance, for trying it out or for running it.
+#
+# Everything that differs between installs is in .env — the image itself is
+# the same one everybody pulls. Copy .env.example to .env and fill it in
+# first; DATABASE_URL is set here and does not need to be in that file.
+services:
+  app:
+    image: ghcr.io/shahriyardx/mailroom:latest
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    env_file: .env
+    environment:
+      DATABASE_URL: postgres://mail:${POSTGRES_PASSWORD:-mail}@db:5432/mail
+    depends_on:
+      db:
+        condition: service_healthy
+
+  db:
+    image: postgres:18-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: mail
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-mail}
+      POSTGRES_DB: mail
+    volumes:
+      - db:/var/lib/postgresql/data
+    healthcheck:
+      # The app applies its own migrations on boot, so it must not start
+      # against a server that is still coming up.
+      test: ["CMD-SHELL", "pg_isready -U mail -d mail"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  db:

@@ -3,6 +3,37 @@
 Start to finish. Deploy **before** the SES and Cloudflare steps: both have to
 reach a real URL, so nothing past step 3 works against `localhost`.
 
+## 0. The image
+
+Published to GitHub's registry on every release, for `amd64` and `arm64`:
+
+```sh
+docker pull ghcr.io/shahriyardx/mailroom:latest
+```
+
+Tags follow the release: `1.4.2`, `1.4`, `1`, and `latest` for the newest
+stable one. Pin to `1` or `1.4` if you would rather not be moved by a major
+version, and to an exact version if you would rather not be moved at all.
+
+Nothing about your install is inside the image. Every value below is read
+when the container starts, so the same image runs everybody's instance.
+
+```sh
+docker run -d --name mailroom -p 3000:3000 --env-file .env \
+  ghcr.io/shahriyardx/mailroom:latest
+```
+
+Migrations run on boot, so there is no separate step for them and no way to
+forget one. Point a reverse proxy at port 3000 and carry on below.
+
+Or take the Postgres with it — `compose.yaml` in the repository runs both,
+and waits for the database to be ready before the app tries to migrate it:
+
+```sh
+curl -O https://raw.githubusercontent.com/shahriyardx/mailroom/main/compose.yaml
+docker compose up -d
+```
+
 ## 1. A GitHub OAuth app
 
 GitHub is the only way to sign in.
@@ -20,7 +51,7 @@ Keep the client ID and secret.
 DATABASE_URL=postgres://user:pass@host:5432/mail
 BETTER_AUTH_SECRET=          # openssl rand -base64 32
 BETTER_AUTH_URL=https://mail.yourdomain.com
-NEXT_PUBLIC_APP_URL=https://mail.yourdomain.com
+APP_URL=https://mail.yourdomain.com
 
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=
@@ -65,7 +96,11 @@ cannot fill in until step 5 — leave those empty for the first deploy.
 | | |
 | --- | --- |
 | `BETTER_AUTH_URL` | The public URL of this app, e.g. `https://mail.yourdomain.com` |
-| `NEXT_PUBLIC_APP_URL` | The same URL. Both, and they must match |
+| `APP_URL` | The same URL. Both, and they must match |
+
+`APP_URL` is read when the app starts, not when the image is built, which is
+what lets one published image serve every install. `NEXT_PUBLIC_APP_URL` is
+still accepted if you already set it.
 
 #### GitHub
 

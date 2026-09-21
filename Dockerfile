@@ -38,9 +38,8 @@ COPY drizzle ./drizzle
 COPY scripts ./scripts
 COPY worker ./worker
 
-# Public build-time values. Anything secret is supplied at run time instead.
-ARG NEXT_PUBLIC_APP_URL
-ENV NEXT_PUBLIC_APP_URL=$NEXT_PUBLIC_APP_URL
+# Nothing about a particular install is baked in. The address this instance
+# answers on is read at run time from APP_URL, so one image serves everybody.
 ENV NEXT_TELEMETRY_DISABLED=1
 
 # Runs the worker bundler first, so the uploaded script matches worker/src.
