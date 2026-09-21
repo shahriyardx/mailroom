@@ -14,6 +14,9 @@ export function EventsPanel({ status }: { status: EventsStatus }) {
 
   const live =
     status.configurationSet && status.destination.present && status.subscription === "confirmed";
+  // A pipeline built before opens were asked for still reports everything
+  // else, so it is worth saying that running the button again adds them.
+  const missingOpens = live && !status.destination.opens;
 
   return (
     <Panel
@@ -48,6 +51,15 @@ export function EventsPanel({ status }: { status: EventsStatus }) {
             </StatusPill>
           </ListRow>
           <ListRow>
+            <span className="min-w-0 flex-1 text-[13px]">Open tracking</span>
+            <span className="hidden text-[12px] text-muted-foreground sm:block">
+              An image SES adds to outgoing HTML
+            </span>
+            <StatusPill state={status.destination.opens ? "ok" : "pending"}>
+              {status.destination.opens ? "On" : "Off"}
+            </StatusPill>
+          </ListRow>
+          <ListRow>
             <span className="min-w-0 flex-1 text-[13px]">Callback subscription</span>
             <span className="hidden truncate font-mono text-[12px] text-muted-foreground sm:block">
               {status.endpoint}
@@ -73,12 +85,14 @@ export function EventsPanel({ status }: { status: EventsStatus }) {
 
       <div className="mt-4 flex flex-wrap items-center gap-3">
         <Note className="mr-auto max-w-md">
-          {live
-            ? "Everything is in place. Running this again is harmless: each piece is only created when missing."
-            : "Creates the topic, allows SES to publish to it, adds the configuration set and its event destination, then subscribes this app. AWS confirms the subscription by calling back."}
+          {missingOpens
+            ? "Reporting works, but this pipeline was made before open tracking. Run it again to turn opens on."
+            : live
+              ? "Everything is in place. Running this again is harmless: each piece is only created when missing."
+              : "Creates the topic, allows SES to publish to it, adds the configuration set and its event destination, then subscribes this app. AWS confirms the subscription by calling back."}
         </Note>
         <Button
-          variant={live ? "outline" : "solid"}
+          variant={live && !missingOpens ? "outline" : "solid"}
           pill
           loading={pending}
           onClick={() =>

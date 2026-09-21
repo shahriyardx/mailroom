@@ -447,6 +447,16 @@ export const message = pgTable(
     sesMessageId: text("ses_message_id"),
     deliveryStatus: deliveryStatusEnum("delivery_status"),
     deliveryError: text("delivery_error"),
+    /**
+     * When the recipient's mail client first loaded the tracking image SES
+     * puts in outgoing HTML, and how many times since.
+     *
+     * Read it as "the message was opened, or something opened it for them":
+     * Apple Mail and Gmail fetch images through their own servers, so an
+     * open is evidence of delivery, not proof anybody read it.
+     */
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    openCount: integer("open_count").notNull().default(0),
     /** Set when the message came in through the public send API. */
     apiKeyId: text("api_key_id"),
 

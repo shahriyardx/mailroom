@@ -2,7 +2,7 @@ import { db } from "@/db";
 import { mailbox, message, messageEvent, suppression } from "@/db/schema";
 import { type SnsEnvelope, verifySnsMessage } from "@/lib/sns";
 import { newId } from "@/lib/utils";
-import { eq } from "drizzle-orm";
+import { eq, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -126,6 +126,19 @@ export async function POST(request: NextRequest) {
         Date.now(),
     ),
   });
+
+  // An open says nothing about delivery status, so it is recorded beside it
+  // rather than in it. The first one is what the thread shows; the count is
+  // there because a forwarded message keeps being opened.
+  if (row && kind === "Open") {
+    await db
+      .update(message)
+      .set({
+        openedAt: row.openedAt ?? new Date(event.mail?.timestamp ?? Date.now()),
+        openCount: sql`${message.openCount} + 1`,
+      })
+      .where(eq(message.id, row.id));
+  }
 
   const status = STATUS_MAP[kind];
   if (row && status) {

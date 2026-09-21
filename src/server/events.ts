@@ -28,6 +28,10 @@ const EVENT_TYPES: EventType[] = [
   "REJECT",
   "DELIVERY_DELAY",
   "RENDERING_FAILURE",
+  // Asking for OPEN is what makes SES add the tracking image to outgoing
+  // HTML. Clicks are left alone on purpose: tracking them means rewriting
+  // every link in the message.
+  "OPEN",
 ];
 
 const DESTINATION = "sns-events";
@@ -49,7 +53,7 @@ export interface EventsStatus {
   name: string;
   endpoint: string;
   configurationSet: boolean;
-  destination: { present: boolean; eventTypes: number };
+  destination: { present: boolean; eventTypes: number; opens: boolean };
   topicArn: string | null;
   subscription: "confirmed" | "pending" | "missing";
   /** Set when SES or SNS could not be reached at all. */
@@ -67,7 +71,7 @@ export async function eventsStatus(): Promise<EventsStatus> {
     name,
     endpoint,
     configurationSet: false,
-    destination: { present: false, eventTypes: 0 },
+    destination: { present: false, eventTypes: 0, opens: false },
     topicArn: process.env.SES_SNS_TOPIC_ARN || null,
     subscription: "missing",
   };
@@ -85,6 +89,10 @@ export async function eventsStatus(): Promise<EventsStatus> {
         base.destination = {
           present: destination.Enabled === true,
           eventTypes: destination.MatchingEventTypes?.length ?? 0,
+          // A configuration set made before opens were asked for still
+          // reports everything else, so this is shown on its own rather
+          // than counted as "not set up".
+          opens: (destination.MatchingEventTypes ?? []).includes("OPEN"),
         };
         base.topicArn = destination.SnsDestination?.TopicArn ?? base.topicArn;
       }

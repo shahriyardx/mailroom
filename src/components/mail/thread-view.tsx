@@ -14,6 +14,7 @@ import {
   Archive,
   ArrowLeft,
   ChevronDown,
+  Eye,
   FileText,
   Forward,
   Reply,
@@ -208,6 +209,7 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                         {item.fromAddress}
                       </span>
                       {item.isOutbound && <DeliveryBadge message={item} />}
+                      {item.isOutbound && <OpenBadge message={item} />}
                       <span className="ml-auto shrink-0 text-[11.5px] text-muted-foreground">
                         {new Date(item.sentAt ?? item.receivedAt).toLocaleString("en-GB", {
                           day: "2-digit",
@@ -353,6 +355,42 @@ function DeliveryBadge({ message }: { message: Message }) {
       className="shrink-0"
     >
       {message.deliveryStatus}
+    </Badge>
+  );
+}
+
+/**
+ * Whether the tracking image SES adds to outgoing HTML has been loaded.
+ *
+ * It is evidence, not proof. Apple Mail fetches images before the recipient
+ * sees the message and Gmail fetches them through its own servers, so an
+ * open means the message reached a real mailbox — not that anyone read it.
+ * Nothing at all shows until the first open, since "not opened" would read
+ * as a fact when it usually means the client blocks images.
+ */
+function OpenBadge({ message }: { message: Message }) {
+  if (!message.openedAt) return null;
+
+  const when = new Date(message.openedAt).toLocaleString("en-GB", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+
+  return (
+    <Badge
+      size="sm"
+      tone="ok"
+      className="shrink-0"
+      title={
+        message.openCount > 1
+          ? `First opened ${when}, ${message.openCount} times since. Some clients load the image themselves, so this is not proof it was read.`
+          : `Opened ${when}. Some clients load the image themselves, so this is not proof it was read.`
+      }
+    >
+      <Eye className="size-3" />
+      {message.openCount > 1 ? `Opened ${message.openCount}×` : "Opened"}
     </Badge>
   );
 }
