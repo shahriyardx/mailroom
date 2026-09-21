@@ -1,7 +1,7 @@
 {
   "name": "@shahriyardx/mailroom",
   "version": "0.1.0",
-  "description": "Node and TypeScript SDK for Mailroom — send, read and organise mail on your own Mailroom instance.",
+  "description": "Node and TypeScript SDK for Mailroom \u2014 send, read and organise mail on your own Mailroom instance.",
   "license": "MIT",
   "author": "shahriyardx",
   "homepage": "https://github.com/shahriyardx/mailroom/tree/main/packages/sdk#readme",
@@ -11,13 +11,26 @@
     "directory": "packages/sdk"
   },
   "bugs": "https://github.com/shahriyardx/mailroom/issues",
-  "keywords": ["mailroom", "email", "transactional-email", "ses", "inbox", "webhooks", "sdk"],
+  "keywords": [
+    "mailroom",
+    "email",
+    "transactional-email",
+    "ses",
+    "inbox",
+    "webhooks",
+    "sdk"
+  ],
   "type": "module",
   "sideEffects": false,
   "engines": {
     "node": ">=18"
   },
-  "files": ["dist", "README.md", "LICENSE"],
+  "files": [
+    "dist",
+    "src",
+    "README.md",
+    "LICENSE"
+  ],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",
