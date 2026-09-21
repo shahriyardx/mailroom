@@ -47,15 +47,20 @@ import { toast } from "sonner";
 export function MailboxPanel({
   mailboxes,
   domains,
+  creatable,
 }: {
   mailboxes: Mailbox[];
+  /** Every domain, so an existing mailbox can be judged against its own. */
   domains: Domain[];
+  /** The domains this person may add a mailbox to. Empty hides the form. */
+  creatable?: Domain[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [local, setLocal] = useState("");
-  const sendable = domains.filter((item) => item.sendingEnabled && item.status === "verified");
-  const [domain, setDomain] = useState(sendable[0]?.name ?? domains[0]?.name ?? "");
+  const addable = creatable ?? domains;
+  const sendable = addable.filter((item) => item.sendingEnabled && item.status === "verified");
+  const [domain, setDomain] = useState(sendable[0]?.name ?? addable[0]?.name ?? "");
   const [displayName, setDisplayName] = useState("");
   const [isCatchAll, setIsCatchAll] = useState(false);
   const [color, setColor] = useState<string>(PALETTE[0]);
@@ -116,86 +121,92 @@ export function MailboxPanel({
         {mailboxes.length === 0 && <ListEmpty>No mailboxes yet.</ListEmpty>}
       </List>
 
-      <Fieldset title="Add a mailbox">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <Field label="Address" htmlFor="mailbox-local">
-            <div className="flex items-center gap-1.5">
+      {addable.length > 0 && (
+        <Fieldset title="Add a mailbox">
+          <div className="grid gap-4 sm:grid-cols-2">
+            <Field label="Address" htmlFor="mailbox-local">
+              <div className="flex items-center gap-1.5">
+                <Input
+                  id="mailbox-local"
+                  mono
+                  value={local}
+                  onChange={(event) => setLocal(event.target.value.replace(/[^a-z0-9._+-]/gi, ""))}
+                  placeholder="hello"
+                />
+                <span className="font-mono text-[13px] text-muted-foreground">@</span>
+                <Select value={domain} onValueChange={(value) => value && setDomain(value)}>
+                  <SelectTrigger className="min-w-40 font-mono text-[12.5px]">
+                    <SelectValue placeholder="domain" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {addable.map((item) => (
+                      <SelectItem key={item.name} value={item.name} className="font-mono">
+                        {item.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </Field>
+
+            <Field
+              label="Display name"
+              htmlFor="mailbox-name"
+              hint="What recipients see as the sender."
+            >
               <Input
-                id="mailbox-local"
-                mono
-                value={local}
-                onChange={(event) => setLocal(event.target.value.replace(/[^a-z0-9._+-]/gi, ""))}
-                placeholder="hello"
+                id="mailbox-name"
+                value={displayName}
+                onChange={(event) => setDisplayName(event.target.value)}
+                placeholder="Support"
               />
-              <span className="font-mono text-[13px] text-muted-foreground">@</span>
-              <Select value={domain} onValueChange={(value) => value && setDomain(value)}>
-                <SelectTrigger className="min-w-40 font-mono text-[12.5px]">
-                  <SelectValue placeholder="domain" />
-                </SelectTrigger>
-                <SelectContent>
-                  {domains.map((item) => (
-                    <SelectItem key={item.name} value={item.name} className="font-mono">
-                      {item.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-          </Field>
+            </Field>
 
-          <Field
-            label="Display name"
-            htmlFor="mailbox-name"
-            hint="What recipients see as the sender."
+            <Field label="Colour" hint="Marks this mailbox everywhere else in the app.">
+              <ColorPicker value={color} onChange={setColor} palette={PALETTE} />
+            </Field>
+
+            <Field
+              label="Catch-all"
+              hint="Take every address on this domain that no other mailbox claims."
+            >
+              <div className="flex h-9 items-center gap-2.5">
+                <Switch
+                  id="mailbox-catch-all"
+                  checked={isCatchAll}
+                  onCheckedChange={setIsCatchAll}
+                />
+                <label htmlFor="mailbox-catch-all" className="text-[13px] text-muted-foreground">
+                  Catch everything on {domain || "this domain"}
+                </label>
+              </div>
+            </Field>
+          </div>
+
+          <FieldsetActions
+            note={
+              addable.length === 0 ? (
+                <span className="text-destructive">
+                  No domains you can add to. Ask an owner to verify one, or to grant you a domain.
+                </span>
+              ) : (
+                "Receiving needs the inbound worker deployed for this domain."
+              )
+            }
           >
-            <Input
-              id="mailbox-name"
-              value={displayName}
-              onChange={(event) => setDisplayName(event.target.value)}
-              placeholder="Support"
-            />
-          </Field>
-
-          <Field label="Colour" hint="Marks this mailbox everywhere else in the app.">
-            <ColorPicker value={color} onChange={setColor} palette={PALETTE} />
-          </Field>
-
-          <Field
-            label="Catch-all"
-            hint="Take every address on this domain that no other mailbox claims."
-          >
-            <div className="flex h-9 items-center gap-2.5">
-              <Switch id="mailbox-catch-all" checked={isCatchAll} onCheckedChange={setIsCatchAll} />
-              <label htmlFor="mailbox-catch-all" className="text-[13px] text-muted-foreground">
-                Catch everything on {domain || "this domain"}
-              </label>
-            </div>
-          </Field>
-        </div>
-
-        <FieldsetActions
-          note={
-            domains.length === 0 ? (
-              <span className="text-destructive">
-                No verified domains yet. Add one under Domains first.
-              </span>
-            ) : (
-              "Receiving needs the inbound worker deployed for this domain."
-            )
-          }
-        >
-          <Button
-            variant="solid"
-            pill
-            onClick={add}
-            loading={pending}
-            disabled={!local.trim() || !domain}
-          >
-            {!pending && <Plus />}
-            Add mailbox
-          </Button>
-        </FieldsetActions>
-      </Fieldset>
+            <Button
+              variant="solid"
+              pill
+              onClick={add}
+              loading={pending}
+              disabled={!local.trim() || !domain}
+            >
+              {!pending && <Plus />}
+              Add mailbox
+            </Button>
+          </FieldsetActions>
+        </Fieldset>
+      )}
     </Panel>
   );
 }

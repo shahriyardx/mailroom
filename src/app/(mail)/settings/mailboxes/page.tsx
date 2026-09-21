@@ -22,16 +22,18 @@ export default async function MailboxesSettingsPage() {
     listDomainsForUser(access.orgId),
   ]);
 
-  // Show only what this person can act on, so the screen never offers a
+  // Only the mailboxes this person can act on, so the screen never offers a
   // change that would be refused.
   const mailboxes = administers
     ? allMailboxes
     : allMailboxes.filter((box) => own?.manageable.includes(box.id));
 
-  const domains =
+  // Every domain is still passed, because an existing mailbox is judged
+  // against its own domain whether or not this person may add to it.
+  const creatable =
     administers || own?.creatable === "all"
       ? allDomains
       : allDomains.filter((domain) => own?.creatable.includes(domain.id));
 
-  return <MailboxPanel mailboxes={mailboxes} domains={domains} />;
+  return <MailboxPanel mailboxes={mailboxes} domains={allDomains} creatable={creatable} />;
 }
