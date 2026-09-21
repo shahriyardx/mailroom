@@ -32,7 +32,11 @@ interface NavItem {
 
 /** Grouped the way you think about the system, not the way it is stored. */
 const GROUPS: { title?: string; items: NavItem[] }[] = [
-  { items: [{ href: "/settings/overview", label: "Overview", icon: Gauge }] },
+  {
+    items: [
+      { href: "/settings/overview", label: "Overview", icon: Gauge, needs: "mailbox:manage" },
+    ],
+  },
   {
     title: "Sending",
     items: [

@@ -481,7 +481,7 @@ function NavPanel({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/settings/overview">
+              <Link href="/settings">
                 <Settings /> Settings
               </Link>
             </DropdownMenuItem>
@@ -499,7 +499,7 @@ function NavPanel({
 
         <Hint label="Settings" side="top">
           <IconButton size="md" label="Settings" asChild>
-            <Link href="/settings/overview">
+            <Link href="/settings">
               <Settings />
             </Link>
           </IconButton>
