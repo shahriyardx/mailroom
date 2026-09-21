@@ -14,6 +14,7 @@ export {
   Panel,
 } from "./card";
 export { Checkbox } from "./checkbox";
+export { ConfirmDialog } from "./confirm";
 export { ColorPicker, PALETTE } from "./color-picker";
 export {
   Dialog,

@@ -5,6 +5,7 @@ import {
   BlankSlate,
   Button,
   Checkbox,
+  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogFooter,
@@ -121,6 +122,7 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
   const [fresh, setFresh] = useState<string | null>(null);
   const [editing, setEditing] = useState<ApiKey | null>(null);
   const [testKey, setTestKey] = useState(false);
+  const [removing, setRemoving] = useState<ApiKey | null>(null);
 
   function applyPreset(id: string) {
     setPreset(id);
@@ -221,12 +223,12 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
                       )}
                       <DropdownMenuItem
                         destructive
-                        onSelect={() =>
-                          start(async () => {
-                            await deleteApiKeyAction(item.id);
-                            router.refresh();
-                          })
-                        }
+                        // Deleting a key stops every integration holding it,
+                        // at once and with no warning to them.
+                        onSelect={(event) => {
+                          event.preventDefault();
+                          setRemoving(item);
+                        }}
                       >
                         <Trash2 />
                         Delete
@@ -239,6 +241,29 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
           </List>
         </>
       )}
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => !next && setRemoving(null)}
+        title="Delete this API key?"
+        description={removing ? `${removing.name}, and every request still using it.` : undefined}
+        consequences={
+          <>
+            Anything holding this key stops working the moment it goes, with no warning of its own.
+            The key cannot be recovered — a replacement is a new key, and every caller has to be
+            given it. To stop a key while keeping its history, revoke it instead.
+          </>
+        }
+        phrase={removing?.name}
+        confirmLabel="Delete key"
+        onConfirm={async () => {
+          if (!removing) return;
+          await deleteApiKeyAction(removing.id);
+          setRemoving(null);
+          toast.success("Key deleted");
+          router.refresh();
+        }}
+      />
 
       <Fieldset title="Create a key">
         <Field label="Name" htmlFor="key-name">

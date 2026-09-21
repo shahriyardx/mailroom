@@ -3,6 +3,7 @@
 import {
   BlankSlate,
   Button,
+  ConfirmDialog,
   Count,
   DropdownMenu,
   DropdownMenuContent,
@@ -108,6 +109,7 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
   const [events, setEvents] = useState<string[]>([]);
   const [scope, setScope] = useState(EVERYTHING);
   const [fresh, setFresh] = useState<{ id: string; secret: string } | null>(null);
+  const [removing, setRemoving] = useState<Webhook | null>(null);
 
   function toggleEvent(event: string) {
     setAll(false);
@@ -125,6 +127,30 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
           actually been sent to them. The deliveries list is read when
           something is wrong, which is not when you want to scroll past
           it to reach the endpoint that is wrong. */}
+      {/* A stop rather than a typed confirmation: an endpoint takes a minute
+          to make again. What does not come back is what was sent to it. */}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => !next && setRemoving(null)}
+        title="Delete this endpoint?"
+        description={removing?.url}
+        consequences={
+          <>
+            Every delivery attempt made to it is deleted with it, so a failure you were about to
+            look at goes too. To stop calling an endpoint while keeping its history, switch it off
+            instead.
+          </>
+        }
+        confirmLabel="Delete endpoint"
+        onConfirm={async () => {
+          if (!removing) return;
+          await deleteWebhookAction(removing.id);
+          setRemoving(null);
+          toast.success("Endpoint deleted");
+          router.refresh();
+        }}
+      />
+
       <Tabs defaultValue="endpoints">
         <TabsList>
           <TabsTrigger value="endpoints">
@@ -244,12 +270,10 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
                         </DropdownMenuItem>
                         <DropdownMenuItem
                           destructive
-                          onSelect={() =>
-                            start(async () => {
-                              await deleteWebhookAction(hook.id);
-                              router.refresh();
-                            })
-                          }
+                          onSelect={(event) => {
+                            event.preventDefault();
+                            setRemoving(hook);
+                          }}
                         >
                           <Trash2 />
                           Delete

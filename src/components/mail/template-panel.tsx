@@ -4,6 +4,7 @@ import {
   Badge,
   BlankSlate,
   Button,
+  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -81,6 +82,7 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
   // Null is closed. A row means "edit that one"; a null row inside an open
   // state means "make one".
   const [open, setOpen] = useState<{ row: Template | null } | null>(null);
+  const [removing, setRemoving] = useState<Template | null>(null);
 
   return (
     <Panel
@@ -97,6 +99,33 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
         </Button>
       }
     >
+      {/* A stop, not a typed confirmation: a template is rewritten in minutes.
+          What it cannot undo is the send that names it an hour from now. */}
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => !next && setRemoving(null)}
+        title="Delete this template?"
+        description={removing ? `${removing.name} (${removing.slug})` : undefined}
+        consequences={
+          <>
+            Any send that names this template starts failing with a 404. Mail already sent from it
+            is unaffected — the body was copied into the message when it went.
+          </>
+        }
+        confirmLabel="Delete template"
+        onConfirm={async () => {
+          if (!removing) return;
+          try {
+            await deleteTemplateAction(removing.id);
+            setRemoving(null);
+            toast.success("Template deleted");
+            router.refresh();
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not delete it");
+          }
+        }}
+      />
+
       {templates.length > 0 ? (
         <List>
           {templates.map((row) => (
@@ -105,16 +134,7 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
               row={row}
               busy={pending}
               onEdit={() => setOpen({ row })}
-              onDelete={() =>
-                start(async () => {
-                  try {
-                    await deleteTemplateAction(row.id);
-                    router.refresh();
-                  } catch (error) {
-                    toast.error(error instanceof Error ? error.message : "Could not delete it");
-                  }
-                })
-              }
+              onDelete={() => setRemoving(row)}
             />
           ))}
         </List>

@@ -2,6 +2,7 @@
 
 import {
   Button,
+  ConfirmDialog,
   Field,
   Fieldset,
   Input,
@@ -49,6 +50,7 @@ interface Props {
 export function InboundPanel({ status, connection }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
+  const [removing, setRemoving] = useState(false);
   // One shared note rendered in one panel meant a zone's failure appeared
   // under the worker's buttons. A toast lands wherever you are looking.
   function act(run: () => Promise<{ ok: boolean; error?: string }>, success: string) {
@@ -105,21 +107,33 @@ export function InboundPanel({ status, connection }: Props) {
           </Button>
 
           {status.deployed && (
-            <Button
-              variant="outline"
-              pill
-              disabled={pending}
-              onClick={() => {
-                if (!window.confirm("Delete the worker from Cloudflare? Inbound mail stops.")) {
-                  return;
-                }
-                act(removeWorkerAction, "Worker deleted from Cloudflare.");
-              }}
-            >
+            <Button variant="outline" pill disabled={pending} onClick={() => setRemoving(true)}>
               <Trash2 />
               Delete
             </Button>
           )}
+
+          {/* Reaches outside this app and stops mail arriving, so it is typed
+              rather than clicked past in a browser alert. */}
+          <ConfirmDialog
+            open={removing}
+            onOpenChange={setRemoving}
+            title="Delete the worker from Cloudflare?"
+            description="Nothing can be received at any address on this account until it is put back."
+            consequences={
+              <>
+                Mail sent to your addresses is refused at Cloudflare while the worker is gone.
+                Senders get a bounce; nothing is held and delivered later. Deploying again restores
+                it, but what bounced in the meantime is gone.
+              </>
+            }
+            phrase="delete worker"
+            confirmLabel="Delete worker"
+            onConfirm={async () => {
+              setRemoving(false);
+              act(removeWorkerAction, "Worker deleted from Cloudflare.");
+            }}
+          />
 
           <Note>
             Uploads the bundled script with its R2 binding and secret. No wrangler, no deploy step.

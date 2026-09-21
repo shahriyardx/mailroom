@@ -2,6 +2,8 @@
 
 import {
   Button,
+  Checkbox,
+  ConfirmDialog,
   Field,
   Fieldset,
   Hint,
@@ -231,6 +233,8 @@ function DomainRowItem({ row, nested }: { row: DomainRow; nested?: boolean }) {
   // Only something that actually stops mail is worth opening a row for, and an
   // inherited subdomain has nothing to show at all.
   const [open, setOpen] = useState(!row.inheritedFrom && (!verified || blocking.length > 0));
+  const [removing, setRemoving] = useState(false);
+  const [alsoSes, setAlsoSes] = useState(false);
 
   return (
     <div>
@@ -313,22 +317,56 @@ function DomainRowItem({ row, nested }: { row: DomainRow; nested?: boolean }) {
           )}
 
           <Hint label="Remove domain">
-            <IconButton
-              variant="danger"
-              label="Remove domain"
-              onClick={() => {
-                const alsoSes = window.confirm(
-                  `Remove ${row.name} from this app?\n\nOK = also delete the identity in SES.\nCancel = remove it here only.`,
-                );
-                start(async () => {
-                  await removeDomainAction(row.id, alsoSes);
-                  router.refresh();
-                });
-              }}
-            >
+            <IconButton variant="danger" label="Remove domain" onClick={() => setRemoving(true)}>
               <Trash2 />
             </IconButton>
           </Hint>
+
+          {/* This used to be a window.confirm whose Cancel still removed the
+              domain — the two buttons chose how far to delete, and there was
+              no way out at all. */}
+          <ConfirmDialog
+            open={removing}
+            onOpenChange={setRemoving}
+            title="Remove this domain?"
+            description={`Mail can no longer be sent from any address on ${row.name}.`}
+            consequences={
+              <>
+                Mailboxes on this domain are kept, but every one of them stops sending. Anything
+                trying to send through the API starts failing.
+              </>
+            }
+            phrase={row.name}
+            confirmLabel="Remove domain"
+            onConfirm={async () => {
+              await removeDomainAction(row.id, alsoSes);
+              setRemoving(false);
+              toast.success(alsoSes ? "Domain and SES identity removed" : "Domain removed");
+              router.refresh();
+            }}
+          >
+            {!row.inheritedFrom && (
+              <label
+                htmlFor={`ses-${row.id}`}
+                className="flex cursor-pointer items-start gap-2.5 rounded-xl border border-border px-3 py-2.5"
+              >
+                <Checkbox
+                  id={`ses-${row.id}`}
+                  checked={alsoSes}
+                  onCheckedChange={(on) => setAlsoSes(on === true)}
+                  className="mt-0.5"
+                />
+                <span className="min-w-0">
+                  <span className="block text-[12.5px] font-medium">
+                    Also delete the identity in SES
+                  </span>
+                  <span className="block text-[11.5px] text-muted-foreground">
+                    Verifying it again means adding the DNS records from scratch.
+                  </span>
+                </span>
+              </label>
+            )}
+          </ConfirmDialog>
         </div>
       </ListRow>
 

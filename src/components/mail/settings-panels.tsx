@@ -5,6 +5,7 @@ import {
   BlankSlate,
   Button,
   ColorPicker,
+  ConfirmDialog,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -320,6 +321,7 @@ function MailboxRow({
   const [, start] = useTransition();
   const [signature, setSignature] = useState(mailbox.signature ?? "");
   const [open, setOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   return (
     <div>
@@ -401,13 +403,12 @@ function MailboxRow({
               {administers && (
                 <DropdownMenuItem
                   destructive
-                  onSelect={() =>
-                    start(async () => {
-                      await deleteMailboxAction(mailbox.id);
-                      toast.success("Mailbox removed");
-                      router.refresh();
-                    })
-                  }
+                  // Deleting a mailbox cascades to every thread and message
+                  // in it. One click from a menu was not a decision.
+                  onSelect={(event) => {
+                    event.preventDefault();
+                    setDeleting(true);
+                  }}
                 >
                   <Trash2 /> Delete mailbox
                 </DropdownMenuItem>
@@ -420,6 +421,30 @@ function MailboxRow({
           </IconButton>
         )}
       </ListRow>
+
+      {/* Deleting a mailbox cascades to every thread and message in it, so
+          the address has to be typed back rather than merely clicked past. */}
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title="Delete this mailbox?"
+        description={`${mailbox.address} and everything that ever arrived at it.`}
+        consequences={
+          <>
+            Every thread and message in this mailbox is deleted with it, along with their
+            attachments. Mail already sent from this address stays delivered; nothing new can be
+            sent from it or received at it.
+          </>
+        }
+        phrase={mailbox.address}
+        confirmLabel="Delete mailbox"
+        onConfirm={async () => {
+          await deleteMailboxAction(mailbox.id);
+          setDeleting(false);
+          toast.success("Mailbox deleted");
+          router.refresh();
+        }}
+      />
 
       {open && canManage && (
         <div className="border-t border-border py-3.5">
