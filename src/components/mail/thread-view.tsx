@@ -629,13 +629,16 @@ function AuthBadges({ message }: { message: Message }) {
   if (failed.length === 0) {
     const unchecked = known.some(([, value]) => value !== "pass");
     return (
-      <p
-        title={detail}
-        className="mb-3 flex items-center gap-1.5 text-[11.5px] text-muted-foreground"
-      >
-        {unchecked ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
-        {unchecked ? "Sender partly checked" : "Sender verified"}
-        <span>· {detail}</span>
+      <p title={detail} className="mb-3 flex items-center gap-1.5 text-[12px]">
+        {unchecked ? (
+          <ShieldOff className="size-3.5 text-muted-foreground" />
+        ) : (
+          <ShieldCheck className="size-3.5 text-ok" />
+        )}
+        <span className="font-medium text-foreground">
+          {unchecked ? "Sender partly checked" : "Sender verified"}
+        </span>
+        <span className="text-muted-foreground">· {detail}</span>
       </p>
     );
   }
