@@ -83,6 +83,7 @@ R2_SECRET_ACCESS_KEY=
 R2_BUCKET=mail-attachments
 
 FORWARD_TO=                  # optional: also forward everything to this address
+UPDATE_CHECK=                # set to off to stop the sidebar asking GitHub for releases
 ```
 
 `BETTER_AUTH_SECRET` also derives the key that encrypts your stored Cloudflare

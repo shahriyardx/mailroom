@@ -87,6 +87,7 @@ R2_SECRET_ACCESS_KEY=
 R2_BUCKET=mail-attachments
 
 FORWARD_TO=                  # optional: also forward everything to this address
+UPDATE_CHECK=                # set to off to stop the sidebar asking GitHub for releases
 ```
 
 ::: warning BETTER_AUTH_SECRET is load-bearing
@@ -196,6 +197,7 @@ doing once you have it; the app works without it.
 | `SES_MAIL_FROM_PREFIX` | `mail` — the return path becomes `mail.yourdomain.com` |
 | `SES_DKIM_SELECTOR` | `mail` — only used for keys this app generates |
 | `FORWARD_TO` | empty — set it to also forward every inbound message to another address |
+| `UPDATE_CHECK` | on — the sidebar asks GitHub once every six hours whether a newer release exists, and shows the version either way. `off` stops the request |
 | `RUN_MIGRATIONS_ON_BOOT` | `true` — set `false` to apply migrations yourself |
 
 ### The IAM policy

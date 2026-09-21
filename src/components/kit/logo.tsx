@@ -57,9 +57,14 @@ export function Logo({
 /** The mark and the name, set the way the product is written down. */
 export function Wordmark({
   size = "md",
+  sub,
   className,
   ...props
-}: React.ComponentProps<"span"> & { size?: keyof typeof SIZES }) {
+}: React.ComponentProps<"span"> & {
+  size?: keyof typeof SIZES;
+  /** A second line under the name, set against the name rather than the mark. */
+  sub?: React.ReactNode;
+}) {
   return (
     <span
       data-slot="wordmark"
@@ -67,13 +72,16 @@ export function Wordmark({
       {...props}
     >
       <Logo size={size} />
-      <span
-        className={cn(
-          "truncate font-display font-semibold tracking-[-0.03em]",
-          size === "xl" ? "text-[22px]" : size === "lg" ? "text-[18px]" : "text-[15.5px]",
-        )}
-      >
-        Mailroom
+      <span className="flex min-w-0 flex-col">
+        <span
+          className={cn(
+            "truncate font-display font-semibold tracking-[-0.03em]",
+            size === "xl" ? "text-[22px]" : size === "lg" ? "text-[18px]" : "text-[15.5px]",
+          )}
+        >
+          Mailroom
+        </span>
+        {sub}
       </span>
     </span>
   );

@@ -53,6 +53,7 @@ import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useComposer } from "./composer-provider";
+import { VersionNote } from "./version-note";
 
 const FOLDER_ICONS: Record<ViewFolder, typeof Inbox> = {
   inbox: Inbox,
@@ -321,7 +322,7 @@ function NavPanel({
   return (
     <>
       <div className="flex h-14 shrink-0 items-center px-4">
-        <Wordmark />
+        <Wordmark sub={<VersionNote />} />
       </div>
 
       {/* Nothing to write from, nothing to offer. */}
