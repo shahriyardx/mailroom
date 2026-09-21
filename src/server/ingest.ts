@@ -111,10 +111,33 @@ async function findThread(mailboxId: string, payload: InboundPayload, subject: s
   const refs = [payload.inReplyTo, ...(payload.references ?? [])].filter(Boolean) as string[];
 
   if (refs.length > 0) {
+    /**
+     * SES replaces the Message-ID we wrote with one of its own, so a reply
+     * points at an address we never stored as `rfcMessageId`. What it points
+     * at is the id SES handed back when it accepted the message, wrapped in
+     * angle brackets at email.amazonses.com — which is `sesMessageId`.
+     *
+     * Looking for only our own id meant no reply to anything sent through
+     * this account ever threaded on headers. They fell through to matching on
+     * subject, which works until two conversations share a subject.
+     */
+    const ours = refs.map((ref) => ref.replace(/^<|>$/g, ""));
+    const sent = ours
+      .filter((ref) => ref.endsWith("@email.amazonses.com"))
+      .map((ref) => ref.slice(0, ref.lastIndexOf("@")));
+
     const [hit] = await db
       .select({ threadId: message.threadId })
       .from(message)
-      .where(and(eq(message.mailboxId, mailboxId), inArray(message.rfcMessageId, refs)))
+      .where(
+        and(
+          eq(message.mailboxId, mailboxId),
+          or(
+            inArray(message.rfcMessageId, refs),
+            sent.length > 0 ? inArray(message.sesMessageId, sent) : undefined,
+          ),
+        ),
+      )
       .limit(1);
     if (hit) return hit.threadId;
   }
