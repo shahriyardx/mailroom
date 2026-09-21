@@ -16,6 +16,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Archive,
   ArchiveRestore,
+  ChevronDown,
   FileText,
   Inbox,
   Loader2,
@@ -99,8 +100,46 @@ export function ThreadList({
 }: Props) {
   const router = useRouter();
   const [purging, setPurging] = useState<ThreadListItem | null>(null);
+  const [collapsed, setCollapsed] = useState<Set<SectionId>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Collapsing has to outlive the click that follows it: opening a thread is a
+   * navigation, and this list is rebuilt from the server each time. Kept in
+   * localStorage rather than the URL, which describes the mail being read.
+   */
+  useEffect(() => {
+    try {
+      const saved = window.localStorage.getItem(COLLAPSED_KEY);
+      if (saved) setCollapsed(new Set(JSON.parse(saved) as SectionId[]));
+    } catch {
+      // A browser refusing storage is not a reason to render nothing.
+    }
+  }, []);
+
+  function toggleSection(id: SectionId) {
+    // A toolbar acting on rows that are folded out of sight is a surprise.
+    setSelected(new Set());
+    setCollapsed((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      try {
+        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
+      } catch {}
+      return next;
+    });
+  }
+
+  const unreadItems = items.filter((item) => item.unreadCount > 0);
+  const readItems = items.filter((item) => item.unreadCount === 0);
+
+  /**
+   * Headings only once there is something unread to separate out. A lone
+   * "Everything else" over an ordinary list explains nothing.
+   */
+  const sectioned = unreadItems.length > 0;
 
   const hrefFor = (threadId: string) =>
     `${baseHref}?${listQuery ? `${listQuery}&` : ""}t=${threadId}`;
@@ -127,6 +166,152 @@ export function ThreadList({
   const hasSelection = selected.size > 0;
   const allSelected = items.length > 0 && selected.size === items.length;
 
+  /** One conversation. Pulled out so the sections can each map it. */
+  function row(item: ThreadListItem) {
+    const unread = item.unreadCount > 0;
+    const active = item.id === activeThreadId;
+    const sender = item.participants[0];
+    const checked = selected.has(item.id);
+
+    return (
+      <li
+        key={item.id}
+        className={cn(
+          "group relative flex items-start gap-3 border-b border-border/70 px-4 py-3 transition-colors duration-100",
+          active ? "bg-accent" : "hover:bg-accent/55",
+        )}
+      >
+        {/* The avatar becomes a checkbox the moment you reach for it. */}
+        <span className="relative mt-0.5 size-8 shrink-0">
+          <Avatar
+            size="md"
+            name={sender?.name}
+            address={sender?.address ?? item.id}
+            className={cn(
+              "pointer-events-none absolute inset-0 transition-opacity duration-100",
+              checked ? "opacity-0" : "group-hover:opacity-0",
+            )}
+          />
+          <span
+            className={cn(
+              "absolute inset-0 grid place-items-center transition-opacity duration-100",
+              checked ? "opacity-100" : "opacity-0 group-hover:opacity-100",
+            )}
+          >
+            <Checkbox
+              checked={checked}
+              onCheckedChange={() =>
+                setSelected((current) => {
+                  const next = new Set(current);
+                  if (next.has(item.id)) next.delete(item.id);
+                  else next.add(item.id);
+                  return next;
+                })
+              }
+              aria-label={`Select ${item.subject || "conversation"}`}
+            />
+          </span>
+        </span>
+
+        {/* Three lines: who it is, what it is about, how it starts. */}
+        <Link href={hrefFor(item.id)} className="min-w-0 flex-1">
+          <span className="flex items-center gap-2">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-[12.5px]",
+                unread ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
+              )}
+            >
+              {sender?.name || sender?.address || "Unknown"}
+            </span>
+
+            {showMailbox && (
+              <span
+                className="shrink-0 rounded-full px-1.5 py-px font-mono text-[10px]"
+                style={{
+                  background: `color-mix(in oklab, ${item.mailboxColor} 15%, transparent)`,
+                  color: item.mailboxColor,
+                }}
+              >
+                {item.mailboxAddress}
+              </span>
+            )}
+            {item.messageCount > 1 && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
+                {item.messageCount}
+              </span>
+            )}
+            {item.hasAttachments && (
+              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
+            {/* The row actions take the timestamp's place on hover. */}
+            <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums group-hover:invisible">
+              {formatStamp(item.lastMessageAt)}
+            </span>
+          </span>
+
+          <span className="mt-0.5 flex items-center gap-2">
+            <span
+              className={cn(
+                "min-w-0 flex-1 truncate text-[13.5px]",
+                unread ? "font-semibold text-foreground" : "font-medium text-foreground/85",
+              )}
+            >
+              {item.subject || "(no subject)"}
+            </span>
+            {unread && (
+              <span className="size-[7px] shrink-0 rounded-full bg-primary" aria-label="Unread" />
+            )}
+          </span>
+
+          {item.snippet && (
+            <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
+              {item.snippet}
+            </span>
+          )}
+        </Link>
+
+        <span className="absolute top-2 right-3 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+          <RowAction
+            label={item.isStarred ? "Unstar" : "Star"}
+            onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
+          >
+            <Star className={cn(item.isStarred && "fill-warn text-warn")} />
+          </RowAction>
+          <RowAction
+            label="Archive"
+            onClick={() => run(() => moveThreadsAction([item.id], "archive"))}
+          >
+            <Archive />
+          </RowAction>
+          <RowAction
+            label={item.unreadCount > 0 ? "Mark read" : "Mark unread"}
+            onClick={() => run(() => setReadAction([item.id], item.unreadCount > 0))}
+          >
+            {item.unreadCount > 0 ? <MailOpen /> : <MailQuestion />}
+          </RowAction>
+          {/* Everywhere else this moves the conversation to Trash and is
+            undoable from there. In Trash there is nowhere further to
+            move it, so the same click destroys it and has to ask. */}
+          <RowAction
+            label={folder === "trash" ? "Delete forever" : "Delete"}
+            destructive
+            onClick={() => {
+              if (folder === "trash") setPurging(item);
+              else run(() => deleteThreadsAction([item.id]));
+            }}
+          >
+            <Trash2 />
+          </RowAction>
+        </span>
+
+        {/* Starred rows keep their star visible when the row is at rest. */}
+        {item.isStarred && (
+          <Star className="absolute top-3 right-3 size-4 fill-warn text-warn group-hover:hidden" />
+        )}
+      </li>
+    );
+  }
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* Everywhere but Trash, deleting moves a conversation somewhere it can
@@ -203,156 +388,29 @@ export function ThreadList({
       <ul className="min-h-0 flex-1 overflow-y-auto pb-3">
         {items.length === 0 && <EmptyFolder folder={folder} />}
 
-        {items.map((item) => {
-          const unread = item.unreadCount > 0;
-          const active = item.id === activeThreadId;
-          const sender = item.participants[0];
-          const checked = selected.has(item.id);
+        {sectioned ? (
+          <>
+            <SectionHeader
+              label="Unread"
+              count={unreadItems.length}
+              collapsed={collapsed.has("unread")}
+              onToggle={() => toggleSection("unread")}
+            />
+            {!collapsed.has("unread") && unreadItems.map(row)}
 
-          return (
-            <li
-              key={item.id}
-              className={cn(
-                "group relative flex items-start gap-3 border-b border-border/70 px-4 py-3 transition-colors duration-100",
-                active ? "bg-accent" : "hover:bg-accent/55",
-              )}
-            >
-              {/* The avatar becomes a checkbox the moment you reach for it. */}
-              <span className="relative mt-0.5 size-8 shrink-0">
-                <Avatar
-                  size="md"
-                  name={sender?.name}
-                  address={sender?.address ?? item.id}
-                  className={cn(
-                    "pointer-events-none absolute inset-0 transition-opacity duration-100",
-                    checked ? "opacity-0" : "group-hover:opacity-0",
-                  )}
-                />
-                <span
-                  className={cn(
-                    "absolute inset-0 grid place-items-center transition-opacity duration-100",
-                    checked ? "opacity-100" : "opacity-0 group-hover:opacity-100",
-                  )}
-                >
-                  <Checkbox
-                    checked={checked}
-                    onCheckedChange={() =>
-                      setSelected((current) => {
-                        const next = new Set(current);
-                        if (next.has(item.id)) next.delete(item.id);
-                        else next.add(item.id);
-                        return next;
-                      })
-                    }
-                    aria-label={`Select ${item.subject || "conversation"}`}
-                  />
-                </span>
-              </span>
-
-              {/* Three lines: who it is, what it is about, how it starts. */}
-              <Link href={hrefFor(item.id)} className="min-w-0 flex-1">
-                <span className="flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-[12.5px]",
-                      unread
-                        ? "font-semibold text-foreground"
-                        : "font-medium text-muted-foreground",
-                    )}
-                  >
-                    {sender?.name || sender?.address || "Unknown"}
-                  </span>
-
-                  {showMailbox && (
-                    <span
-                      className="shrink-0 rounded-full px-1.5 py-px font-mono text-[10px]"
-                      style={{
-                        background: `color-mix(in oklab, ${item.mailboxColor} 15%, transparent)`,
-                        color: item.mailboxColor,
-                      }}
-                    >
-                      {item.mailboxAddress}
-                    </span>
-                  )}
-                  {item.messageCount > 1 && (
-                    <span className="shrink-0 rounded-full bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
-                      {item.messageCount}
-                    </span>
-                  )}
-                  {item.hasAttachments && (
-                    <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
-                  )}
-                  {/* The row actions take the timestamp's place on hover. */}
-                  <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums group-hover:invisible">
-                    {formatStamp(item.lastMessageAt)}
-                  </span>
-                </span>
-
-                <span className="mt-0.5 flex items-center gap-2">
-                  <span
-                    className={cn(
-                      "min-w-0 flex-1 truncate text-[13.5px]",
-                      unread ? "font-semibold text-foreground" : "font-medium text-foreground/85",
-                    )}
-                  >
-                    {item.subject || "(no subject)"}
-                  </span>
-                  {unread && (
-                    <span
-                      className="size-[7px] shrink-0 rounded-full bg-primary"
-                      aria-label="Unread"
-                    />
-                  )}
-                </span>
-
-                {item.snippet && (
-                  <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
-                    {item.snippet}
-                  </span>
-                )}
-              </Link>
-
-              <span className="absolute top-2 right-3 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-                <RowAction
-                  label={item.isStarred ? "Unstar" : "Star"}
-                  onClick={() => run(() => setStarAction([item.id], !item.isStarred))}
-                >
-                  <Star className={cn(item.isStarred && "fill-warn text-warn")} />
-                </RowAction>
-                <RowAction
-                  label="Archive"
-                  onClick={() => run(() => moveThreadsAction([item.id], "archive"))}
-                >
-                  <Archive />
-                </RowAction>
-                <RowAction
-                  label={item.unreadCount > 0 ? "Mark read" : "Mark unread"}
-                  onClick={() => run(() => setReadAction([item.id], item.unreadCount > 0))}
-                >
-                  {item.unreadCount > 0 ? <MailOpen /> : <MailQuestion />}
-                </RowAction>
-                {/* Everywhere else this moves the conversation to Trash and is
-                    undoable from there. In Trash there is nowhere further to
-                    move it, so the same click destroys it and has to ask. */}
-                <RowAction
-                  label={folder === "trash" ? "Delete forever" : "Delete"}
-                  destructive
-                  onClick={() => {
-                    if (folder === "trash") setPurging(item);
-                    else run(() => deleteThreadsAction([item.id]));
-                  }}
-                >
-                  <Trash2 />
-                </RowAction>
-              </span>
-
-              {/* Starred rows keep their star visible when the row is at rest. */}
-              {item.isStarred && (
-                <Star className="absolute top-3 right-3 size-4 fill-warn text-warn group-hover:hidden" />
-              )}
-            </li>
-          );
-        })}
+            {readItems.length > 0 && (
+              <SectionHeader
+                label="Everything else"
+                count={readItems.length}
+                collapsed={collapsed.has("read")}
+                onToggle={() => toggleSection("read")}
+              />
+            )}
+            {!collapsed.has("read") && readItems.map(row)}
+          </>
+        ) : (
+          items.map(row)
+        )}
 
         {/* Paging used to go one way, so a reader who pressed it twice had no
             route back but the browser's own. */}
@@ -372,6 +430,40 @@ export function ThreadList({
         )}
       </ul>
     </div>
+  );
+}
+
+type SectionId = "unread" | "read";
+
+const COLLAPSED_KEY = "mailroom:list-sections-collapsed";
+
+/** A heading over one half of the list, and the handle that folds it away. */
+function SectionHeader({
+  label,
+  count,
+  collapsed,
+  onToggle,
+}: {
+  label: string;
+  count: number;
+  collapsed: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <li className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={!collapsed}
+        className="flex w-full items-center gap-2 px-4 py-2 text-left text-[11.5px] font-semibold text-muted-foreground uppercase tracking-[0.06em] transition-colors hover:text-foreground"
+      >
+        <ChevronDown
+          className={cn("size-3.5 transition-transform duration-150", collapsed && "-rotate-90")}
+        />
+        {label}
+        <span className="font-normal tracking-normal normal-case">{count}</span>
+      </button>
+    </li>
   );
 }
 
