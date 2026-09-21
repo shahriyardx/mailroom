@@ -73,9 +73,13 @@ export async function getAccess(): Promise<Access | null> {
     role: row.role as Role,
     teamIds: teams.map((entry) => entry.id),
     leadsTeamIds: teams.filter((entry) => entry.role === "lead").map((entry) => entry.id),
-    // An owner or admin reaches everything whether or not they sit in the
-    // root team, so that an instance can never lock its own operator out.
-    isRoot: teams.some((entry) => entry.isRoot) || row.role === "owner" || row.role === "admin",
+    /*
+     * Reaching every mailbox belongs to the owner and to the root team they
+     * control. An admin runs the place — people, teams, mailboxes, keys —
+     * without thereby being able to read everybody's mail, which is a
+     * different thing and not implied by the first.
+     */
+    isRoot: teams.some((entry) => entry.isRoot) || row.role === "owner",
   };
 }
 

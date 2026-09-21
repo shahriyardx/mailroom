@@ -260,11 +260,19 @@ export async function setTeamMembershipAction(teamId: string, userId: string, me
     return { ok: false as const, error: "You do not lead that team" };
   }
 
+  // The root team reaches every mailbox without a grant, so who is in it is
+  // the owner's decision. An admin could otherwise put themselves in it and
+  // read everything.
+  if (target.isRoot && access.role !== "owner") {
+    return { ok: false as const, error: "Only the owner decides who is in the root team" };
+  }
+
   if (member_) {
     await db
       .insert(teamMember)
       .values({ id: newId("tmem"), teamId, userId })
       .onConflictDoNothing();
+    await recountTeam(teamId);
   } else {
     // Emptying the root team would leave nobody who reaches everything.
     if (target.isRoot) {
@@ -279,9 +287,39 @@ export async function setTeamMembershipAction(teamId: string, userId: string, me
     await db
       .delete(teamMember)
       .where(and(eq(teamMember.teamId, teamId), eq(teamMember.userId, userId)));
+    await recountTeam(teamId);
   }
 
   revalidatePath("/settings/people");
+  return { ok: true as const };
+}
+
+/** Keeps the count better-auth stores on a team honest. */
+async function recountTeam(teamId: string) {
+  const rows = await db
+    .select({ id: teamMember.id })
+    .from(teamMember)
+    .where(eq(teamMember.teamId, teamId));
+  await db.update(team).set({ memberCount: rows.length }).where(eq(team.id, teamId));
+}
+
+/** The company this instance belongs to, and what it is called. */
+export async function getCompany() {
+  const access = await requireAccess();
+  const [row] = await db.select().from(organization).where(eq(organization.id, access.orgId));
+  return { company: row ?? null, canRename: can(access, "instance:manage") };
+}
+
+export async function renameCompanyAction(name: string) {
+  const access = await requireAccess();
+  assertCan(access, "instance:manage");
+
+  const trimmed = name.trim();
+  if (trimmed.length < 2) return { ok: false as const, error: "Give the company a name" };
+
+  await db.update(organization).set({ name: trimmed }).where(eq(organization.id, access.orgId));
+
+  revalidatePath("/settings", "layout");
   return { ok: true as const };
 }
 

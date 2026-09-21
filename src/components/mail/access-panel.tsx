@@ -340,8 +340,9 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
       </Fieldset>
 
       <Note className="mt-4">
-        The root team, owners and admins reach every mailbox without a grant, so an instance can
-        never be locked away from the people running it.
+        The owner and the root team reach every mailbox without a grant, so an instance can never be
+        locked away from the person who runs it. An admin runs the place but reads only the mail
+        they are given, like anybody else.
       </Note>
     </Panel>
   );

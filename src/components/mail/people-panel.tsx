@@ -67,8 +67,8 @@ interface Props {
  * different question, asked beside that team.
  */
 const ROLE_NOTE: Record<Role, string> = {
-  owner: "Everything, including adding domains and changing how mail is received.",
-  admin: "Every mailbox, person and team in the instance. Not domains.",
+  owner: "Everything: every mailbox, and the domains and receiving besides.",
+  admin: "Runs people, teams, mailboxes and keys. Reads only the mail they are given.",
   member: "Only the mailboxes they are given.",
 };
 
