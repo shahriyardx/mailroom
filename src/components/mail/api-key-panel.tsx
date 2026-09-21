@@ -834,6 +834,42 @@ function EditKeyDialog({
 
 /* -------------------------------------------------------------------------- */
 
+/**
+ * A shell command: one line, copied rather than read.
+ *
+ * Not syntax-highlighted, because it is not a program — highlighting it as
+ * one is what made `npm install` look like the first statement of the file
+ * below it.
+ */
+function Copyable({ text, className }: { text: string; className?: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <div className={cn("flex items-center gap-2 rounded-lg bg-muted py-2 pr-2 pl-3", className)}>
+      <span aria-hidden className="shrink-0 font-mono text-[11.5px] text-muted-foreground">
+        $
+      </span>
+      <code className="min-w-0 flex-1 overflow-x-auto font-mono text-[11.5px] whitespace-nowrap">
+        {text}
+      </code>
+      <IconButton
+        label={`Copy ${text}`}
+        onClick={() => {
+          navigator.clipboard.writeText(text).then(
+            () => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+              toast.success("Copied");
+            },
+            () => toast.error("Could not copy. Select the line and copy it by hand."),
+          );
+        }}
+      >
+        {copied ? <Check className="text-ok" /> : <Copy />}
+      </IconButton>
+    </div>
+  );
+}
+
 function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
   const origin = appUrl.replace(/\/+$/, "");
   const base = `${origin}/api/v1`;
@@ -866,12 +902,14 @@ function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
         <Note className="mt-1">
           The same API, typed, with retries, paging and webhook signature checking already done.
         </Note>
-        <div className="mt-2.5 overflow-x-auto rounded-lg bg-muted p-3">
+        {/* The install is a shell command, not JavaScript. Run together in
+            one block it was highlighted as though it were, and read as the
+            first line of the program rather than the thing done before it. */}
+        <Copyable text="npm install @shahriyardx/mailroom" className="mt-2.5" />
+
+        <div className="mt-2 overflow-x-auto rounded-lg bg-muted p-3">
           <CodeBlock
-            code={`npm install @shahriyardx/mailroom
-
-import { Mailroom } from "@shahriyardx/mailroom";
-
+            code={`import { Mailroom } from "@shahriyardx/mailroom";
 
 const mail = new Mailroom({
   apiKey: process.env.MAILROOM_API_KEY,
