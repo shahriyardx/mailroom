@@ -285,6 +285,7 @@ export interface GrantRow {
   canRead: boolean;
   canSend: boolean;
   canManage: boolean;
+  canCreateMailbox: boolean;
 }
 
 export async function listGrants() {
@@ -329,6 +330,7 @@ export async function listGrants() {
     canRead: row.canRead,
     canSend: row.canSend,
     canManage: row.canManage,
+    canCreateMailbox: row.canCreateMailbox,
   }));
 
   return {
@@ -340,6 +342,41 @@ export async function listGrants() {
   };
 }
 
+export interface GrantInput {
+  subjectType: "team" | "member";
+  subjectId: string;
+  resourceType: "domain" | "mailbox";
+  /** One or many. Granting several at once writes one grant for each. */
+  resourceIds: string[];
+  canSend: boolean;
+  canManage: boolean;
+  /** Only meaningful on a domain grant. */
+  canCreateMailbox?: boolean;
+}
+
+/** Grants, or changes, one subject's access to any number of resources. */
+export async function setGrantsAction(input: GrantInput) {
+  const access = await requireAccess();
+  assertCan(access, "access:manage");
+
+  for (const resourceId of input.resourceIds) {
+    await writeGrant(access.orgId, {
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      resourceType: input.resourceType,
+      resourceId,
+      canRead: true,
+      canSend: input.canSend,
+      canManage: input.canManage,
+      canCreateMailbox: input.resourceType === "domain" && input.canCreateMailbox === true,
+    });
+  }
+
+  revalidatePath("/settings/access");
+  revalidatePath("/mail", "layout");
+  return { ok: true as const, count: input.resourceIds.length };
+}
+
 export async function setGrantAction(input: {
   subjectType: "team" | "member";
   subjectId: string;
@@ -348,13 +385,14 @@ export async function setGrantAction(input: {
   canRead: boolean;
   canSend: boolean;
   canManage: boolean;
+  canCreateMailbox?: boolean;
 }) {
   const access = await requireAccess();
   assertCan(access, "access:manage");
 
   // Nothing granted is the same as no grant at all, so it is removed rather
   // than left as a row that says a person may do nothing.
-  if (!input.canRead && !input.canSend && !input.canManage) {
+  if (!input.canRead && !input.canSend && !input.canManage && !input.canCreateMailbox) {
     await db
       .delete(accessGrant)
       .where(
@@ -370,22 +408,36 @@ export async function setGrantAction(input: {
     return { ok: true as const };
   }
 
-  // Sending or managing without reading makes no sense, so reading comes with.
-  const canRead = input.canRead || input.canSend || input.canManage;
+  await writeGrant(access.orgId, {
+    ...input,
+    canCreateMailbox: input.resourceType === "domain" && input.canCreateMailbox === true,
+  });
+
+  revalidatePath("/settings/access");
+  revalidatePath("/mail", "layout");
+  return { ok: true as const };
+}
+
+async function writeGrant(
+  orgId: string,
+  grant: {
+    subjectType: string;
+    subjectId: string;
+    resourceType: string;
+    resourceId: string;
+    canRead: boolean;
+    canSend: boolean;
+    canManage: boolean;
+    canCreateMailbox: boolean;
+  },
+) {
+  // Sending, managing or adding to something you cannot see would mean
+  // nothing, so reading comes with every grant.
+  const canRead = grant.canRead || grant.canSend || grant.canManage || grant.canCreateMailbox;
 
   await db
     .insert(accessGrant)
-    .values({
-      id: newId("grant"),
-      organizationId: access.orgId,
-      subjectType: input.subjectType,
-      subjectId: input.subjectId,
-      resourceType: input.resourceType,
-      resourceId: input.resourceId,
-      canRead,
-      canSend: input.canSend,
-      canManage: input.canManage,
-    })
+    .values({ id: newId("grant"), organizationId: orgId, ...grant, canRead })
     .onConflictDoUpdate({
       target: [
         accessGrant.subjectType,
@@ -393,12 +445,13 @@ export async function setGrantAction(input: {
         accessGrant.resourceType,
         accessGrant.resourceId,
       ],
-      set: { canRead, canSend: input.canSend, canManage: input.canManage },
+      set: {
+        canRead,
+        canSend: grant.canSend,
+        canManage: grant.canManage,
+        canCreateMailbox: grant.canCreateMailbox,
+      },
     });
-
-  revalidatePath("/settings/access");
-  revalidatePath("/mail", "layout");
-  return { ok: true as const };
 }
 
 export async function removeGrantAction(grantId: string) {

@@ -246,6 +246,11 @@ export const accessGrant = pgTable(
     canSend: boolean("can_send").notNull().default(false),
     /** Change the mailbox itself: its name, colour and signature. */
     canManage: boolean("can_manage").notNull().default(false),
+    /**
+     * Create new mailboxes on this domain. Only meaningful on a domain grant,
+     * and the mailboxes they make are reachable by the same grant.
+     */
+    canCreateMailbox: boolean("can_create_mailbox").notNull().default(false),
 
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },

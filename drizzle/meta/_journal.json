@@ -85,6 +85,13 @@
       "when": 1789972680522,
       "tag": "0011_restore_unique_indexes",
       "breakpoints": true
+    },
+    {
+      "idx": 12,
+      "version": "7",
+      "when": 1789973474704,
+      "tag": "0012_grant_create_mailbox",
+      "breakpoints": true
     }
   ]
 }

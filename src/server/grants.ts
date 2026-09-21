@@ -78,6 +78,31 @@ export async function readableMailboxIds(access: Access) {
   return [...rights.entries()].filter(([, right]) => right.read).map(([id]) => id);
 }
 
+/**
+ * The domains this person may create a mailbox on. Only a domain grant can
+ * carry the right, since a mailbox grant says nothing about its domain.
+ */
+export async function creatableDomainIds(access: Access) {
+  if (access.isRoot) return "all" as const;
+
+  const subjects = [access.memberId, ...access.teamIds];
+  if (subjects.length === 0) return [];
+
+  const rows = await db
+    .select({ resourceId: accessGrant.resourceId })
+    .from(accessGrant)
+    .where(
+      and(
+        eq(accessGrant.organizationId, access.orgId),
+        inArray(accessGrant.subjectId, subjects),
+        eq(accessGrant.resourceType, "domain"),
+        eq(accessGrant.canCreateMailbox, true),
+      ),
+    );
+
+  return rows.map((row) => row.resourceId);
+}
+
 /** Throws unless the person may send as this mailbox. */
 export async function assertCanSendAs(access: Access, mailboxId: string) {
   const rights = await mailboxRights(access);

@@ -17,8 +17,8 @@ import { generateApiKey } from "@/lib/api-key";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { newId } from "@/lib/utils";
 import { requireAccess } from "@/server/access";
-import { assertCanSendAs, readableMailboxIds } from "@/server/grants";
-import { assertCan } from "@/server/permissions";
+import { assertCanSendAs, creatableDomainIds, readableMailboxIds } from "@/server/grants";
+import { assertCan, can } from "@/server/permissions";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -286,7 +286,6 @@ export async function setDomainAutoCreateAction(domainId: string, on: boolean) {
 
 export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   const access = await requireAccess();
-  assertCan(access, "mailbox:manage");
   const input = mailboxSchema.parse(raw);
   const address = input.address.toLowerCase();
 
@@ -299,6 +298,15 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   const domainRow = coveringDomain(address, owned);
   if (!domainRow) {
     throw new Error(`Add ${domainName} under Domains first, or a domain it sits beneath.`);
+  }
+
+  // Managing mailboxes is an administrator's job, unless a grant on this
+  // domain says this person may add to it.
+  if (!can(access, "mailbox:manage")) {
+    const allowed = await creatableDomainIds(access);
+    if (allowed !== "all" && !allowed.includes(domainRow.id)) {
+      throw new Error(`You cannot add mailboxes on ${domainRow.name}`);
+    }
   }
 
   const id = newId("mbx");
