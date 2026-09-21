@@ -62,9 +62,13 @@ interface Props {
   leadsTeamIds?: string[];
 }
 
+/**
+ * What a role means across the whole instance. A role within one team is a
+ * different question, asked beside that team.
+ */
 const ROLE_NOTE: Record<Role, string> = {
   owner: "Everything, including adding domains and changing how mail is received.",
-  admin: "Mailboxes, people, teams and who may see what. Not domains.",
+  admin: "Every mailbox, person and team in the instance. Not domains.",
   member: "Only the mailboxes they are given.",
 };
 
@@ -99,6 +103,12 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
         description="Everyone who can sign in to this instance, and what each of them may do."
         meta={`${people.length}`}
       >
+        <div className="flex items-center gap-3 border-border border-b pb-1.5 text-[11.5px] text-muted-foreground">
+          <span className="min-w-0 flex-1">Person</span>
+          <span className="w-28 shrink-0">Teams</span>
+          <span className="w-28 shrink-0">Across the instance</span>
+          <span className="w-8 shrink-0" />
+        </div>
         <List>
           {people.map((person) => (
             <ListRow key={person.memberId}>
@@ -128,7 +138,7 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                         {person.teams.length === 0
                           ? "No team"
                           : person.teams.length === 1
-                            ? `${person.teams[0].name}${person.teams[0].lead ? " ★" : ""}`
+                            ? `${person.teams[0].name}${person.teams[0].lead ? " · lead" : ""}`
                             : `${person.teams[0].name}, +${person.teams.length - 1}`}
                       </span>
                       <ChevronDown className="size-3.5 shrink-0" />
@@ -210,7 +220,7 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                     run(() => setMemberRoleAction(person.memberId, value as Role), "Role changed")
                   }
                 >
-                  <SelectTrigger size="sm" className="w-28">
+                  <SelectTrigger size="sm" className="w-28 shrink-0">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -220,9 +230,11 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                   </SelectContent>
                 </Select>
               ) : (
-                <StatusPill state={person.role === "owner" ? "ok" : "pending"}>
-                  {person.role}
-                </StatusPill>
+                <span className="flex w-28 shrink-0 justify-start">
+                  <StatusPill state={person.role === "owner" ? "ok" : "pending"}>
+                    {person.role}
+                  </StatusPill>
+                </span>
               )}
 
               {canManage && person.role !== "owner" && person.userId !== me.userId && (
