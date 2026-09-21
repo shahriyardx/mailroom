@@ -1,5 +1,6 @@
 "use client";
 
+import { Check, Copy } from "lucide-react";
 import { useEffect, useId, useState, useTransition } from "react";
 
 import { cn } from "@/lib/utils";
@@ -49,12 +50,16 @@ export function ConfirmDialog({
   children?: React.ReactNode;
 }) {
   const [typed, setTyped] = useState("");
+  const [copied, setCopied] = useState(false);
   const [running, start] = useTransition();
   const fieldId = useId();
 
   // Reopening after a cancel must not inherit what was typed last time.
   useEffect(() => {
-    if (open) setTyped("");
+    if (open) {
+      setTyped("");
+      setCopied(false);
+    }
   }, [open]);
 
   const ready = !phrase || typed.trim() === phrase;
@@ -78,7 +83,32 @@ export function ConfirmDialog({
         {phrase && (
           <div>
             <label htmlFor={fieldId} className="mb-1.5 block text-[12.5px] text-muted-foreground">
-              Type <span className="font-mono text-foreground">{phrase}</span> to confirm
+              Type{" "}
+              {/* Clicking it copies. A long address is tedious to retype and
+                  the tedium was never the point — reading which one it is,
+                  and choosing to confirm it, is. */}
+              <button
+                type="button"
+                title={`Copy ${phrase}`}
+                onClick={() => {
+                  navigator.clipboard.writeText(phrase).then(
+                    () => {
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1200);
+                    },
+                    () => {},
+                  );
+                }}
+                className="inline-flex items-center gap-1 rounded px-1 py-0.5 font-mono text-foreground transition-colors hover:bg-accent"
+              >
+                {phrase}
+                {copied ? (
+                  <Check className="size-3 text-ok" />
+                ) : (
+                  <Copy className="size-3 text-muted-foreground" />
+                )}
+              </button>{" "}
+              to confirm
             </label>
             <Input
               id={fieldId}
