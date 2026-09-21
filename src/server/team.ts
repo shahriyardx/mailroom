@@ -85,7 +85,12 @@ export async function listPeople() {
   return { people, pending, teams, me: access };
 }
 
-export async function inviteMemberAction(email: string, role: Role, teamId: string | null) {
+export async function inviteMemberAction(
+  email: string,
+  role: Role,
+  teamId: string | null,
+  fromMailboxId?: string | null,
+) {
   const access = await requireAccess();
   assertCan(access, "member:manage");
 
@@ -114,6 +119,7 @@ export async function inviteMemberAction(email: string, role: Role, teamId: stri
     teamId,
     status: "pending",
     tokenHash: token.hash,
+    fromMailboxId: fromMailboxId || null,
     expiresAt: freshExpiry(),
     inviterId: access.userId,
   });
@@ -126,6 +132,7 @@ export async function inviteMemberAction(email: string, role: Role, teamId: stri
     secret: token.secret,
     inviterName: access.name || access.email,
     companyName: company?.name ?? "Mailroom",
+    fromMailboxId,
   });
 
   revalidatePath("/settings/people");
@@ -553,6 +560,7 @@ export async function resendInvitationAction(invitationId: string) {
     secret: token.secret,
     inviterName: access.name || access.email,
     companyName: company?.name ?? "Mailroom",
+    fromMailboxId: row.fromMailboxId,
   });
 
   revalidatePath("/settings/people");

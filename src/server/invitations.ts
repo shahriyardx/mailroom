@@ -5,7 +5,7 @@ import { db } from "@/db";
 import { invitation, mailbox, organization } from "@/db/schema";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
-import { and, eq, gt } from "drizzle-orm";
+import { and, asc, desc, eq, gt } from "drizzle-orm";
 import { deliverMessage } from "./send";
 
 export const INVITE_DAYS = 14;
@@ -46,6 +46,10 @@ export async function invitationForToken(secret: string) {
  * Sends the invitation from a mailbox the company already owns. Returns what
  * happened rather than throwing: an invitation that could not be emailed is
  * still a valid invitation, and the link can be passed on by hand.
+ *
+ * The sender can be chosen, because which address a new colleague is written
+ * to from is a matter of how the company presents itself. Without a choice it
+ * is the default mailbox.
  */
 export async function sendInvitationEmail(input: {
   orgId: string;
@@ -53,13 +57,9 @@ export async function sendInvitationEmail(input: {
   secret: string;
   inviterName: string;
   companyName: string;
+  fromMailboxId?: string | null;
 }) {
-  const [from] = await db
-    .select()
-    .from(mailbox)
-    .where(eq(mailbox.organizationId, input.orgId))
-    .orderBy(mailbox.isDefault)
-    .limit(1);
+  const from = await invitationSender(input.orgId, input.fromMailboxId);
 
   if (!from) {
     return { sent: false as const, reason: "There is no mailbox to send the invitation from" };
@@ -109,6 +109,31 @@ export async function sendInvitationEmail(input: {
       reason: error instanceof Error ? error.message : "The invitation could not be sent",
     };
   }
+}
+
+/**
+ * The mailbox an invitation goes out from. A chosen one is checked against
+ * the company, so an id from a form cannot reach another instance's address;
+ * an unusable choice falls back rather than failing, since the invitation
+ * itself is still worth making.
+ */
+async function invitationSender(orgId: string, chosenId?: string | null) {
+  if (chosenId) {
+    const [chosen] = await db
+      .select()
+      .from(mailbox)
+      .where(and(eq(mailbox.id, chosenId), eq(mailbox.organizationId, orgId)))
+      .limit(1);
+    if (chosen) return chosen;
+  }
+
+  const [fallback] = await db
+    .select()
+    .from(mailbox)
+    .where(eq(mailbox.organizationId, orgId))
+    .orderBy(desc(mailbox.isDefault), asc(mailbox.address))
+    .limit(1);
+  return fallback ?? null;
 }
 
 function escapeHtml(value: string) {

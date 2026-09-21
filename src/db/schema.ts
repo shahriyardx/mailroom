@@ -175,6 +175,12 @@ export const invitation = pgTable(
     status: text("status").notNull().default("pending"),
     /** sha256 of the link's secret. The secret itself is never stored. */
     tokenHash: text("token_hash"),
+    /**
+     * The address the invitation was sent from. Kept so that resending it
+     * comes from the same place the first one did; null falls back to the
+     * instance default.
+     */
+    fromMailboxId: text("from_mailbox_id"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     inviterId: text("inviter_id")
       .notNull()

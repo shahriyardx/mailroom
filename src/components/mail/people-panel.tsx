@@ -55,6 +55,8 @@ interface Props {
   people: PersonRow[];
   pending: { id: string; email: string; role: string | null; teamId: string | null }[];
   teams: TeamRow[];
+  /** Addresses an invitation may be sent from. Empty means there are none. */
+  senders?: { id: string; address: string; isDefault: boolean }[];
   me: { userId: string; role: Role };
   /** True for an administrator: roles, invitations, removing people. */
   canManage: boolean;
@@ -62,17 +64,15 @@ interface Props {
   leadsTeamIds?: string[];
 }
 
-/**
- * What a role means across the whole instance. A role within one team is a
- * different question, asked beside that team.
- */
-const ROLE_NOTE: Record<Role, string> = {
-  owner: "Everything: every mailbox, and the domains and receiving besides.",
-  admin: "Runs people, teams, mailboxes and keys. Reads only the mail they are given.",
-  member: "Only the mailboxes they are given.",
-};
-
-export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamIds = [] }: Props) {
+export function PeoplePanel({
+  people,
+  pending,
+  teams,
+  senders = [],
+  me,
+  canManage,
+  leadsTeamIds = [],
+}: Props) {
   // A lead may put people in and out of their own team, and nothing else.
   const mayChangeTeam = (teamId: string) => canManage || leadsTeamIds.includes(teamId);
   const router = useRouter();
@@ -81,8 +81,12 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
   const [role, setRole] = useState<Role>("member");
   const [teamId, setTeamId] = useState<string>(teams.find((t) => !t.isRoot)?.id ?? "");
   const [teamName, setTeamName] = useState("");
-  // Teams start open, since an empty one is the thing you came to fill.
-  const [opened, setOpened] = useState<string[]>(() => teams.map((entry) => entry.id));
+  const [fromId, setFromId] = useState<string>(
+    () => (senders.find((box) => box.isDefault) ?? senders[0])?.id ?? "",
+  );
+  // Teams start shut, so the page opens as a list of teams rather than a
+  // wall of everyone in them.
+  const [opened, setOpened] = useState<string[]>([]);
 
   type Result = { ok: boolean; error?: string } | undefined;
 
@@ -262,7 +266,7 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                   placeholder="person@company.com"
                 />
               </Field>
-              <Field label="Role" htmlFor="invite-role" hint={ROLE_NOTE[role]}>
+              <Field label="Role" htmlFor="invite-role">
                 <Select value={role} onValueChange={(value) => value && setRole(value as Role)}>
                   <SelectTrigger id="invite-role">
                     <SelectValue />
@@ -288,6 +292,22 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                   </SelectContent>
                 </Select>
               </Field>
+              {senders.length > 0 && (
+                <Field label="Send from" htmlFor="invite-from">
+                  <Select value={fromId} onValueChange={(value) => value && setFromId(value)}>
+                    <SelectTrigger id="invite-from">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {senders.map((box) => (
+                        <SelectItem key={box.id} value={box.id}>
+                          {box.address}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+              )}
             </div>
             <FieldsetActions note="They get an email with a link, choose a password, and they are in. GitHub works too if that account uses the same address.">
               <Button
@@ -297,7 +317,12 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                 disabled={!email.trim()}
                 onClick={() =>
                   start(async () => {
-                    const result = await inviteMemberAction(email, role, teamId || null);
+                    const result = await inviteMemberAction(
+                      email,
+                      role,
+                      teamId || null,
+                      fromId || null,
+                    );
                     if (!result.ok) {
                       toast.error(result.error);
                       return;
