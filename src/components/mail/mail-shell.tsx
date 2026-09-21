@@ -367,18 +367,7 @@ function NavPanel({
                   rather than go to for something in particular.
                 */}
                 {active && item === "inbox" && (
-                  <ul className="mt-0.5 mb-1 ml-[19px] space-y-0.5 border-sidebar-border border-l pl-3">
-                    <li>
-                      <SubRow href={scopeHref(scope, item)} active={!unreadOnly}>
-                        All
-                      </SubRow>
-                    </li>
-                    <li>
-                      <SubRow href={`${scopeHref(scope, item)}?unread=1`} active={unreadOnly}>
-                        Unread
-                      </SubRow>
-                    </li>
-                  </ul>
+                  <UnreadSwitch base={scopeHref(scope, item)} unreadOnly={unreadOnly} />
                 )}
               </li>
             );
@@ -492,28 +481,36 @@ function NavPanel({
 }
 
 /** One row of the navigation list. Active state is a filled pill, not a border. */
-/** A choice within the open folder: narrower, quieter, and indented under it. */
-function SubRow({
-  href,
-  active,
-  children,
-}: {
-  href: string;
-  active: boolean;
-  children: React.ReactNode;
-}) {
+/**
+ * All or Unread, as one control rather than two rows.
+ *
+ * Stacked underneath, each was the same shape and weight as the folder above
+ * them, so the sidebar appeared to have grown a second level of navigation
+ * where it had only gained a choice between two things.
+ */
+function UnreadSwitch({ base, unreadOnly }: { base: string; unreadOnly: boolean }) {
+  const options = [
+    { label: "All", href: base, active: !unreadOnly },
+    { label: "Unread", href: `${base}?unread=1`, active: unreadOnly },
+  ];
+
   return (
-    <Link
-      href={href}
-      className={cn(
-        "flex items-center rounded-[8px] px-2.5 py-1 text-[12.5px] transition-colors",
-        active
-          ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
-          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
-      )}
-    >
-      {children}
-    </Link>
+    <div className="mt-1 ml-[30px] flex gap-0.5 rounded-[9px] bg-sidebar-accent/50 p-0.5">
+      {options.map((option) => (
+        <Link
+          key={option.label}
+          href={option.href}
+          className={cn(
+            "flex-1 rounded-[7px] px-2 py-1 text-center text-[12px] transition-colors",
+            option.active
+              ? "bg-card font-semibold text-foreground shadow-raise"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          {option.label}
+        </Link>
+      ))}
+    </div>
   );
 }
 
