@@ -118,13 +118,19 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
             </span>
 
             <span className="min-w-0 flex-1">
-              <span className="block truncate text-[13px] font-medium">{grant.subjectName}</span>
-              <span className="flex items-center gap-1.5 truncate font-mono text-[12px] text-muted-foreground">
-                {grant.resourceType === "domain" && <Globe className="size-3 shrink-0" />}
-                {grant.resourceName}
+              <span className="flex items-center gap-1.5 truncate text-[13px] font-medium">
+                {grant.subjectName}
                 {grant.resourceType === "domain" && (
-                  <span className="font-sans">— whole domain</span>
+                  <Globe className="size-3 shrink-0 text-muted-foreground" />
                 )}
+                <span className="truncate font-mono text-[12.5px] font-normal">
+                  {grant.resourceName}
+                </span>
+              </span>
+              {/* Says the effect in words. A row of chips tells you which
+                  switches are on, not what they let anyone do. */}
+              <span className="block truncate text-[12px] text-muted-foreground">
+                {describe(grant)}
               </span>
             </span>
 
@@ -367,6 +373,29 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
       </Note>
     </Panel>
   );
+}
+
+/** The grant in a sentence, so the row does not have to be decoded. */
+function describe(grant: GrantRow) {
+  const who = grant.subjectType === "team" ? `Everyone in ${grant.subjectName}` : grant.subjectName;
+  const what =
+    grant.resourceType === "domain" ? `every mailbox on ${grant.resourceName}` : grant.resourceName;
+
+  const doing = ["read"];
+  if (grant.canSend) doing.push("send as");
+  if (grant.canManage) doing.push("change");
+
+  const list =
+    doing.length === 1
+      ? doing[0]
+      : `${doing.slice(0, -1).join(", ")} and ${doing[doing.length - 1]}`;
+
+  const adding =
+    grant.resourceType === "domain" && grant.canCreateMailbox
+      ? ", and can add new mailboxes to it"
+      : "";
+
+  return `${who} can ${list} ${what}${adding}.`;
 }
 
 /** One right on a grant. Reading is shown but cannot be switched off. */
