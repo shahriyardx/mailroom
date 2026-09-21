@@ -11,6 +11,7 @@ import {
   KeyRound,
   Mail,
   Menu,
+  ShieldCheck,
   ShieldOff,
   SlidersHorizontal,
   Tag,
@@ -62,6 +63,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Account",
     items: [
       { href: "/settings/people", label: "People", icon: Users, needs: "member:manage" },
+      { href: "/settings/access", label: "Access", icon: ShieldCheck, needs: "access:manage" },
       { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
       { href: "/settings/account", label: "Account", icon: User },
     ],

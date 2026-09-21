@@ -6,7 +6,8 @@ import { db } from "@/db";
 import { label } from "@/db/schema";
 import { FOLDER_LABELS, parseRoute, scopeHref, supportsUnreadFilter } from "@/lib/scope";
 import { requireAccess } from "@/server/access";
-import { listMailboxes } from "@/server/mailboxes";
+import { readableMailboxIds } from "@/server/grants";
+import { listMailboxesFor } from "@/server/mailboxes";
 import { getThreadDetail, listThreads } from "@/server/threads";
 import { eq } from "drizzle-orm";
 import { Inbox } from "lucide-react";
@@ -29,8 +30,9 @@ export default async function MailPage({ params, searchParams }: PageProps) {
   const query = await searchParams;
   const { scope, folder } = parseRoute(slug);
 
+  const allowed = await readableMailboxIds(access);
   const [mailboxes, labels] = await Promise.all([
-    listMailboxes(access.orgId),
+    listMailboxesFor(access),
     db.query.label.findMany({ where: eq(label.organizationId, access.orgId) }),
   ]);
 
@@ -52,8 +54,9 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       labelId: query.label,
       cursor: query.cursor,
       unreadOnly: query.unread === "1" && supportsUnreadFilter(folder),
+      allowed,
     }),
-    query.t ? getThreadDetail(access.orgId, query.t) : Promise.resolve(null),
+    query.t ? getThreadDetail(access.orgId, query.t, allowed) : Promise.resolve(null),
   ]);
 
   const base = scopeHref(scope, folder);

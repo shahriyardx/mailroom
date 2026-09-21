@@ -25,6 +25,8 @@ export interface ThreadListItem {
 
 interface ListOptions {
   orgId: string;
+  /** The mailboxes the caller may read. Omitted means every one. */
+  allowed?: string[];
   scope: Scope;
   folder: ViewFolder;
   query?: string;
@@ -37,7 +39,7 @@ export async function listThreads(options: ListOptions): Promise<{
   items: ThreadListItem[];
   nextCursor: string | null;
 }> {
-  const mailboxIds = await resolveScope(options.orgId, options.scope);
+  const mailboxIds = await resolveScope(options.orgId, options.scope, options.allowed);
   if (mailboxIds.length === 0) return { items: [], nextCursor: null };
 
   const filters = [inArray(thread.mailboxId, mailboxIds)];
@@ -120,8 +122,8 @@ export async function listThreads(options: ListOptions): Promise<{
 }
 
 /** Unread counts per folder for the current scope, for the sidebar badges. */
-export async function folderCounts(orgId: string, scope: Scope) {
-  const mailboxIds = await resolveScope(orgId, scope);
+export async function folderCounts(orgId: string, scope: Scope, allowed?: string[]) {
+  const mailboxIds = await resolveScope(orgId, scope, allowed);
   const empty = { inbox: 0, starred: 0, sent: 0, drafts: 0, archive: 0, spam: 0, trash: 0 };
   if (mailboxIds.length === 0) return empty;
 
@@ -152,8 +154,8 @@ export async function folderCounts(orgId: string, scope: Scope) {
 }
 
 /** Per-mailbox unread inbox counts, shown next to each address in the sidebar. */
-export async function unreadByMailbox(orgId: string) {
-  const mailboxIds = await resolveScope(orgId, { kind: "all" });
+export async function unreadByMailbox(orgId: string, allowed?: string[]) {
+  const mailboxIds = await resolveScope(orgId, { kind: "all" }, allowed);
   if (mailboxIds.length === 0) return {} as Record<string, number>;
 
   const rows = await db
@@ -171,8 +173,8 @@ export async function unreadByMailbox(orgId: string) {
   return Object.fromEntries(rows.map((row) => [row.mailboxId, row.unread]));
 }
 
-export async function getThreadDetail(orgId: string, threadId: string) {
-  const mailboxIds = await resolveScope(orgId, { kind: "all" });
+export async function getThreadDetail(orgId: string, threadId: string, allowed?: string[]) {
+  const mailboxIds = await resolveScope(orgId, { kind: "all" }, allowed);
   if (mailboxIds.length === 0) return null;
 
   const row = await db.query.thread.findFirst({
@@ -190,8 +192,12 @@ export async function getThreadDetail(orgId: string, threadId: string) {
   return row ?? null;
 }
 
-export async function getAttachmentForUser(orgId: string, attachmentId: string) {
-  const mailboxIds = await resolveScope(orgId, { kind: "all" });
+export async function getAttachmentForUser(
+  orgId: string,
+  attachmentId: string,
+  allowed?: string[],
+) {
+  const mailboxIds = await resolveScope(orgId, { kind: "all" }, allowed);
   if (mailboxIds.length === 0) return null;
 
   const [row] = await db

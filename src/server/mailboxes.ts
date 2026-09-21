@@ -29,13 +29,31 @@ export function groupByDomain(boxes: Awaited<ReturnType<typeof listMailboxes>>):
 }
 
 /** Turns a UI scope into the concrete mailbox ids the query may touch. */
-export async function resolveScope(orgId: string, scope: Scope) {
+export async function resolveScope(orgId: string, scope: Scope, allowed?: string[]) {
   const boxes = await listMailboxes(orgId);
-  if (scope.kind === "all") return boxes.map((box) => box.id);
+  // A scope can only ever narrow what a person already reaches, never widen it.
+  const visible = allowed ? boxes.filter((box) => allowed.includes(box.id)) : boxes;
+
+  if (scope.kind === "all") return visible.map((box) => box.id);
   if (scope.kind === "domain") {
-    return boxes.filter((box) => box.domain === scope.domain).map((box) => box.id);
+    return visible.filter((box) => box.domain === scope.domain).map((box) => box.id);
   }
-  return boxes.filter((box) => box.id === scope.mailboxId).map((box) => box.id);
+  return visible.filter((box) => box.id === scope.mailboxId).map((box) => box.id);
+}
+
+/** The mailboxes a person may see, for the sidebar and the composer. */
+export async function listMailboxesFor(access: {
+  orgId: string;
+  isRoot: boolean;
+  memberId: string;
+  teamIds: string[];
+}) {
+  const boxes = await listMailboxes(access.orgId);
+  if (access.isRoot) return boxes;
+
+  const { readableMailboxIds } = await import("./grants");
+  const allowed = await readableMailboxIds(access as never);
+  return boxes.filter((box) => allowed.includes(box.id));
 }
 
 export async function getMailboxForUser(orgId: string, mailboxId: string) {

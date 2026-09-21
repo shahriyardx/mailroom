@@ -1,7 +1,16 @@
 "use server";
 
 import { db } from "@/db";
-import { invitation, member, team, teamMember, user } from "@/db/schema";
+import {
+  accessGrant,
+  domain as domainTable,
+  invitation,
+  mailbox as mailboxTable,
+  member,
+  team,
+  teamMember,
+  user,
+} from "@/db/schema";
 import { newId } from "@/lib/utils";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -225,4 +234,146 @@ export async function setTeamMembershipAction(teamId: string, userId: string, me
 
   revalidatePath("/settings/people");
   return { ok: true as const };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Access grants                                                              */
+/* -------------------------------------------------------------------------- */
+
+export interface GrantRow {
+  id: string;
+  subjectType: "team" | "member";
+  subjectId: string;
+  subjectName: string;
+  resourceType: "domain" | "mailbox";
+  resourceId: string;
+  resourceName: string;
+  canRead: boolean;
+  canSend: boolean;
+  canManage: boolean;
+}
+
+export async function listGrants() {
+  const access = await requireAccess();
+  assertCan(access, "access:manage");
+
+  const [rows, teams, members, domains, mailboxes] = await Promise.all([
+    db.select().from(accessGrant).where(eq(accessGrant.organizationId, access.orgId)),
+    db.select().from(team).where(eq(team.organizationId, access.orgId)),
+    db
+      .select({ id: member.id, name: user.name, email: user.email })
+      .from(member)
+      .innerJoin(user, eq(user.id, member.userId))
+      .where(eq(member.organizationId, access.orgId)),
+    db.select().from(domainTable).where(eq(domainTable.organizationId, access.orgId)),
+    db.select().from(mailboxTable).where(eq(mailboxTable.organizationId, access.orgId)),
+  ]);
+
+  const nameOf = (row: (typeof rows)[number]) => {
+    if (row.subjectType === "team") {
+      return teams.find((entry) => entry.id === row.subjectId)?.name ?? "a deleted team";
+    }
+    const person = members.find((entry) => entry.id === row.subjectId);
+    return person ? person.name || person.email : "a removed person";
+  };
+
+  const resourceOf = (row: (typeof rows)[number]) => {
+    if (row.resourceType === "domain") {
+      return domains.find((entry) => entry.id === row.resourceId)?.name ?? "a deleted domain";
+    }
+    return mailboxes.find((entry) => entry.id === row.resourceId)?.address ?? "a deleted mailbox";
+  };
+
+  const grants: GrantRow[] = rows.map((row) => ({
+    id: row.id,
+    subjectType: row.subjectType as "team" | "member",
+    subjectId: row.subjectId,
+    subjectName: nameOf(row),
+    resourceType: row.resourceType as "domain" | "mailbox",
+    resourceId: row.resourceId,
+    resourceName: resourceOf(row),
+    canRead: row.canRead,
+    canSend: row.canSend,
+    canManage: row.canManage,
+  }));
+
+  return {
+    grants,
+    teams: teams.map(({ id, name, isRoot }) => ({ id, name, isRoot })),
+    members: members.map(({ id, name, email }) => ({ id, name: name || email, email })),
+    domains: domains.map(({ id, name }) => ({ id, name })),
+    mailboxes: mailboxes.map(({ id, address }) => ({ id, address })),
+  };
+}
+
+export async function setGrantAction(input: {
+  subjectType: "team" | "member";
+  subjectId: string;
+  resourceType: "domain" | "mailbox";
+  resourceId: string;
+  canRead: boolean;
+  canSend: boolean;
+  canManage: boolean;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "access:manage");
+
+  // Nothing granted is the same as no grant at all, so it is removed rather
+  // than left as a row that says a person may do nothing.
+  if (!input.canRead && !input.canSend && !input.canManage) {
+    await db
+      .delete(accessGrant)
+      .where(
+        and(
+          eq(accessGrant.organizationId, access.orgId),
+          eq(accessGrant.subjectType, input.subjectType),
+          eq(accessGrant.subjectId, input.subjectId),
+          eq(accessGrant.resourceType, input.resourceType),
+          eq(accessGrant.resourceId, input.resourceId),
+        ),
+      );
+    revalidatePath("/settings/access");
+    return { ok: true as const };
+  }
+
+  // Sending or managing without reading makes no sense, so reading comes with.
+  const canRead = input.canRead || input.canSend || input.canManage;
+
+  await db
+    .insert(accessGrant)
+    .values({
+      id: newId("grant"),
+      organizationId: access.orgId,
+      subjectType: input.subjectType,
+      subjectId: input.subjectId,
+      resourceType: input.resourceType,
+      resourceId: input.resourceId,
+      canRead,
+      canSend: input.canSend,
+      canManage: input.canManage,
+    })
+    .onConflictDoUpdate({
+      target: [
+        accessGrant.subjectType,
+        accessGrant.subjectId,
+        accessGrant.resourceType,
+        accessGrant.resourceId,
+      ],
+      set: { canRead, canSend: input.canSend, canManage: input.canManage },
+    });
+
+  revalidatePath("/settings/access");
+  revalidatePath("/mail", "layout");
+  return { ok: true as const };
+}
+
+export async function removeGrantAction(grantId: string) {
+  const access = await requireAccess();
+  assertCan(access, "access:manage");
+
+  await db
+    .delete(accessGrant)
+    .where(and(eq(accessGrant.id, grantId), eq(accessGrant.organizationId, access.orgId)));
+  revalidatePath("/settings/access");
+  revalidatePath("/mail", "layout");
 }

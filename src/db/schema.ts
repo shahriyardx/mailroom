@@ -77,6 +77,9 @@ export const session = pgTable("session", {
   userAgent: text("user_agent"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  /** Which company and team this session is acting as. */
+  activeOrganizationId: text("active_organization_id"),
+  activeTeamId: text("active_team_id"),
 });
 
 export const account = pgTable("account", {
@@ -159,6 +162,7 @@ export const invitation = pgTable(
     inviterId: text("inviter_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("invitation_email_idx").on(t.email)],
 );
@@ -176,6 +180,8 @@ export const team = pgTable(
      * without a grant, and cannot be deleted or stripped of that reach.
      */
     isRoot: boolean("is_root").notNull().default(false),
+    /** Kept by better-auth so a team can be listed without counting rows. */
+    memberCount: integer("member_count").notNull().default(0),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }),
   },
@@ -192,9 +198,51 @@ export const teamMember = pgTable(
     userId: text("user_id")
       .notNull()
       .references(() => user.id, { onDelete: "cascade" }),
+    /** better-auth's own uniqueness key for a membership. */
+    membershipKey: text("membership_key").unique(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [uniqueIndex("team_member_idx").on(t.teamId, t.userId)],
+);
+
+/**
+ * Who may reach what. A grant attaches a team or one person to a domain or a
+ * single mailbox, and says what they may do with it. A grant on a domain
+ * covers every mailbox on that domain, including ones made later.
+ *
+ * The root team needs no rows here: it reaches everything by being the root
+ * team, so an instance can never be locked away from the people running it.
+ */
+export const accessGrant = pgTable(
+  "access_grant",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+
+    /** "team" or "member". */
+    subjectType: text("subject_type").notNull(),
+    subjectId: text("subject_id").notNull(),
+
+    /** "domain" or "mailbox". */
+    resourceType: text("resource_type").notNull(),
+    resourceId: text("resource_id").notNull(),
+
+    /** See the mail in it. */
+    canRead: boolean("can_read").notNull().default(true),
+    /** Send as it, and reply from it. */
+    canSend: boolean("can_send").notNull().default(false),
+    /** Change the mailbox itself: its name, colour and signature. */
+    canManage: boolean("can_manage").notNull().default(false),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("access_grant_idx").on(t.subjectType, t.subjectId, t.resourceType, t.resourceId),
+    index("access_grant_org_idx").on(t.organizationId),
+    index("access_grant_subject_idx").on(t.subjectType, t.subjectId),
+  ],
 );
 
 export const domain = pgTable(
@@ -635,6 +683,7 @@ export type Member = typeof member.$inferSelect;
 export type Team = typeof team.$inferSelect;
 export type TeamMember = typeof teamMember.$inferSelect;
 export type Invitation = typeof invitation.$inferSelect;
+export type AccessGrant = typeof accessGrant.$inferSelect;
 export type DomainStatus = (typeof domainStatusEnum.enumValues)[number];
 export type Mailbox = typeof mailbox.$inferSelect;
 export type Thread = typeof thread.$inferSelect;

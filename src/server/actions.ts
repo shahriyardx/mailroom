@@ -17,7 +17,8 @@ import { generateApiKey } from "@/lib/api-key";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { newId } from "@/lib/utils";
 import { requireAccess } from "@/server/access";
-import { type Capability, assertCan } from "@/server/permissions";
+import { assertCanSendAs, readableMailboxIds } from "@/server/grants";
+import { assertCan } from "@/server/permissions";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -30,9 +31,9 @@ import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
 
-async function assertOwnsThreads(orgId: string, threadIds: string[]) {
+async function assertOwnsThreads(orgId: string, threadIds: string[], allowed?: string[]) {
   if (threadIds.length === 0) return [];
-  const mailboxIds = await resolveScope(orgId, { kind: "all" });
+  const mailboxIds = await resolveScope(orgId, { kind: "all" }, allowed);
   if (mailboxIds.length === 0) return [];
   const rows = await db
     .select({ id: thread.id })
@@ -65,6 +66,7 @@ export type ComposeInput = z.input<typeof composeSchema>;
 export async function sendMessageAction(raw: ComposeInput) {
   const access = await requireAccess();
   const input = composeSchema.parse(raw);
+  await assertCanSendAs(access, input.mailboxId);
 
   const result = await deliverMessage({
     orgId: access.orgId,
@@ -91,6 +93,7 @@ const draftSchema = composeSchema.partial({ to: true }).extend({ draftId: z.stri
 export async function saveDraftAction(raw: z.input<typeof draftSchema>) {
   const access = await requireAccess();
   const input = draftSchema.parse(raw);
+  await assertCanSendAs(access, input.mailboxId);
 
   const box = await db.query.mailbox.findFirst({
     where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, access.orgId)),
@@ -99,7 +102,11 @@ export async function saveDraftAction(raw: z.input<typeof draftSchema>) {
 
   let threadId = input.threadId;
   if (threadId) {
-    const owned = await assertOwnsThreads(access.orgId, [threadId]);
+    const owned = await assertOwnsThreads(
+      access.orgId,
+      [threadId],
+      await readableMailboxIds(access),
+    );
     if (owned.length === 0) threadId = undefined;
   }
   if (!threadId) {
@@ -165,7 +172,7 @@ export async function deleteDraftAction(draftId: string) {
 
 export async function moveThreadsAction(threadIds: string[], folder: Folder) {
   const access = await requireAccess();
-  const owned = await assertOwnsThreads(access.orgId, threadIds);
+  const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   if (owned.length === 0) return;
 
   await db
@@ -179,7 +186,7 @@ export async function moveThreadsAction(threadIds: string[], folder: Folder) {
 
 export async function setReadAction(threadIds: string[], isRead: boolean) {
   const access = await requireAccess();
-  const owned = await assertOwnsThreads(access.orgId, threadIds);
+  const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   if (owned.length === 0) return;
   await db.update(message).set({ isRead }).where(inArray(message.threadId, owned));
   for (const id of owned) await recomputeThread(id);
@@ -188,7 +195,7 @@ export async function setReadAction(threadIds: string[], isRead: boolean) {
 
 export async function setStarAction(threadIds: string[], isStarred: boolean) {
   const access = await requireAccess();
-  const owned = await assertOwnsThreads(access.orgId, threadIds);
+  const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   if (owned.length === 0) return;
   await db.update(message).set({ isStarred }).where(inArray(message.threadId, owned));
   await db.update(thread).set({ isStarred }).where(inArray(thread.id, owned));
@@ -198,7 +205,7 @@ export async function setStarAction(threadIds: string[], isStarred: boolean) {
 /** Trash first, permanent delete only from trash. */
 export async function deleteThreadsAction(threadIds: string[]) {
   const access = await requireAccess();
-  const owned = await assertOwnsThreads(access.orgId, threadIds);
+  const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   if (owned.length === 0) return;
 
   const rows = await db.select().from(thread).where(inArray(thread.id, owned));
@@ -223,7 +230,7 @@ export async function deleteThreadsAction(threadIds: string[]) {
 
 export async function setThreadsLabelAction(threadIds: string[], labelId: string, on: boolean) {
   const access = await requireAccess();
-  const owned = await assertOwnsThreads(access.orgId, threadIds);
+  const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   if (owned.length === 0) return;
 
   const owns = await db.query.label.findFirst({
