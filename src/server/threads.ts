@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/db";
 import { attachment, mailbox, message, thread, threadLabel } from "@/db/schema";
 import { type Scope, type ViewFolder, isRealFolder } from "@/lib/scope";
-import { and, arrayContains, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
+import { and, arrayContains, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { resolveScope } from "./mailboxes";
 
 export const PAGE_SIZE = 50;
@@ -43,11 +43,16 @@ interface ListOptions {
 
 export async function listThreads(options: ListOptions): Promise<{
   items: ThreadListItem[];
+  /** Every thread this view matches, not just the ones on this page. */
+  total: number;
+  /** How many come before the first row shown, so the page can name its range. */
+  offset: number;
   nextCursor: string | null;
   prevCursor: string | null;
 }> {
   const mailboxIds = await resolveScope(options.orgId, options.scope, options.allowed);
-  if (mailboxIds.length === 0) return { items: [], nextCursor: null, prevCursor: null };
+  if (mailboxIds.length === 0)
+    return { items: [], total: 0, offset: 0, nextCursor: null, prevCursor: null };
 
   const filters = [inArray(thread.mailboxId, mailboxIds)];
 
@@ -88,71 +93,93 @@ export async function listThreads(options: ListOptions): Promise<{
 
   const backwards = options.direction === "newer";
 
-  /**
-   * Unread mail sits above read mail, each half newest first — the way Gmail
-   * orders an inbox, and for the same reason: what has not been read yet is
-   * the reason somebody opened the list.
-   *
-   * The cursor has to carry the unread flag as well as the date. A keyset
-   * cursor is only a position if it sorts the way the query does, and a cursor
-   * that knew only the date would step straight from the unread half into the
-   * middle of the read one.
-   */
-  const unread = sql<boolean>`(${thread.unreadCount} > 0)`;
+  /** The view without a cursor in it: what the totals below are counted over. */
+  const view = [...filters];
 
   if (options.cursor) {
-    const [flag, stamp, id] = options.cursor.split("|");
+    const [stamp, id] = options.cursor.split("|");
     const at = new Date(Number(stamp)).toISOString();
-    const wasUnread = flag === "1";
 
     // Postgres compares row values left to right, which is exactly the
-    // ordering below — so one comparison stands in for three nested ones.
+    // ordering below — so one comparison stands in for two nested ones.
     filters.push(
       backwards
-        ? sql`(${unread}, ${thread.lastMessageAt}, ${thread.id}) > (${wasUnread}, ${at}::timestamptz, ${id})`
-        : sql`(${unread}, ${thread.lastMessageAt}, ${thread.id}) < (${wasUnread}, ${at}::timestamptz, ${id})`,
+        ? sql`(${thread.lastMessageAt}, ${thread.id}) > (${at}::timestamptz, ${id})`
+        : sql`(${thread.lastMessageAt}, ${thread.id}) < (${at}::timestamptz, ${id})`,
     );
   }
 
-  const rows = await db
-    .select({
-      id: thread.id,
-      mailboxId: thread.mailboxId,
-      subject: thread.subject,
-      snippet: thread.snippet,
-      participants: thread.participants,
-      messageCount: thread.messageCount,
-      unreadCount: thread.unreadCount,
-      isStarred: thread.isStarred,
-      hasAttachments: thread.hasAttachments,
-      lastMessageAt: thread.lastMessageAt,
-      mailboxAddress: mailbox.address,
-      mailboxColor: mailbox.color,
-      domain: mailbox.domain,
-    })
+  const counting = db
+    .select({ value: count() })
     .from(thread)
     .innerJoin(mailbox, eq(mailbox.id, thread.mailboxId))
-    .where(and(...filters))
-    // Reading backwards walks away from the cursor, so the rows arrive
-    // oldest-first and are turned around below to be displayed.
-    .orderBy(
-      backwards ? sql`${unread} asc` : sql`${unread} desc`,
-      backwards ? asc(thread.lastMessageAt) : desc(thread.lastMessageAt),
-      backwards ? asc(thread.id) : desc(thread.id),
-    )
-    .limit(PAGE_SIZE + 1);
+    .where(and(...view));
+
+  const [[totalRow], rows] = await Promise.all([
+    counting,
+    db
+      .select({
+        id: thread.id,
+        mailboxId: thread.mailboxId,
+        subject: thread.subject,
+        snippet: thread.snippet,
+        participants: thread.participants,
+        messageCount: thread.messageCount,
+        unreadCount: thread.unreadCount,
+        isStarred: thread.isStarred,
+        hasAttachments: thread.hasAttachments,
+        lastMessageAt: thread.lastMessageAt,
+        mailboxAddress: mailbox.address,
+        mailboxColor: mailbox.color,
+        domain: mailbox.domain,
+      })
+      .from(thread)
+      .innerJoin(mailbox, eq(mailbox.id, thread.mailboxId))
+      .where(and(...filters))
+      // Reading backwards walks away from the cursor, so the rows arrive
+      // oldest-first and are turned around below to be displayed.
+      .orderBy(
+        backwards ? asc(thread.lastMessageAt) : desc(thread.lastMessageAt),
+        backwards ? asc(thread.id) : desc(thread.id),
+      )
+      .limit(PAGE_SIZE + 1),
+  ]);
 
   const hasMore = rows.length > PAGE_SIZE;
   const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
   const items = backwards ? [...page].reverse() : page;
 
-  const key = (row: (typeof items)[number]) =>
-    `${row.unreadCount > 0 ? 1 : 0}|${row.lastMessageAt.getTime()}|${row.id}`;
+  const key = (row: (typeof items)[number]) => `${row.lastMessageAt.getTime()}|${row.id}`;
   const first = items.at(0);
   const last = items.at(-1);
 
+  /**
+   * Where this page sits in the whole list.
+   *
+   * A keyset cursor is a position in an ordering, not a row number, so the
+   * only honest way to say "51 to 100" is to count what is above the first row
+   * shown. That is one more count, and it is skipped on the first page, where
+   * the answer is nought.
+   */
+  let offset = 0;
+  if (options.cursor && first) {
+    const [row] = await db
+      .select({ value: count() })
+      .from(thread)
+      .innerJoin(mailbox, eq(mailbox.id, thread.mailboxId))
+      .where(
+        and(
+          ...view,
+          sql`(${thread.lastMessageAt}, ${thread.id}) > (${first.lastMessageAt.toISOString()}::timestamptz, ${first.id})`,
+        ),
+      );
+    offset = row?.value ?? 0;
+  }
+
   return {
     items,
+    total: totalRow?.value ?? items.length,
+    offset,
     /**
      * Reading backwards, older rows exist by definition — the reader just came
      * from them. Reading forwards, newer ones exist whenever a cursor was used.

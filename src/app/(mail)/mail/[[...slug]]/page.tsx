@@ -47,7 +47,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
     mailboxes.length === 0 &&
     (can(access, "mailbox:manage") || creatable === "all" || creatable.length > 0);
 
-  const [{ items, nextCursor, prevCursor }, detail] = await Promise.all([
+  const [{ items, total, offset, nextCursor, prevCursor }, detail] = await Promise.all([
     listThreads({
       orgId: access.orgId,
       scope,
@@ -87,6 +87,8 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           activeThreadId={detail?.id}
           baseHref={base}
           listQuery={suffix}
+          total={total}
+          offset={offset}
           nextCursor={nextCursor}
           prevCursor={prevCursor}
           showMailbox={scope.kind !== "mailbox"}

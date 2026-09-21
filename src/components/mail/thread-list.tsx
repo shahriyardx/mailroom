@@ -16,7 +16,6 @@ import type { LucideIcon } from "lucide-react";
 import {
   Archive,
   ArchiveRestore,
-  ChevronDown,
   FileText,
   Inbox,
   Loader2,
@@ -83,6 +82,9 @@ interface Props {
   listQuery: string;
   nextCursor: string | null;
   prevCursor: string | null;
+  /** Every thread the view matches, and how many come before this page. */
+  total: number;
+  offset: number;
   showMailbox: boolean;
   labels: LabelRow[];
 }
@@ -95,51 +97,15 @@ export function ThreadList({
   listQuery,
   nextCursor,
   prevCursor,
+  total,
+  offset,
   showMailbox,
   labels,
 }: Props) {
   const router = useRouter();
   const [purging, setPurging] = useState<ThreadListItem | null>(null);
-  const [collapsed, setCollapsed] = useState<Set<SectionId>>(new Set());
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
-
-  /**
-   * Collapsing has to outlive the click that follows it: opening a thread is a
-   * navigation, and this list is rebuilt from the server each time. Kept in
-   * localStorage rather than the URL, which describes the mail being read.
-   */
-  useEffect(() => {
-    try {
-      const saved = window.localStorage.getItem(COLLAPSED_KEY);
-      if (saved) setCollapsed(new Set(JSON.parse(saved) as SectionId[]));
-    } catch {
-      // A browser refusing storage is not a reason to render nothing.
-    }
-  }, []);
-
-  function toggleSection(id: SectionId) {
-    // A toolbar acting on rows that are folded out of sight is a surprise.
-    setSelected(new Set());
-    setCollapsed((current) => {
-      const next = new Set(current);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      try {
-        window.localStorage.setItem(COLLAPSED_KEY, JSON.stringify([...next]));
-      } catch {}
-      return next;
-    });
-  }
-
-  const unreadItems = items.filter((item) => item.unreadCount > 0);
-  const readItems = items.filter((item) => item.unreadCount === 0);
-
-  /**
-   * Headings only once there is something unread to separate out. A lone
-   * "Everything else" over an ordinary list explains nothing.
-   */
-  const sectioned = unreadItems.length > 0;
 
   const hrefFor = (threadId: string) =>
     `${baseHref}?${listQuery ? `${listQuery}&` : ""}t=${threadId}`;
@@ -388,82 +354,36 @@ export function ThreadList({
       <ul className="min-h-0 flex-1 overflow-y-auto pb-3">
         {items.length === 0 && <EmptyFolder folder={folder} />}
 
-        {sectioned ? (
-          <>
-            <SectionHeader
-              label="Unread"
-              count={unreadItems.length}
-              collapsed={collapsed.has("unread")}
-              onToggle={() => toggleSection("unread")}
-            />
-            {!collapsed.has("unread") && unreadItems.map(row)}
-
-            {readItems.length > 0 && (
-              <SectionHeader
-                label="Everything else"
-                count={readItems.length}
-                collapsed={collapsed.has("read")}
-                onToggle={() => toggleSection("read")}
-              />
-            )}
-            {!collapsed.has("read") && readItems.map(row)}
-          </>
-        ) : (
-          items.map(row)
-        )}
+        {items.map(row)}
 
         {/* Paging used to go one way, so a reader who pressed it twice had no
-            route back but the browser's own. */}
-        {(prevCursor || nextCursor) && (
-          <li className="flex items-center gap-2 px-4 pt-3">
-            {prevCursor && (
-              <Button variant="subtle" size="sm" pill asChild className="flex-1">
-                <Link href={pageHref(prevCursor, "newer")}>Newer</Link>
-              </Button>
-            )}
-            {nextCursor && (
-              <Button variant="subtle" size="sm" pill asChild className="flex-1">
-                <Link href={pageHref(nextCursor, "older")}>Older</Link>
-              </Button>
+            route back but the browser's own. The range says where they are:
+            a cursor is a position in an ordering, and nothing about it is
+            visible from the rows themselves. */}
+        {items.length > 0 && (
+          <li className="flex items-center gap-3 px-4 pt-3">
+            <span className="text-[11.5px] text-muted-foreground tabular-nums">
+              {offset + 1}–{offset + items.length} of {total}
+            </span>
+
+            {(prevCursor || nextCursor) && (
+              <span className="ml-auto flex items-center gap-2">
+                {prevCursor && (
+                  <Button variant="subtle" size="sm" pill asChild>
+                    <Link href={pageHref(prevCursor, "newer")}>Newer</Link>
+                  </Button>
+                )}
+                {nextCursor && (
+                  <Button variant="subtle" size="sm" pill asChild>
+                    <Link href={pageHref(nextCursor, "older")}>Older</Link>
+                  </Button>
+                )}
+              </span>
             )}
           </li>
         )}
       </ul>
     </div>
-  );
-}
-
-type SectionId = "unread" | "read";
-
-const COLLAPSED_KEY = "mailroom:list-sections-collapsed";
-
-/** A heading over one half of the list, and the handle that folds it away. */
-function SectionHeader({
-  label,
-  count,
-  collapsed,
-  onToggle,
-}: {
-  label: string;
-  count: number;
-  collapsed: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <li className="sticky top-0 z-10 bg-background/95 backdrop-blur-sm">
-      <button
-        type="button"
-        onClick={onToggle}
-        aria-expanded={!collapsed}
-        className="flex w-full items-center gap-2 px-4 py-2 text-left text-[11.5px] font-semibold text-muted-foreground uppercase tracking-[0.06em] transition-colors hover:text-foreground"
-      >
-        <ChevronDown
-          className={cn("size-3.5 transition-transform duration-150", collapsed && "-rotate-90")}
-        />
-        {label}
-        <span className="font-normal tracking-normal normal-case">{count}</span>
-      </button>
-    </li>
   );
 }
 

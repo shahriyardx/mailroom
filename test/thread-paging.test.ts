@@ -8,6 +8,10 @@ import { type Scratch, type Seeded, makeScratchDatabase, seedAccount } from "./h
  * repeated and nothing skipped over. A cursor read backwards walks away from
  * itself, so the rows come out of Postgres in the wrong order and are turned
  * around — which is exactly where an off-by-one would hide.
+ *
+ * The range a page reports is checked the same way. A cursor is a position in
+ * an ordering, not a row number, so "51–100" is worked out rather than known,
+ * and a mistake in it would be quiet.
  */
 
 let scratch: Scratch;
@@ -23,8 +27,8 @@ before(async () => {
   const { thread } = await import("@/db/schema");
 
   // Newest first when read back: thread 0 is the oldest. Every seventh is
-  // left unread, scattered through the range rather than bunched at one end,
-  // so sorting them to the top actually has to move them past something.
+  // left unread, scattered through the range, so a test would notice if
+  // anything ever started sorting on that instead of the date.
   await db.insert(thread).values(
     Array.from({ length: TOTAL }, (_, index) => ({
       id: `thr_${String(index).padStart(4, "0")}`,
@@ -57,34 +61,48 @@ async function page(cursor?: string, direction: "older" | "newer" = "older") {
 
 const subjects = (rows: { subject: string }[]) => rows.map((row) => row.subject);
 
-const UNREAD = Math.ceil(TOTAL / 7);
-
-describe("ordering", () => {
-  it("puts every unread thread above every read one", async () => {
-    const all = [...(await page()).items, ...(await page((await page()).nextCursor!)).items];
-    const lastUnread = all.findLastIndex((row) => row.unreadCount > 0);
-    const firstRead = all.findIndex((row) => row.unreadCount === 0);
-    assert.ok(lastUnread < firstRead, "the two halves do not interleave");
-    assert.equal(
-      all.slice(0, UNREAD).every((row) => row.unreadCount > 0),
-      true,
-    );
+describe("saying where the page sits", () => {
+  it("counts the whole view, not the page", async () => {
+    const { total, items } = await page();
+    assert.equal(total, TOTAL);
+    assert.equal(items.length, 50);
   });
 
-  it("sorts each half newest first", async () => {
-    const { items } = await page();
-    const unread = items.filter((row) => row.unreadCount > 0);
-    const read = items.filter((row) => row.unreadCount === 0);
+  it("starts at nought and walks forward by the page", async () => {
+    const one = await page();
+    assert.equal(one.offset, 0, "1–50");
 
-    for (const half of [unread, read]) {
-      for (let i = 1; i < half.length; i += 1) {
-        assert.ok(
-          half[i - 1]!.lastMessageAt >= half[i]!.lastMessageAt,
-          `${half[i - 1]!.subject} should not come before ${half[i]!.subject}`,
-        );
-      }
-    }
-    assert.equal(unread[0]!.subject, "Thread 119", "the newest unread leads");
+    const two = await page(one.nextCursor!);
+    assert.equal(two.offset, 50, "51–100");
+
+    const three = await page(two.nextCursor!);
+    assert.equal(three.offset, 100, "101–120");
+    assert.equal(three.offset + three.items.length, TOTAL, "the last page reaches the end");
+  });
+
+  it("gives the same range stepping back as it did going forward", async () => {
+    const one = await page();
+    const two = await page(one.nextCursor!);
+    const three = await page(two.nextCursor!);
+
+    const backToTwo = await page(three.prevCursor!, "newer");
+    assert.equal(backToTwo.offset, two.offset);
+    assert.equal(backToTwo.total, two.total);
+
+    const backToOne = await page(backToTwo.prevCursor!, "newer");
+    assert.equal(backToOne.offset, 0);
+  });
+
+  it("keeps counting across every page rather than restarting", async () => {
+    let cursor: string | null = null;
+    let expected = 0;
+    do {
+      const step = await page(cursor ?? undefined);
+      assert.equal(step.offset, expected, `page starting at ${expected}`);
+      expected += step.items.length;
+      cursor = step.nextCursor;
+    } while (cursor);
+    assert.equal(expected, TOTAL);
   });
 });
 
@@ -92,7 +110,7 @@ describe("paging a mailbox", () => {
   it("starts at the newest and offers no way back", async () => {
     const first = await page();
     assert.equal(first.items.length, 50);
-    assert.equal(first.items[0]!.subject, "Thread 119", "newest unread first");
+    assert.equal(first.items[0]!.subject, "Thread 119", "newest first");
     assert.equal(first.prevCursor, null, "nothing is newer than the first page");
     assert.ok(first.nextCursor, "there is more to read");
   });
@@ -108,13 +126,11 @@ describe("paging a mailbox", () => {
 
     const seen = [...subjects(one.items), ...subjects(two.items), ...subjects(three.items)];
     assert.equal(new Set(seen).size, TOTAL, "every thread, once");
-    assert.equal(seen[0], "Thread 119", "the newest unread leads");
-    assert.equal(seen.at(-1), "Thread 1", "and the oldest read closes it out");
+    assert.equal(seen[0], "Thread 119", "the newest leads");
+    assert.equal(seen.at(-1), "Thread 0", "and the oldest closes it out");
   });
 
-  it("crosses from the unread half into the read one without losing a row", async () => {
-    // The boundary is the whole point of putting the flag in the cursor: a
-    // cursor that knew only the date would land in the middle of the read half.
+  it("reaches every thread when walked page by page", async () => {
     const collected: string[] = [];
     let cursor: string | null = null;
     do {
