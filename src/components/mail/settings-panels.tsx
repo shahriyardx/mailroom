@@ -310,54 +310,57 @@ function MailboxRow({
 
         {/* A fixed slot, so the status beside it lands in the same place
             whether or not there is a menu to show. */}
-        <span className="flex w-20 shrink-0 justify-end">
-          {canManage ? (
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <IconButton label={`Actions for ${mailbox.address}`}>
-                  <MoreHorizontal />
-                </IconButton>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="end" className="w-52">
-                <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
-                  <PenLine /> {open ? "Hide signature" : "Edit signature"}
-                </DropdownMenuItem>
-                {/* Choosing the default and removing a mailbox are the
+        {/* The same control either way, so every row keeps its shape: a
+            mailbox you may only read shows the menu unavailable rather than
+            a word of a different width in its place. */}
+        {canManage ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton label={`Actions for ${mailbox.address}`}>
+                <MoreHorizontal />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
+                <PenLine /> {open ? "Hide signature" : "Edit signature"}
+              </DropdownMenuItem>
+              {/* Choosing the default and removing a mailbox are the
                   instance's business, not one grant holder's. */}
-                {administers && !mailbox.isDefault && (
-                  <DropdownMenuItem
-                    onSelect={() =>
-                      start(async () => {
-                        await updateMailboxAction(mailbox.id, { isDefault: true });
-                        toast.success("Default mailbox changed");
-                        router.refresh();
-                      })
-                    }
-                  >
-                    <Star /> Make default
-                  </DropdownMenuItem>
-                )}
-                {administers && <DropdownMenuSeparator />}
-                {administers && (
-                  <DropdownMenuItem
-                    destructive
-                    onSelect={() =>
-                      start(async () => {
-                        await deleteMailboxAction(mailbox.id);
-                        toast.success("Mailbox removed");
-                        router.refresh();
-                      })
-                    }
-                  >
-                    <Trash2 /> Delete mailbox
-                  </DropdownMenuItem>
-                )}
-              </DropdownMenuContent>
-            </DropdownMenu>
-          ) : (
-            <span className="text-[12px] text-muted-foreground">Read only</span>
-          )}
-        </span>
+              {administers && !mailbox.isDefault && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    start(async () => {
+                      await updateMailboxAction(mailbox.id, { isDefault: true });
+                      toast.success("Default mailbox changed");
+                      router.refresh();
+                    })
+                  }
+                >
+                  <Star /> Make default
+                </DropdownMenuItem>
+              )}
+              {administers && <DropdownMenuSeparator />}
+              {administers && (
+                <DropdownMenuItem
+                  destructive
+                  onSelect={() =>
+                    start(async () => {
+                      await deleteMailboxAction(mailbox.id);
+                      toast.success("Mailbox removed");
+                      router.refresh();
+                    })
+                  }
+                >
+                  <Trash2 /> Delete mailbox
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <IconButton disabled label={`You can read ${mailbox.address}, but not change it`}>
+            <MoreHorizontal />
+          </IconButton>
+        )}
       </ListRow>
 
       {open && canManage && (
