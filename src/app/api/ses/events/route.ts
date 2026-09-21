@@ -152,7 +152,7 @@ export async function POST(request: NextRequest) {
           .insert(suppression)
           .values({
             id: newId("sup"),
-            userId: box.userId,
+            organizationId: box.organizationId,
             address: address.toLowerCase(),
             reason: kind === "Complaint" ? "complaint" : (detail ?? "permanent bounce"),
           })

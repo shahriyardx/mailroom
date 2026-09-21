@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: "Invalid or missing API key" }, { status: 401 });
   }
 
-  const rows = await listDomainsForUser(caller.userId);
+  const rows = await listDomainsForUser(caller.orgId);
 
   return NextResponse.json({
     data: rows.map((row) => ({

@@ -8,13 +8,14 @@ import { useState } from "react";
 
 interface Props {
   name: string;
+  role: string;
   email: string;
   createdAt: Date;
   mailboxCount: number;
   domainCount: number;
 }
 
-export function AccountPanel({ name, email, createdAt, mailboxCount, domainCount }: Props) {
+export function AccountPanel({ name, role, email, createdAt, mailboxCount, domainCount }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
 
@@ -23,6 +24,7 @@ export function AccountPanel({ name, email, createdAt, mailboxCount, domainCount
       <List>
         <Row label="Name" value={name} />
         <Row label="Email" value={email} mono />
+        <Row label="Role" value={role} />
         <Row label="Joined" value={createdAt.toLocaleDateString()} />
         <Row label="Mailboxes" value={String(mailboxCount)} />
         <Row label="Domains" value={String(domainCount)} />

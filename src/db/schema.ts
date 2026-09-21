@@ -111,13 +111,99 @@ export const verification = pgTable("verification", {
 /* -------------------------------------------------------------------------- */
 
 /** An SES domain identity. Rows mirror what SES reports, refreshed on demand. */
+/* -------------------------------------------------------------------------- */
+/* Organisation: one company per instance, teams inside it                    */
+/* -------------------------------------------------------------------------- */
+
+export const organization = pgTable("organization", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  slug: text("slug").notNull().unique(),
+  logo: text("logo"),
+  metadata: text("metadata"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+export const member = pgTable(
+  "member",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** owner, admin or member. Owner is the account that created the instance. */
+    role: text("role").notNull().default("member"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("member_org_user_idx").on(t.organizationId, t.userId),
+    index("member_user_idx").on(t.userId),
+  ],
+);
+
+export const invitation = pgTable(
+  "invitation",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    email: text("email").notNull(),
+    role: text("role"),
+    teamId: text("team_id"),
+    status: text("status").notNull().default("pending"),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    inviterId: text("inviter_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+  },
+  (t) => [index("invitation_email_idx").on(t.email)],
+);
+
+export const team = pgTable(
+  "team",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /**
+     * The team created with the instance. It reaches every domain and mailbox
+     * without a grant, and cannot be deleted or stripped of that reach.
+     */
+    isRoot: boolean("is_root").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }),
+  },
+  (t) => [index("team_org_idx").on(t.organizationId)],
+);
+
+export const teamMember = pgTable(
+  "team_member",
+  {
+    id: text("id").primaryKey(),
+    teamId: text("team_id")
+      .notNull()
+      .references(() => team.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("team_member_idx").on(t.teamId, t.userId)],
+);
+
 export const domain = pgTable(
   "domain",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     region: text("region").notNull(),
 
@@ -167,8 +253,8 @@ export const domain = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
-    uniqueIndex("domain_user_name_idx").on(t.userId, t.name),
-    index("domain_user_idx").on(t.userId),
+    uniqueIndex("domain_org_name_idx").on(t.organizationId, t.name),
+    index("domain_org_idx").on(t.organizationId),
   ],
 );
 
@@ -177,9 +263,9 @@ export const mailbox = pgTable(
   "mailbox",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     address: text("address").notNull(),
     domain: text("domain").notNull(),
     domainId: text("domain_id").references(() => domain.id, { onDelete: "set null" }),
@@ -193,7 +279,7 @@ export const mailbox = pgTable(
   },
   (t) => [
     uniqueIndex("mailbox_address_idx").on(t.address),
-    index("mailbox_user_idx").on(t.userId),
+    index("mailbox_org_idx").on(t.organizationId),
     index("mailbox_domain_idx").on(t.domain),
   ],
 );
@@ -328,14 +414,14 @@ export const label = pgTable(
   "label",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     color: text("color").notNull().default("#64748b"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("label_user_name_idx").on(t.userId, t.name)],
+  (t) => [uniqueIndex("label_org_name_idx").on(t.organizationId, t.name)],
 );
 
 export const threadLabel = pgTable(
@@ -355,15 +441,15 @@ export const contact = pgTable(
   "contact",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     address: text("address").notNull(),
     name: text("name"),
     messageCount: integer("message_count").notNull().default(0),
     lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("contact_user_address_idx").on(t.userId, t.address)],
+  (t) => [uniqueIndex("contact_org_address_idx").on(t.organizationId, t.address)],
 );
 
 /** Delivery feedback from SES, one row per SNS event. */
@@ -391,14 +477,14 @@ export const suppression = pgTable(
   "suppression",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     address: text("address").notNull(),
     reason: text("reason").notNull(),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("suppression_user_address_idx").on(t.userId, t.address)],
+  (t) => [uniqueIndex("suppression_org_address_idx").on(t.organizationId, t.address)],
 );
 
 /**
@@ -409,9 +495,9 @@ export const integration = pgTable(
   "integration",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     provider: text("provider").notNull(),
     secret: text("secret").notNull(),
     /** Last few characters, so a token can be recognised without revealing it. */
@@ -422,7 +508,7 @@ export const integration = pgTable(
     verifiedAt: timestamp("verified_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("integration_user_provider_idx").on(t.userId, t.provider)],
+  (t) => [uniqueIndex("integration_org_provider_idx").on(t.organizationId, t.provider)],
 );
 
 /** Keys for the public send API. Only the hash is stored. */
@@ -430,9 +516,9 @@ export const apiKey = pgTable(
   "api_key",
   {
     id: text("id").primaryKey(),
-    userId: text("user_id")
+    organizationId: text("organization_id")
       .notNull()
-      .references(() => user.id, { onDelete: "cascade" }),
+      .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     /** Short visible fragment, shown in the UI so keys can be told apart. */
     prefix: text("prefix").notNull(),
@@ -443,15 +529,18 @@ export const apiKey = pgTable(
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("api_key_hash_idx").on(t.hash), index("api_key_user_idx").on(t.userId)],
+  (t) => [
+    uniqueIndex("api_key_hash_idx").on(t.hash),
+    index("api_key_org_idx").on(t.organizationId),
+  ],
 );
 
 /** Rules applied to inbound mail, highest priority first. */
 export const filterRule = pgTable("filter_rule", {
   id: text("id").primaryKey(),
-  userId: text("user_id")
+  organizationId: text("organization_id")
     .notNull()
-    .references(() => user.id, { onDelete: "cascade" }),
+    .references(() => organization.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   enabled: boolean("enabled").notNull().default(true),
   priority: integer("priority").notNull().default(0),
@@ -479,12 +568,18 @@ export const userRelations = relations(user, ({ many }) => ({
 }));
 
 export const domainRelations = relations(domain, ({ one, many }) => ({
-  user: one(user, { fields: [domain.userId], references: [user.id] }),
+  organization: one(organization, {
+    fields: [domain.organizationId],
+    references: [organization.id],
+  }),
   mailboxes: many(mailbox),
 }));
 
 export const mailboxRelations = relations(mailbox, ({ one, many }) => ({
-  user: one(user, { fields: [mailbox.userId], references: [user.id] }),
+  organization: one(organization, {
+    fields: [mailbox.organizationId],
+    references: [organization.id],
+  }),
   domainRecord: one(domain, { fields: [mailbox.domainId], references: [domain.id] }),
   threads: many(thread),
   messages: many(message),
@@ -512,7 +607,10 @@ export const threadLabelRelations = relations(threadLabel, ({ one }) => ({
 }));
 
 export const labelRelations = relations(label, ({ one, many }) => ({
-  user: one(user, { fields: [label.userId], references: [user.id] }),
+  organization: one(organization, {
+    fields: [label.organizationId],
+    references: [organization.id],
+  }),
   threads: many(threadLabel),
 }));
 
@@ -521,7 +619,10 @@ export const messageEventRelations = relations(messageEvent, ({ one }) => ({
 }));
 
 export const apiKeyRelations = relations(apiKey, ({ one }) => ({
-  user: one(user, { fields: [apiKey.userId], references: [user.id] }),
+  organization: one(organization, {
+    fields: [apiKey.organizationId],
+    references: [organization.id],
+  }),
   mailbox: one(mailbox, { fields: [apiKey.mailboxId], references: [mailbox.id] }),
 }));
 
@@ -529,6 +630,11 @@ export type Folder = (typeof folderEnum.enumValues)[number];
 export type Domain = typeof domain.$inferSelect;
 export type Integration = typeof integration.$inferSelect;
 export type ApiKey = typeof apiKey.$inferSelect;
+export type Organization = typeof organization.$inferSelect;
+export type Member = typeof member.$inferSelect;
+export type Team = typeof team.$inferSelect;
+export type TeamMember = typeof teamMember.$inferSelect;
+export type Invitation = typeof invitation.$inferSelect;
 export type DomainStatus = (typeof domainStatusEnum.enumValues)[number];
 export type Mailbox = typeof mailbox.$inferSelect;
 export type Thread = typeof thread.$inferSelect;

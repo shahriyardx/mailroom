@@ -60,7 +60,7 @@ const WINDOW = 30;
  * Everything the overview shows, in one pass. Each query is scoped through
  * the mailbox table, which is what ties any of this to a user.
  */
-export async function overview(userId: string): Promise<Overview> {
+export async function overview(orgId: string): Promise<Overview> {
   const [daily, delivery, receiving, storage, boxes, keys, counts] = await Promise.all([
     db.execute(sql`
       select to_char(date_trunc('day', m.received_at), 'YYYY-MM-DD') as day,
@@ -68,7 +68,7 @@ export async function overview(userId: string): Promise<Overview> {
              count(*) filter (where not m.is_outbound) as received
         from message m
         join mailbox b on b.id = m.mailbox_id
-       where b.user_id = ${userId}
+       where b.organization_id = ${orgId}
          and not m.is_draft
          and m.received_at > now() - ${`${WINDOW} days`}::interval
        group by 1
@@ -78,7 +78,7 @@ export async function overview(userId: string): Promise<Overview> {
       select coalesce(m.delivery_status::text, 'pending') as status, count(*) as total
         from message m
         join mailbox b on b.id = m.mailbox_id
-       where b.user_id = ${userId}
+       where b.organization_id = ${orgId}
          and m.is_outbound
          and not m.is_draft
          and m.received_at > now() - ${`${WINDOW} days`}::interval
@@ -90,7 +90,7 @@ export async function overview(userId: string): Promise<Overview> {
              count(*) filter (where not m.is_read and not m.is_outbound) as unread
         from message m
         join mailbox b on b.id = m.mailbox_id
-       where b.user_id = ${userId}
+       where b.organization_id = ${orgId}
          and m.received_at > now() - ${`${WINDOW} days`}::interval
     `),
     db.execute(sql`
@@ -98,20 +98,20 @@ export async function overview(userId: string): Promise<Overview> {
                 from attachment a
                 left join message m on m.id = a.message_id
                 left join mailbox b on b.id = m.mailbox_id
-               where b.user_id = ${userId} or a.uploaded_by = ${userId}) as attachment_bytes,
+               where b.organization_id = ${orgId} or a.uploaded_by in (select user_id from member where organization_id = ${orgId})) as attachment_bytes,
              (select count(*)
                 from attachment a
                 left join message m on m.id = a.message_id
                 left join mailbox b on b.id = m.mailbox_id
-               where b.user_id = ${userId} or a.uploaded_by = ${userId}) as attachment_count,
+               where b.organization_id = ${orgId} or a.uploaded_by in (select user_id from member where organization_id = ${orgId})) as attachment_count,
              (select coalesce(sum(m.size_bytes), 0)
                 from message m
                 join mailbox b on b.id = m.mailbox_id
-               where b.user_id = ${userId} and m.raw_key is not null) as raw_bytes,
+               where b.organization_id = ${orgId} and m.raw_key is not null) as raw_bytes,
              (select count(*)
                 from message m
                 join mailbox b on b.id = m.mailbox_id
-               where b.user_id = ${userId} and m.raw_key is not null) as raw_count
+               where b.organization_id = ${orgId} and m.raw_key is not null) as raw_count
     `),
     db.execute(sql`
       select b.id, b.address, b.color,
@@ -121,7 +121,7 @@ export async function overview(userId: string): Promise<Overview> {
         from mailbox b
         left join message m on m.mailbox_id = b.id
         left join attachment a on a.message_id = m.id
-       where b.user_id = ${userId}
+       where b.organization_id = ${orgId}
        group by b.id, b.address, b.color
        order by received desc, sent desc
     `),
@@ -132,16 +132,16 @@ export async function overview(userId: string): Promise<Overview> {
         left join message m
                on m.api_key_id = k.id
               and m.received_at > now() - ${`${WINDOW} days`}::interval
-       where k.user_id = ${userId}
+       where k.organization_id = ${orgId}
        group by k.id, k.name, k.prefix, k.revoked_at, k.last_used_at
        order by sent desc, k.created_at desc
     `),
     db.execute(sql`
-      select (select count(*) from mailbox where user_id = ${userId}) as mailboxes,
-             (select count(*) from domain where user_id = ${userId}) as domains,
+      select (select count(*) from mailbox where organization_id = ${orgId}) as mailboxes,
+             (select count(*) from domain where organization_id = ${orgId}) as domains,
              (select count(*) from domain
-               where user_id = ${userId} and status = 'verified' and sending_enabled) as verified,
-             (select count(*) from suppression where user_id = ${userId}) as blocked
+               where organization_id = ${orgId} and status = 'verified' and sending_enabled) as verified,
+             (select count(*) from suppression where organization_id = ${orgId}) as blocked
     `),
   ]);
 

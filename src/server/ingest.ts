@@ -88,7 +88,7 @@ async function createMailboxForAddress(address: string, domainName: string) {
     .insert(mailbox)
     .values({
       id,
-      userId: domainRow.userId,
+      organizationId: domainRow.organizationId,
       address,
       domain: domainName,
       domainId: domainRow.id,
@@ -134,12 +134,12 @@ async function findThread(mailboxId: string, payload: InboundPayload, subject: s
 }
 
 async function applyRules(
-  userId: string,
+  orgId: string,
   payload: InboundPayload,
   startingFolder: Folder,
 ): Promise<{ folder: Folder; markRead: boolean; star: boolean; labelIds: string[] }> {
   const rules = await db.query.filterRule.findMany({
-    where: and(eq(filterRule.userId, userId), eq(filterRule.enabled, true)),
+    where: and(eq(filterRule.organizationId, orgId), eq(filterRule.enabled, true)),
     orderBy: (r, { desc }) => [desc(r.priority)],
   });
 
@@ -180,7 +180,7 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
   const deliveredTo = (payload.recipients ?? [payload.to]).map((a) => a.toLowerCase());
   const stored: string[] = [];
   const announce: {
-    userId: string;
+    orgId: string;
     mailboxId: string;
     threadId: string;
     from: string;
@@ -207,7 +207,7 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
     const receivedAt = payload.date ? new Date(payload.date) : new Date();
 
     const spam = (payload.spamScore ?? 0) >= 5 || payload.auth?.dmarc === "fail";
-    const rules = await applyRules(box.userId, payload, spam ? "spam" : "inbox");
+    const rules = await applyRules(box.organizationId, payload, spam ? "spam" : "inbox");
 
     let threadId = await findThread(box.id, payload, normalized);
     if (!threadId) {
@@ -277,13 +277,13 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
       .insert(contact)
       .values({
         id: newId("con"),
-        userId: box.userId,
+        organizationId: box.organizationId,
         address: payload.from.address.toLowerCase(),
         name: payload.from.name ?? null,
         messageCount: 1,
       })
       .onConflictDoUpdate({
-        target: [contact.userId, contact.address],
+        target: [contact.organizationId, contact.address],
         set: {
           messageCount: sql`${contact.messageCount} + 1`,
           lastSeenAt: new Date(),
@@ -294,7 +294,7 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
     await recomputeThread(threadId);
     stored.push(messageId);
     announce.push({
-      userId: box.userId,
+      orgId: box.organizationId,
       mailboxId: box.id,
       threadId,
       from: payload.from.name || payload.from.address,

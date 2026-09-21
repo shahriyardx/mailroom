@@ -6,7 +6,7 @@ import { rawSql } from "@/db";
 /** What a browser is told has happened. Kept small: NOTIFY caps at 8000 bytes. */
 export interface MailEvent {
   type: "mail:received" | "mail:sent" | "mail:changed";
-  userId: string;
+  orgId: string;
   mailboxId?: string;
   threadId?: string;
   /** Only for a received message, so a notification can name the sender. */
@@ -76,11 +76,11 @@ export async function publish(event: MailEvent) {
 }
 
 /** Calls back for this user's events until the returned function is called. */
-export async function subscribe(userId: string, onEvent: (event: MailEvent) => void) {
+export async function subscribe(orgId: string, onEvent: (event: MailEvent) => void) {
   await ensureListening();
 
   const handler = (event: MailEvent) => {
-    if (event.userId === userId) onEvent(event);
+    if (event.orgId === orgId) onEvent(event);
   };
 
   bus().on("event", handler);

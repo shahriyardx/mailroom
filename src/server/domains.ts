@@ -20,9 +20,9 @@ import { and, asc, eq, sql } from "drizzle-orm";
 /** How long an SES status is trusted before the settings page refreshes it. */
 const STALE_AFTER_MS = 10 * 60 * 1000;
 
-export async function listDomainsForUser(userId: string) {
+export async function listDomainsForUser(orgId: string) {
   return db.query.domain.findMany({
-    where: eq(domain.userId, userId),
+    where: eq(domain.organizationId, orgId),
     orderBy: [asc(domain.name)],
   });
 }
@@ -54,9 +54,9 @@ export function recordsForDomain(row: {
  * record requires. The private key is uploaded to SES and then dropped; only
  * the public half is stored, since that is all the DNS record needs.
  */
-export async function useOwnDkimKey(userId: string, domainId: string) {
+export async function useOwnDkimKey(orgId: string, domainId: string) {
   const row = await db.query.domain.findFirst({
-    where: and(eq(domain.id, domainId), eq(domain.userId, userId)),
+    where: and(eq(domain.id, domainId), eq(domain.organizationId, orgId)),
   });
   if (!row) throw new Error("Unknown domain");
 
@@ -87,7 +87,7 @@ export async function useOwnDkimKey(userId: string, domainId: string) {
  * Pulls every domain identity out of SES and upserts it locally.
  * Safe to run repeatedly: existing rows are refreshed, not duplicated.
  */
-export async function importFromSes(userId: string) {
+export async function importFromSes(orgId: string) {
   const identities = await listIdentities();
   const domains = identities.filter((item) => item.type === "DOMAIN");
 
@@ -99,7 +99,7 @@ export async function importFromSes(userId: string) {
     if (!detail) continue;
 
     const existing = await db.query.domain.findFirst({
-      where: and(eq(domain.userId, userId), eq(domain.name, item.name)),
+      where: and(eq(domain.organizationId, orgId), eq(domain.name, item.name)),
     });
 
     const values = {
@@ -122,7 +122,7 @@ export async function importFromSes(userId: string) {
     } else {
       await db.insert(domain).values({
         id: newId("dom"),
-        userId,
+        organizationId: orgId,
         name: item.name,
         importedAt: new Date(),
         ...values,
@@ -131,13 +131,13 @@ export async function importFromSes(userId: string) {
     }
   }
 
-  await linkOrphanMailboxes(userId);
+  await linkOrphanMailboxes(orgId);
   return { imported, updated, total: domains.length };
 }
 
 /** Runs an import when nothing has been fetched yet, or the data has gone stale. */
-export async function ensureDomainsSynced(userId: string) {
-  const rows = await listDomainsForUser(userId);
+export async function ensureDomainsSynced(orgId: string) {
+  const rows = await listDomainsForUser(orgId);
 
   const stale =
     rows.length === 0 ||
@@ -148,8 +148,8 @@ export async function ensureDomainsSynced(userId: string) {
   if (!stale) return { ok: true as const, synced: false as const, rows };
 
   try {
-    await importFromSes(userId);
-    return { ok: true as const, synced: true as const, rows: await listDomainsForUser(userId) };
+    await importFromSes(orgId);
+    return { ok: true as const, synced: true as const, rows: await listDomainsForUser(orgId) };
   } catch (error) {
     // SES being unreachable must not take the settings page down.
     return {
@@ -162,7 +162,7 @@ export async function ensureDomainsSynced(userId: string) {
 }
 
 /** Creates the identity in SES, turns on Easy DKIM and a custom MAIL FROM. */
-export async function addDomain(userId: string, rawName: string) {
+export async function addDomain(orgId: string, rawName: string) {
   const name = rawName
     .trim()
     .toLowerCase()
@@ -173,14 +173,14 @@ export async function addDomain(userId: string, rawName: string) {
   }
 
   const existing = await db.query.domain.findFirst({
-    where: and(eq(domain.userId, userId), eq(domain.name, name)),
+    where: and(eq(domain.organizationId, orgId), eq(domain.name, name)),
   });
   if (existing) throw new Error("That domain is already here");
 
   // SES inherits a domain's verification down its subdomains, so a subdomain
   // of something already verified needs no identity and no DNS at all. Record
   // it as covered by the parent and stop.
-  const owned = await db.query.domain.findMany({ where: eq(domain.userId, userId) });
+  const owned = await db.query.domain.findMany({ where: eq(domain.organizationId, orgId) });
   const parent = owned
     .filter(
       (row) =>
@@ -196,7 +196,7 @@ export async function addDomain(userId: string, rawName: string) {
     const id = newId("dom");
     await db.insert(domain).values({
       id,
-      userId,
+      organizationId: orgId,
       name,
       region: parent.region,
       status: "verified",
@@ -242,7 +242,7 @@ export async function addDomain(userId: string, rawName: string) {
   const id = newId("dom");
   await db.insert(domain).values({
     id,
-    userId,
+    organizationId: orgId,
     name,
     region: env.aws.region,
     status: toDomainStatus(known?.verificationStatus) as DomainStatus,
@@ -260,9 +260,9 @@ export async function addDomain(userId: string, rawName: string) {
   return { id, name, inheritedFrom: null as string | null };
 }
 
-export async function refreshDomain(userId: string, domainId: string) {
+export async function refreshDomain(orgId: string, domainId: string) {
   const row = await db.query.domain.findFirst({
-    where: and(eq(domain.id, domainId), eq(domain.userId, userId)),
+    where: and(eq(domain.id, domainId), eq(domain.organizationId, orgId)),
   });
   if (!row) throw new Error("Unknown domain");
   // There is no identity to ask about; it stands or falls with its parent.
@@ -297,13 +297,13 @@ export async function refreshDomain(userId: string, domainId: string) {
     })
     .where(eq(domain.id, row.id));
 
-  await linkOrphanMailboxes(userId);
+  await linkOrphanMailboxes(orgId);
   return { status: toDomainStatus(detail.verificationStatus) };
 }
 
-export async function removeDomain(userId: string, domainId: string, alsoDeleteInSes: boolean) {
+export async function removeDomain(orgId: string, domainId: string, alsoDeleteInSes: boolean) {
   const row = await db.query.domain.findFirst({
-    where: and(eq(domain.id, domainId), eq(domain.userId, userId)),
+    where: and(eq(domain.id, domainId), eq(domain.organizationId, orgId)),
   });
   if (!row) return;
 
@@ -334,13 +334,13 @@ export async function probeDns(name: string) {
 }
 
 /** Points mailboxes at their domain row once that row exists. */
-async function linkOrphanMailboxes(userId: string) {
+async function linkOrphanMailboxes(orgId: string) {
   await db
     .update(mailbox)
     .set({
-      domainId: sql`(select d.id from ${domain} d where d.user_id = ${userId} and d.name = ${mailbox.domain} limit 1)`,
+      domainId: sql`(select d.id from ${domain} d where d.user_id = ${orgId} and d.name = ${mailbox.domain} limit 1)`,
     })
-    .where(and(eq(mailbox.userId, userId), sql`${mailbox.domainId} is null`));
+    .where(and(eq(mailbox.organizationId, orgId), sql`${mailbox.domainId} is null`));
 }
 
 /** A domain is usable for sending only when SES says so. */

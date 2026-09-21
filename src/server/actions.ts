@@ -15,8 +15,9 @@ import {
 } from "@/db/schema";
 import { generateApiKey } from "@/lib/api-key";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
-import { requireUser } from "@/lib/session";
 import { newId } from "@/lib/utils";
+import { requireAccess } from "@/server/access";
+import { type Capability, assertCan } from "@/server/permissions";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
@@ -29,9 +30,9 @@ import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
 
-async function assertOwnsThreads(userId: string, threadIds: string[]) {
+async function assertOwnsThreads(orgId: string, threadIds: string[]) {
   if (threadIds.length === 0) return [];
-  const mailboxIds = await resolveScope(userId, { kind: "all" });
+  const mailboxIds = await resolveScope(orgId, { kind: "all" });
   if (mailboxIds.length === 0) return [];
   const rows = await db
     .select({ id: thread.id })
@@ -62,11 +63,11 @@ const composeSchema = z.object({
 export type ComposeInput = z.input<typeof composeSchema>;
 
 export async function sendMessageAction(raw: ComposeInput) {
-  const user = await requireUser();
+  const access = await requireAccess();
   const input = composeSchema.parse(raw);
 
   const result = await deliverMessage({
-    userId: user.id,
+    orgId: access.orgId,
     mailboxId: input.mailboxId,
     to: parseAddressList(input.to),
     cc: parseAddressList(input.cc),
@@ -88,17 +89,17 @@ export async function sendMessageAction(raw: ComposeInput) {
 const draftSchema = composeSchema.partial({ to: true }).extend({ draftId: z.string().optional() });
 
 export async function saveDraftAction(raw: z.input<typeof draftSchema>) {
-  const user = await requireUser();
+  const access = await requireAccess();
   const input = draftSchema.parse(raw);
 
   const box = await db.query.mailbox.findFirst({
-    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.userId, user.id)),
+    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, access.orgId)),
   });
   if (!box) throw new Error("Unknown mailbox");
 
   let threadId = input.threadId;
   if (threadId) {
-    const owned = await assertOwnsThreads(user.id, [threadId]);
+    const owned = await assertOwnsThreads(access.orgId, [threadId]);
     if (owned.length === 0) threadId = undefined;
   }
   if (!threadId) {
@@ -140,8 +141,8 @@ export async function saveDraftAction(raw: z.input<typeof draftSchema>) {
 }
 
 export async function deleteDraftAction(draftId: string) {
-  const user = await requireUser();
-  const mailboxIds = await resolveScope(user.id, { kind: "all" });
+  const access = await requireAccess();
+  const mailboxIds = await resolveScope(access.orgId, { kind: "all" });
   const [row] = await db
     .select({ threadId: message.threadId })
     .from(message)
@@ -163,8 +164,8 @@ export async function deleteDraftAction(draftId: string) {
 /* -------------------------------------------------------------------------- */
 
 export async function moveThreadsAction(threadIds: string[], folder: Folder) {
-  const user = await requireUser();
-  const owned = await assertOwnsThreads(user.id, threadIds);
+  const access = await requireAccess();
+  const owned = await assertOwnsThreads(access.orgId, threadIds);
   if (owned.length === 0) return;
 
   await db
@@ -177,8 +178,8 @@ export async function moveThreadsAction(threadIds: string[], folder: Folder) {
 }
 
 export async function setReadAction(threadIds: string[], isRead: boolean) {
-  const user = await requireUser();
-  const owned = await assertOwnsThreads(user.id, threadIds);
+  const access = await requireAccess();
+  const owned = await assertOwnsThreads(access.orgId, threadIds);
   if (owned.length === 0) return;
   await db.update(message).set({ isRead }).where(inArray(message.threadId, owned));
   for (const id of owned) await recomputeThread(id);
@@ -186,8 +187,8 @@ export async function setReadAction(threadIds: string[], isRead: boolean) {
 }
 
 export async function setStarAction(threadIds: string[], isStarred: boolean) {
-  const user = await requireUser();
-  const owned = await assertOwnsThreads(user.id, threadIds);
+  const access = await requireAccess();
+  const owned = await assertOwnsThreads(access.orgId, threadIds);
   if (owned.length === 0) return;
   await db.update(message).set({ isStarred }).where(inArray(message.threadId, owned));
   await db.update(thread).set({ isStarred }).where(inArray(thread.id, owned));
@@ -196,8 +197,8 @@ export async function setStarAction(threadIds: string[], isStarred: boolean) {
 
 /** Trash first, permanent delete only from trash. */
 export async function deleteThreadsAction(threadIds: string[]) {
-  const user = await requireUser();
-  const owned = await assertOwnsThreads(user.id, threadIds);
+  const access = await requireAccess();
+  const owned = await assertOwnsThreads(access.orgId, threadIds);
   if (owned.length === 0) return;
 
   const rows = await db.select().from(thread).where(inArray(thread.id, owned));
@@ -221,12 +222,12 @@ export async function deleteThreadsAction(threadIds: string[]) {
 }
 
 export async function setThreadsLabelAction(threadIds: string[], labelId: string, on: boolean) {
-  const user = await requireUser();
-  const owned = await assertOwnsThreads(user.id, threadIds);
+  const access = await requireAccess();
+  const owned = await assertOwnsThreads(access.orgId, threadIds);
   if (owned.length === 0) return;
 
   const owns = await db.query.label.findFirst({
-    where: and(eq(label.id, labelId), eq(label.userId, user.id)),
+    where: and(eq(label.id, labelId), eq(label.organizationId, access.orgId)),
   });
   if (!owns) return;
 
@@ -262,23 +263,27 @@ const mailboxSchema = z.object({
 
 /** Turns wildcard capture on or off for one domain. */
 export async function setDomainAutoCreateAction(domainId: string, on: boolean) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
   await db
     .update(domainTable)
     .set({ autoCreateMailboxes: on })
-    .where(and(eq(domainTable.id, domainId), eq(domainTable.userId, user.id)));
+    .where(and(eq(domainTable.id, domainId), eq(domainTable.organizationId, access.orgId)));
   revalidatePath("/settings", "layout");
 }
 
 export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "mailbox:manage");
   const input = mailboxSchema.parse(raw);
   const address = input.address.toLowerCase();
 
   const domainName = domainOf(address);
   // A subdomain of a domain you own needs no identity of its own: SES lets it
   // send on the parent's verification.
-  const owned = await db.query.domain.findMany({ where: eq(domainTable.userId, user.id) });
+  const owned = await db.query.domain.findMany({
+    where: eq(domainTable.organizationId, access.orgId),
+  });
   const domainRow = coveringDomain(address, owned);
   if (!domainRow) {
     throw new Error(`Add ${domainName} under Domains first, or a domain it sits beneath.`);
@@ -287,7 +292,7 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   const id = newId("mbx");
   await db.insert(mailbox).values({
     id,
-    userId: user.id,
+    organizationId: access.orgId,
     address,
     domain: domainName,
     domainId: domainRow.id,
@@ -302,7 +307,7 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
     await db
       .update(mailbox)
       .set({ isDefault: false })
-      .where(and(eq(mailbox.userId, user.id), sql`${mailbox.id} <> ${id}`));
+      .where(and(eq(mailbox.organizationId, access.orgId), sql`${mailbox.id} <> ${id}`));
   }
 
   revalidatePath("/mail", "layout");
@@ -313,7 +318,7 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   let receiving: SubdomainReceiving = { state: "skipped", reason: "Not a subdomain" };
   if (domainName !== domainRow.name) {
     try {
-      receiving = await ensureSubdomainReceiving(user.id, domainName);
+      receiving = await ensureSubdomainReceiving(access.orgId, domainName);
     } catch (error) {
       receiving = {
         state: "skipped",
@@ -330,9 +335,10 @@ export async function updateMailboxAction(
   mailboxId: string,
   patch: Partial<z.input<typeof mailboxSchema>>,
 ) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "mailbox:manage");
   const owns = await db.query.mailbox.findFirst({
-    where: and(eq(mailbox.id, mailboxId), eq(mailbox.userId, user.id)),
+    where: and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, access.orgId)),
   });
   if (!owns) return;
 
@@ -351,7 +357,7 @@ export async function updateMailboxAction(
     await db
       .update(mailbox)
       .set({ isDefault: false })
-      .where(and(eq(mailbox.userId, user.id), sql`${mailbox.id} <> ${mailboxId}`));
+      .where(and(eq(mailbox.organizationId, access.orgId), sql`${mailbox.id} <> ${mailboxId}`));
   }
 
   revalidatePath("/mail", "layout");
@@ -359,23 +365,31 @@ export async function updateMailboxAction(
 }
 
 export async function deleteMailboxAction(mailboxId: string) {
-  const user = await requireUser();
-  await db.delete(mailbox).where(and(eq(mailbox.id, mailboxId), eq(mailbox.userId, user.id)));
+  const access = await requireAccess();
+  assertCan(access, "mailbox:manage");
+  await db
+    .delete(mailbox)
+    .where(and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, access.orgId)));
   revalidatePath("/mail", "layout");
   revalidatePath("/settings");
 }
 
 export async function createLabelAction(name: string, color: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
   const id = newId("lbl");
-  await db.insert(label).values({ id, userId: user.id, name, color }).onConflictDoNothing();
+  await db
+    .insert(label)
+    .values({ id, organizationId: access.orgId, name, color })
+    .onConflictDoNothing();
   revalidatePath("/mail", "layout");
   return { id };
 }
 
 export async function deleteLabelAction(labelId: string) {
-  const user = await requireUser();
-  await db.delete(label).where(and(eq(label.id, labelId), eq(label.userId, user.id)));
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await db.delete(label).where(and(eq(label.id, labelId), eq(label.organizationId, access.orgId)));
   revalidatePath("/mail", "layout");
 }
 
@@ -393,12 +407,13 @@ const ruleSchema = z.object({
 });
 
 export async function createRuleAction(raw: z.input<typeof ruleSchema>) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
   const input = ruleSchema.parse(raw);
   const id = newId("rul");
   await db.insert(filterRule).values({
     id,
-    userId: user.id,
+    organizationId: access.orgId,
     name: input.name,
     matchFrom: input.matchFrom || null,
     matchTo: input.matchTo || null,
@@ -415,8 +430,11 @@ export async function createRuleAction(raw: z.input<typeof ruleSchema>) {
 }
 
 export async function deleteRuleAction(ruleId: string) {
-  const user = await requireUser();
-  await db.delete(filterRule).where(and(eq(filterRule.id, ruleId), eq(filterRule.userId, user.id)));
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await db
+    .delete(filterRule)
+    .where(and(eq(filterRule.id, ruleId), eq(filterRule.organizationId, access.orgId)));
   revalidatePath("/settings");
 }
 
@@ -425,9 +443,10 @@ export async function deleteRuleAction(ruleId: string) {
 /* -------------------------------------------------------------------------- */
 
 export async function importDomainsAction() {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
   try {
-    const result = await importFromSes(user.id);
+    const result = await importFromSes(access.orgId);
     revalidatePath("/settings");
     revalidatePath("/mail", "layout");
     return { ok: true as const, ...result };
@@ -441,7 +460,8 @@ export async function importDomainsAction() {
 
 /** Builds the SES -> SNS -> app pipeline that reports what happened to a send. */
 export async function setUpEventsAction() {
-  await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
   try {
     const status = await setUpEvents();
     revalidatePath("/settings", "layout");
@@ -455,9 +475,10 @@ export async function setUpEventsAction() {
 }
 
 export async function addDomainAction(name: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
   try {
-    const result = await addDomain(user.id, name);
+    const result = await addDomain(access.orgId, name);
     revalidatePath("/settings");
     return { ok: true as const, ...result };
   } catch (error) {
@@ -469,9 +490,10 @@ export async function addDomainAction(name: string) {
 }
 
 export async function refreshDomainAction(domainId: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
   try {
-    const result = await refreshDomain(user.id, domainId);
+    const result = await refreshDomain(access.orgId, domainId);
     revalidatePath("/settings");
     return { ok: true as const, status: result.status };
   } catch (error) {
@@ -484,9 +506,10 @@ export async function refreshDomainAction(domainId: string) {
 
 /** Replaces Easy DKIM with a key we generate, so one TXT record replaces three CNAMEs. */
 export async function useOwnDkimKeyAction(domainId: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
   try {
-    const result = await useOwnDkimKey(user.id, domainId);
+    const result = await useOwnDkimKey(access.orgId, domainId);
     revalidatePath("/settings/domains");
     return { ok: true as const, selector: result.selector };
   } catch (error) {
@@ -498,8 +521,9 @@ export async function useOwnDkimKeyAction(domainId: string) {
 }
 
 export async function removeDomainAction(domainId: string, alsoDeleteInSes: boolean) {
-  const user = await requireUser();
-  await removeDomain(user.id, domainId, alsoDeleteInSes);
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
+  await removeDomain(access.orgId, domainId, alsoDeleteInSes);
   revalidatePath("/settings");
   revalidatePath("/mail", "layout");
 }
@@ -509,11 +533,12 @@ export async function removeDomainAction(domainId: string, alsoDeleteInSes: bool
 /* -------------------------------------------------------------------------- */
 
 export async function createApiKeyAction(name: string, mailboxId?: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
 
   if (mailboxId) {
     const owns = await db.query.mailbox.findFirst({
-      where: and(eq(mailbox.id, mailboxId), eq(mailbox.userId, user.id)),
+      where: and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, access.orgId)),
     });
     if (!owns) throw new Error("Unknown mailbox");
   }
@@ -523,7 +548,7 @@ export async function createApiKeyAction(name: string, mailboxId?: string) {
 
   await db.insert(apiKey).values({
     id,
-    userId: user.id,
+    organizationId: access.orgId,
     name: name.trim() || "API key",
     prefix: generated.prefix,
     hash: generated.hash,
@@ -536,17 +561,19 @@ export async function createApiKeyAction(name: string, mailboxId?: string) {
 }
 
 export async function revokeApiKeyAction(keyId: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
   await db
     .update(apiKey)
     .set({ revokedAt: new Date() })
-    .where(and(eq(apiKey.id, keyId), eq(apiKey.userId, user.id)));
+    .where(and(eq(apiKey.id, keyId), eq(apiKey.organizationId, access.orgId)));
   revalidatePath("/settings");
 }
 
 export async function deleteApiKeyAction(keyId: string) {
-  const user = await requireUser();
-  await db.delete(apiKey).where(and(eq(apiKey.id, keyId), eq(apiKey.userId, user.id)));
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+  await db.delete(apiKey).where(and(eq(apiKey.id, keyId), eq(apiKey.organizationId, access.orgId)));
   revalidatePath("/settings");
 }
 
@@ -555,10 +582,11 @@ export async function deleteApiKeyAction(keyId: string) {
 /* -------------------------------------------------------------------------- */
 
 export async function removeSuppressionAction(suppressionId: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
   await db
     .delete(suppression)
-    .where(and(eq(suppression.id, suppressionId), eq(suppression.userId, user.id)));
+    .where(and(eq(suppression.id, suppressionId), eq(suppression.organizationId, access.orgId)));
   revalidatePath("/settings");
 }
 
@@ -571,9 +599,10 @@ function failure(error: unknown, fallback: string) {
 }
 
 export async function connectCloudflareAction(token: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
   try {
-    const result = await connectCloudflare(user.id, token);
+    const result = await connectCloudflare(access.orgId, token);
     revalidatePath("/settings/inbound");
     return { ok: true as const, zones: result.zones };
   } catch (error) {
@@ -582,15 +611,17 @@ export async function connectCloudflareAction(token: string) {
 }
 
 export async function disconnectCloudflareAction() {
-  const user = await requireUser();
-  await disconnectCloudflare(user.id);
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  await disconnectCloudflare(access.orgId);
   revalidatePath("/settings/inbound");
 }
 
 export async function deployWorkerAction() {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
   try {
-    const result = await deployWorker(user.id);
+    const result = await deployWorker(access.orgId);
     revalidatePath("/settings/inbound");
     return { ok: true as const, scriptName: result.scriptName };
   } catch (error) {
@@ -599,9 +630,10 @@ export async function deployWorkerAction() {
 }
 
 export async function removeWorkerAction() {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
   try {
-    await removeWorker(user.id);
+    await removeWorker(access.orgId);
     revalidatePath("/settings/inbound");
     return { ok: true as const };
   } catch (error) {
@@ -610,9 +642,10 @@ export async function removeWorkerAction() {
 }
 
 export async function routeZoneAction(zoneId: string) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
   try {
-    await routeZoneToWorker(user.id, zoneId);
+    await routeZoneToWorker(access.orgId, zoneId);
     revalidatePath("/settings/inbound");
     return { ok: true as const };
   } catch (error) {
@@ -621,9 +654,10 @@ export async function routeZoneAction(zoneId: string) {
 }
 
 export async function unrouteZoneAction(zoneId: string, alsoDisableRouting: boolean) {
-  const user = await requireUser();
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
   try {
-    await unrouteZone(user.id, zoneId, alsoDisableRouting);
+    await unrouteZone(access.orgId, zoneId, alsoDisableRouting);
     revalidatePath("/settings/inbound");
     return { ok: true as const };
   } catch (error) {

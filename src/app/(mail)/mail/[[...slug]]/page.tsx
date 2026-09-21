@@ -5,7 +5,7 @@ import { ThreadView } from "@/components/mail/thread-view";
 import { db } from "@/db";
 import { label } from "@/db/schema";
 import { FOLDER_LABELS, parseRoute, scopeHref, supportsUnreadFilter } from "@/lib/scope";
-import { requireUser } from "@/lib/session";
+import { requireAccess } from "@/server/access";
 import { listMailboxes } from "@/server/mailboxes";
 import { getThreadDetail, listThreads } from "@/server/threads";
 import { eq } from "drizzle-orm";
@@ -24,14 +24,14 @@ interface PageProps {
 }
 
 export default async function MailPage({ params, searchParams }: PageProps) {
-  const user = await requireUser();
+  const access = await requireAccess();
   const { slug } = await params;
   const query = await searchParams;
   const { scope, folder } = parseRoute(slug);
 
   const [mailboxes, labels] = await Promise.all([
-    listMailboxes(user.id),
-    db.query.label.findMany({ where: eq(label.userId, user.id) }),
+    listMailboxes(access.orgId),
+    db.query.label.findMany({ where: eq(label.organizationId, access.orgId) }),
   ]);
 
   if (mailboxes.length === 0) return <NoMailboxes />;
@@ -45,7 +45,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
 
   const [{ items, nextCursor }, detail] = await Promise.all([
     listThreads({
-      userId: user.id,
+      orgId: access.orgId,
       scope,
       folder,
       query: query.q,
@@ -53,7 +53,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       cursor: query.cursor,
       unreadOnly: query.unread === "1" && supportsUnreadFilter(folder),
     }),
-    query.t ? getThreadDetail(user.id, query.t) : Promise.resolve(null),
+    query.t ? getThreadDetail(access.orgId, query.t) : Promise.resolve(null),
   ]);
 
   const base = scopeHref(scope, folder);
@@ -72,7 +72,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       folder={folder}
       scopeLabel={scopeLabel}
       threadCount={items.length}
-      user={{ name: user.name, email: user.email }}
+      user={{ name: access.name, email: access.email }}
       openSubject={detail?.subject || undefined}
       threadOpen={Boolean(detail)}
       list={

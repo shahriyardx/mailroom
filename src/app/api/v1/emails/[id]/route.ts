@@ -19,7 +19,7 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const boxes = await db
     .select({ id: mailbox.id })
     .from(mailbox)
-    .where(eq(mailbox.userId, caller.userId));
+    .where(eq(mailbox.organizationId, caller.orgId));
 
   const row = await db.query.message.findFirst({
     where: and(

@@ -1,4 +1,4 @@
-import { getSession } from "@/lib/session";
+import { getAccess } from "@/server/access";
 import { type MailEvent, subscribe } from "@/server/realtime";
 import type { NextRequest } from "next/server";
 
@@ -14,10 +14,8 @@ const HEARTBEAT_MS = 25_000;
  * reloaded.
  */
 export async function GET(request: NextRequest) {
-  const session = await getSession();
-  if (!session?.user) return new Response("Unauthorized", { status: 401 });
-
-  const userId = session.user.id;
+  const access = await getAccess();
+  if (!access) return new Response("Unauthorized", { status: 401 });
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -37,7 +35,7 @@ export async function GET(request: NextRequest) {
       send("retry: 3000\n\n");
       send(": connected\n\n");
 
-      const unsubscribe = await subscribe(userId, (event: MailEvent) => {
+      const unsubscribe = await subscribe(access.orgId, (event: MailEvent) => {
         send(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
       });
 

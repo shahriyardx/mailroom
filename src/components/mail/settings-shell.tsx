@@ -15,6 +15,7 @@ import {
   SlidersHorizontal,
   Tag,
   User,
+  Users,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -24,6 +25,8 @@ interface NavItem {
   href: string;
   label: string;
   icon: LucideIcon;
+  /** Hidden unless the person holds this capability. */
+  needs?: string;
 }
 
 /** Grouped the way you think about the system, not the way it is stored. */
@@ -32,23 +35,34 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Sending",
     items: [
-      { href: "/settings/domains", label: "Domains", icon: Globe },
-      { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail },
-      { href: "/settings/blocked", label: "Blocked addresses", icon: ShieldOff },
+      { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+      { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:manage" },
+      {
+        href: "/settings/blocked",
+        label: "Blocked addresses",
+        icon: ShieldOff,
+        needs: "rules:manage",
+      },
     ],
   },
   {
     title: "Receiving",
     items: [
-      { href: "/settings/inbound", label: "Inbound worker", icon: Inbox },
-      { href: "/settings/filters", label: "Filters", icon: SlidersHorizontal },
-      { href: "/settings/labels", label: "Labels", icon: Tag },
+      { href: "/settings/inbound", label: "Inbound worker", icon: Inbox, needs: "inbound:manage" },
+      {
+        href: "/settings/filters",
+        label: "Filters",
+        icon: SlidersHorizontal,
+        needs: "rules:manage",
+      },
+      { href: "/settings/labels", label: "Labels", icon: Tag, needs: "rules:manage" },
     ],
   },
   {
     title: "Account",
     items: [
-      { href: "/settings/api-keys", label: "API keys", icon: KeyRound },
+      { href: "/settings/people", label: "People", icon: Users, needs: "member:manage" },
+      { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
       { href: "/settings/account", label: "Account", icon: User },
     ],
   },
@@ -58,9 +72,12 @@ const ALL = GROUPS.flatMap((group) => group.items);
 
 export function SettingsShell({
   user,
+  allowed,
   children,
 }: {
   user: { name: string; email: string };
+  /** The capabilities this person holds; anything else is not offered. */
+  allowed: string[];
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -73,7 +90,12 @@ export function SettingsShell({
     (item) => pathname === item.href || pathname.startsWith(`${item.href}/`),
   );
 
-  const nav = <SettingsNavPanel pathname={pathname} user={user} />;
+  const groups = GROUPS.map((group) => ({
+    ...group,
+    items: group.items.filter((item) => !item.needs || allowed.includes(item.needs)),
+  })).filter((group) => group.items.length > 0);
+
+  const nav = <SettingsNavPanel pathname={pathname} user={user} groups={groups} />;
 
   return (
     <div className="flex h-dvh overflow-hidden bg-card">
@@ -116,9 +138,11 @@ export function SettingsShell({
 function SettingsNavPanel({
   pathname,
   user,
+  groups,
 }: {
   pathname: string;
   user: { name: string; email: string };
+  groups: { title?: string; items: NavItem[] }[];
 }) {
   return (
     <>
@@ -137,7 +161,7 @@ function SettingsNavPanel({
       </div>
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
-        {GROUPS.map((group) => (
+        {groups.map((group) => (
           <div key={group.title ?? group.items[0].href} className="mb-1">
             {group.title && <p className="eyebrow px-2 pt-3 pb-1.5">{group.title}</p>}
             <ul className="space-y-0.5">

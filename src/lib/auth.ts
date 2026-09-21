@@ -3,16 +3,31 @@ import { betterAuth } from "better-auth";
 import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
-import { count } from "drizzle-orm";
+import { organization } from "better-auth/plugins";
+import { and, count, eq } from "drizzle-orm";
 
 /**
- * This is a single-operator dashboard: the first person to sign in becomes the
- * owner, and after that no new accounts can be created. Anyone else reaching
- * the sign-in page gets turned away rather than silently given an inbox.
+ * One company runs one instance. The first person to sign in creates it and
+ * becomes its owner; everyone after that has to have been invited, so a
+ * stranger who finds the sign-in page cannot give themselves an inbox.
  */
-async function registrationIsOpen() {
+async function isFirstUser() {
   const [row] = await db.select({ total: count() }).from(schema.user);
   return (row?.total ?? 0) === 0;
+}
+
+async function hasInvitation(email: string) {
+  const [row] = await db
+    .select({ id: schema.invitation.id })
+    .from(schema.invitation)
+    .where(
+      and(
+        eq(schema.invitation.email, email.toLowerCase()),
+        eq(schema.invitation.status, "pending"),
+      ),
+    )
+    .limit(1);
+  return Boolean(row);
 }
 
 export const auth = betterAuth({
@@ -23,6 +38,11 @@ export const auth = betterAuth({
       session: schema.session,
       account: schema.account,
       verification: schema.verification,
+      organization: schema.organization,
+      member: schema.member,
+      invitation: schema.invitation,
+      team: schema.team,
+      teamMember: schema.teamMember,
     },
   }),
 
@@ -47,10 +67,17 @@ export const auth = betterAuth({
     user: {
       create: {
         before: async (user) => {
-          if (await registrationIsOpen()) return { data: user };
+          if (await isFirstUser()) return { data: user };
+          if (await hasInvitation(user.email)) return { data: user };
           throw new APIError("FORBIDDEN", {
-            message: "This dashboard already has an owner. New accounts are closed.",
+            message: "This instance is private. Ask an administrator to invite your email address.",
           });
+        },
+        after: async (user) => {
+          // Membership is what makes the mail visible, so it is granted here
+          // rather than lazily on first read.
+          const { provisionUser } = await import("@/server/provision");
+          await provisionUser(user);
         },
       },
     },
@@ -66,7 +93,14 @@ export const auth = betterAuth({
     database: { generateId: () => crypto.randomUUID() },
   },
 
-  plugins: [nextCookies()],
+  plugins: [
+    organization({
+      // The instance belongs to one company, so nobody creates a second.
+      allowUserToCreateOrganization: false,
+      teams: { enabled: true },
+    }),
+    nextCookies(),
+  ],
 });
 
 export type Session = typeof auth.$Infer.Session;

@@ -41,7 +41,7 @@ export interface InboundStatus {
 }
 
 /** Everything the inbound page needs: the worker, and where it is wired up. */
-export async function inboundStatus(userId: string): Promise<InboundStatus> {
+export async function inboundStatus(orgId: string): Promise<InboundStatus> {
   const base = {
     connected: false,
     deployed: false,
@@ -50,7 +50,7 @@ export async function inboundStatus(userId: string): Promise<InboundStatus> {
     zones: [] as ZoneStatus[],
   };
 
-  const credentials = await cloudflareCredentials(userId);
+  const credentials = await cloudflareCredentials(orgId);
   if (!credentials) return base;
 
   try {
@@ -113,8 +113,8 @@ function explain(error: unknown, needs: string) {
   return error instanceof Error ? error : new Error("Cloudflare could not be reached");
 }
 
-export async function deployWorker(userId: string) {
-  const credentials = await cloudflareCredentials(userId);
+export async function deployWorker(orgId: string) {
+  const credentials = await cloudflareCredentials(orgId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
 
   const appUrl = env.appUrl.replace(/\/+$/, "");
@@ -148,8 +148,8 @@ export async function deployWorker(userId: string) {
   return { scriptName: SCRIPT_NAME };
 }
 
-export async function removeWorker(userId: string) {
-  const credentials = await cloudflareCredentials(userId);
+export async function removeWorker(orgId: string) {
+  const credentials = await cloudflareCredentials(orgId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
   try {
     await deleteWorker(credentials.token, credentials.accountId, SCRIPT_NAME);
@@ -159,8 +159,8 @@ export async function removeWorker(userId: string) {
 }
 
 /** Enables Email Routing on a zone and points its catch-all at the worker. */
-export async function routeZoneToWorker(userId: string, zoneId: string) {
-  const credentials = await cloudflareCredentials(userId);
+export async function routeZoneToWorker(orgId: string, zoneId: string) {
+  const credentials = await cloudflareCredentials(orgId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
 
   try {
@@ -176,8 +176,8 @@ export async function routeZoneToWorker(userId: string, zoneId: string) {
   }
 }
 
-export async function unrouteZone(userId: string, zoneId: string, alsoDisableRouting: boolean) {
-  const credentials = await cloudflareCredentials(userId);
+export async function unrouteZone(orgId: string, zoneId: string, alsoDisableRouting: boolean) {
+  const credentials = await cloudflareCredentials(orgId);
   if (!credentials) throw new Error("Connect a Cloudflare token first");
 
   try {
@@ -202,10 +202,10 @@ export type SubdomainReceiving =
  * receiving and the subdomain carries no mail routing of its own.
  */
 export async function ensureSubdomainReceiving(
-  userId: string,
+  orgId: string,
   domainName: string,
 ): Promise<SubdomainReceiving> {
-  const credentials = await cloudflareCredentials(userId);
+  const credentials = await cloudflareCredentials(orgId);
   if (!credentials) return { state: "skipped", reason: "No Cloudflare token is connected" };
 
   const zones = await listZones(credentials.token);

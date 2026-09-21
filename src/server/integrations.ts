@@ -8,15 +8,15 @@ import { and, eq } from "drizzle-orm";
 
 export const CLOUDFLARE = "cloudflare";
 
-export async function getIntegration(userId: string, provider: string) {
+export async function getIntegration(orgId: string, provider: string) {
   return db.query.integration.findFirst({
-    where: and(eq(integration.userId, userId), eq(integration.provider, provider)),
+    where: and(eq(integration.organizationId, orgId), eq(integration.provider, provider)),
   });
 }
 
 /** The decrypted token plus the account it belongs to, or null when not connected. */
-export async function cloudflareCredentials(userId: string) {
-  const row = await getIntegration(userId, CLOUDFLARE);
+export async function cloudflareCredentials(orgId: string) {
+  const row = await getIntegration(orgId, CLOUDFLARE);
   if (!row?.accountId) return null;
   try {
     return { token: decryptSecret(row.secret), accountId: row.accountId };
@@ -26,8 +26,8 @@ export async function cloudflareCredentials(userId: string) {
   }
 }
 
-export async function cloudflareStatus(userId: string) {
-  const row = await getIntegration(userId, CLOUDFLARE);
+export async function cloudflareStatus(orgId: string) {
+  const row = await getIntegration(orgId, CLOUDFLARE);
   if (!row) return { connected: false as const };
   return {
     connected: true as const,
@@ -39,7 +39,7 @@ export async function cloudflareStatus(userId: string) {
 }
 
 /** Verifies the token and records which account and zones it can reach. */
-export async function connectCloudflare(userId: string, token: string) {
+export async function connectCloudflare(orgId: string, token: string) {
   const trimmed = token.trim();
   if (!trimmed) throw new Error("Paste a token first");
 
@@ -53,7 +53,7 @@ export async function connectCloudflare(userId: string, token: string) {
   const accountId = zones[0]?.account?.id;
   if (!accountId) throw new Error("Could not determine the Cloudflare account from that token");
 
-  const existing = await getIntegration(userId, CLOUDFLARE);
+  const existing = await getIntegration(orgId, CLOUDFLARE);
   const values = {
     secret: encryptSecret(trimmed),
     hint: `…${trimmed.slice(-4)}`,
@@ -67,14 +67,14 @@ export async function connectCloudflare(userId: string, token: string) {
   } else {
     await db
       .insert(integration)
-      .values({ id: newId("int"), userId, provider: CLOUDFLARE, ...values });
+      .values({ id: newId("int"), organizationId: orgId, provider: CLOUDFLARE, ...values });
   }
 
   return { zones: zones.map((zone) => zone.name), accountId };
 }
 
-export async function disconnectCloudflare(userId: string) {
+export async function disconnectCloudflare(orgId: string) {
   await db
     .delete(integration)
-    .where(and(eq(integration.userId, userId), eq(integration.provider, CLOUDFLARE)));
+    .where(and(eq(integration.organizationId, orgId), eq(integration.provider, CLOUDFLARE)));
 }

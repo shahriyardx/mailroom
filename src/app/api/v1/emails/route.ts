@@ -72,7 +72,7 @@ export async function POST(request: NextRequest) {
   // matched by name and never allowed to bring a new one into being.
   if (caller.mailboxId) {
     const locked = await db.query.mailbox.findFirst({
-      where: and(eq(mailbox.id, caller.mailboxId), eq(mailbox.userId, caller.userId)),
+      where: and(eq(mailbox.id, caller.mailboxId), eq(mailbox.organizationId, caller.orgId)),
     });
     if (!locked || locked.address !== fromAddress) {
       return NextResponse.json(
@@ -87,9 +87,9 @@ export async function POST(request: NextRequest) {
   // it, and code sends from addresses nobody creates by hand.
   const box = caller.mailboxId
     ? await db.query.mailbox.findFirst({
-        where: and(eq(mailbox.id, caller.mailboxId), eq(mailbox.userId, caller.userId)),
+        where: and(eq(mailbox.id, caller.mailboxId), eq(mailbox.organizationId, caller.orgId)),
       })
-    : await mailboxForSending(caller.userId, fromAddress);
+    : await mailboxForSending(caller.orgId, fromAddress);
 
   if (!box) {
     return NextResponse.json(
@@ -107,7 +107,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await deliverMessage({
-      userId: caller.userId,
+      orgId: caller.orgId,
       mailboxId: box.id,
       to: toList(parsed.to),
       cc: toList(parsed.cc),

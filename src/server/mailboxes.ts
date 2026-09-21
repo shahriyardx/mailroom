@@ -6,9 +6,9 @@ import type { Scope } from "@/lib/scope";
 import { colorOf, newId } from "@/lib/utils";
 import { and, asc, eq } from "drizzle-orm";
 
-export async function listMailboxes(userId: string) {
+export async function listMailboxes(orgId: string) {
   return db.query.mailbox.findMany({
-    where: eq(mailbox.userId, userId),
+    where: eq(mailbox.organizationId, orgId),
     orderBy: [asc(mailbox.domain), asc(mailbox.address)],
   });
 }
@@ -29,8 +29,8 @@ export function groupByDomain(boxes: Awaited<ReturnType<typeof listMailboxes>>):
 }
 
 /** Turns a UI scope into the concrete mailbox ids the query may touch. */
-export async function resolveScope(userId: string, scope: Scope) {
-  const boxes = await listMailboxes(userId);
+export async function resolveScope(orgId: string, scope: Scope) {
+  const boxes = await listMailboxes(orgId);
   if (scope.kind === "all") return boxes.map((box) => box.id);
   if (scope.kind === "domain") {
     return boxes.filter((box) => box.domain === scope.domain).map((box) => box.id);
@@ -38,14 +38,14 @@ export async function resolveScope(userId: string, scope: Scope) {
   return boxes.filter((box) => box.id === scope.mailboxId).map((box) => box.id);
 }
 
-export async function getMailboxForUser(userId: string, mailboxId: string) {
+export async function getMailboxForUser(orgId: string, mailboxId: string) {
   return db.query.mailbox.findFirst({
-    where: and(eq(mailbox.id, mailboxId), eq(mailbox.userId, userId)),
+    where: and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, orgId)),
   });
 }
 
-export async function getDefaultMailbox(userId: string) {
-  const boxes = await listMailboxes(userId);
+export async function getDefaultMailbox(orgId: string) {
+  const boxes = await listMailboxes(orgId);
   return boxes.find((box) => box.isDefault) ?? boxes[0];
 }
 
@@ -58,15 +58,15 @@ export async function getDefaultMailbox(userId: string) {
  *
  * Returns null when the address is not covered, which the caller reports.
  */
-export async function mailboxForSending(userId: string, address: string) {
+export async function mailboxForSending(orgId: string, address: string) {
   const normalized = address.toLowerCase();
 
   const existing = await db.query.mailbox.findFirst({
-    where: and(eq(mailbox.address, normalized), eq(mailbox.userId, userId)),
+    where: and(eq(mailbox.address, normalized), eq(mailbox.organizationId, orgId)),
   });
   if (existing) return existing;
 
-  const owned = await db.query.domain.findMany({ where: eq(domain.userId, userId) });
+  const owned = await db.query.domain.findMany({ where: eq(domain.organizationId, orgId) });
   const covering = coveringDomain(normalized, owned);
   if (!covering || !(covering.status === "verified" && covering.sendingEnabled)) return null;
 
@@ -77,7 +77,7 @@ export async function mailboxForSending(userId: string, address: string) {
     .insert(mailbox)
     .values({
       id,
-      userId,
+      organizationId: orgId,
       address: normalized,
       domain: domainOf(normalized),
       domainId: covering.id,
@@ -89,7 +89,7 @@ export async function mailboxForSending(userId: string, address: string) {
 
   return (
     (await db.query.mailbox.findFirst({
-      where: and(eq(mailbox.address, normalized), eq(mailbox.userId, userId)),
+      where: and(eq(mailbox.address, normalized), eq(mailbox.organizationId, orgId)),
     })) ?? null
   );
 }

@@ -28,7 +28,7 @@ import { recomputeThread } from "./aggregate";
 import { publish } from "./realtime";
 
 export interface DeliverInput {
-  userId: string;
+  orgId: string;
   mailboxId: string;
   to: EmailAddress[];
   cc?: EmailAddress[];
@@ -66,7 +66,7 @@ export class SendError extends Error {
  */
 export async function deliverMessage(input: DeliverInput) {
   const box = await db.query.mailbox.findFirst({
-    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.userId, input.userId)),
+    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, input.orgId)),
   });
   if (!box) throw new SendError("Unknown mailbox", 404);
 
@@ -74,7 +74,7 @@ export async function deliverMessage(input: DeliverInput) {
 
   // A subdomain sends on its parent's verification, so match the covering
   // domain rather than an exact name.
-  const owned = await db.query.domain.findMany({ where: eq(domain.userId, input.userId) });
+  const owned = await db.query.domain.findMany({ where: eq(domain.organizationId, input.orgId) });
   const domainRow = coveringDomain(box.address, owned);
   if (domainRow && !(domainRow.sendingEnabled && domainRow.status === "verified")) {
     throw new SendError(`${domainRow.name} is not verified for sending in SES yet`, 409);
@@ -86,7 +86,7 @@ export async function deliverMessage(input: DeliverInput) {
     .from(suppression)
     .where(
       and(
-        eq(suppression.userId, input.userId),
+        eq(suppression.organizationId, input.orgId),
         inArray(
           suppression.address,
           recipients.map((entry) => entry.address),
@@ -216,19 +216,19 @@ export async function deliverMessage(input: DeliverInput) {
       .insert(contact)
       .values({
         id: newId("con"),
-        userId: input.userId,
+        organizationId: input.orgId,
         address: entry.address,
         name: entry.name,
         messageCount: 1,
       })
       .onConflictDoUpdate({
-        target: [contact.userId, contact.address],
+        target: [contact.organizationId, contact.address],
         set: { messageCount: sql`${contact.messageCount} + 1`, lastSeenAt: new Date() },
       });
   }
 
   await recomputeThread(threadId);
-  await publish({ type: "mail:sent", userId: input.userId, mailboxId: box.id, threadId });
+  await publish({ type: "mail:sent", orgId: input.orgId, mailboxId: box.id, threadId });
 
   return { threadId, messageId, sesMessageId, rfcMessageId };
 }

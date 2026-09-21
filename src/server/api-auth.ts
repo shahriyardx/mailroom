@@ -6,7 +6,7 @@ import { and, eq, isNull } from "drizzle-orm";
 
 export interface ApiCaller {
   keyId: string;
-  userId: string;
+  orgId: string;
   /** When set, the key may only send from this one mailbox. */
   mailboxId: string | null;
 }
@@ -23,5 +23,5 @@ export async function authenticateApiKey(request: Request): Promise<ApiCaller | 
 
   await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.id));
 
-  return { keyId: row.id, userId: row.userId, mailboxId: row.mailboxId };
+  return { keyId: row.id, orgId: row.organizationId, mailboxId: row.mailboxId };
 }
