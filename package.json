@@ -43,6 +43,7 @@
     "worker:tail": "pnpm --filter mailroom-worker run tail",
     "ses:status": "node scripts/ses-status.mjs",
     "ses:setup": "node scripts/ses-setup-events.mjs",
+    "seed:demo": "node scripts/seed-demo.mjs",
     "reset-owner": "node scripts/reset-owner.mjs",
     "worker:bundle": "node scripts/bundle-worker.mjs",
     "sdk:build": "pnpm --filter @shahriyardx/mailroom run build",
