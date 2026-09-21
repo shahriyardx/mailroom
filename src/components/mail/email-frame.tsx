@@ -99,17 +99,19 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
 
   return (
     <div>
+      {/* Blocking remote images is the protection working, not a fault, so
+          this states itself quietly instead of borrowing warning colours. */}
       {prepared.blockedImages > 0 && !showImages && (
-        <div className="mb-2 flex items-center gap-2 rounded-xl border border-warn/40 bg-warn/10 px-2.5 py-1.5">
-          <ImageOff className="size-3.5 shrink-0 text-warn" />
-          <span className="text-[11.5px] text-muted-foreground">
+        <div className="mb-3 flex items-center gap-2 text-[11.5px] text-muted-foreground">
+          <ImageOff className="size-3.5 shrink-0" />
+          <span>
             {prepared.blockedImages} remote {prepared.blockedImages === 1 ? "image" : "images"}{" "}
             blocked to stop read tracking.
           </span>
           <button
             type="button"
             onClick={() => setShowImages(true)}
-            className="ml-auto rounded-xl border bg-card px-2 py-0.5 font-mono text-[10px] hover:bg-accent"
+            className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
           >
             Show images
           </button>

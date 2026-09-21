@@ -54,8 +54,10 @@ export function ThreadView({ thread, backHref, labels }: Props) {
   const router = useRouter();
   const composer = useComposer();
   const [, startTransition] = useTransition();
+  // Every message opens with the thread. A mail client that hides what it
+  // just told you had arrived makes you click to read your own mail.
   const [openIds, setOpenIds] = useState<Set<string>>(
-    () => new Set(thread.messages.slice(-1).map((message) => message.id)),
+    () => new Set(thread.messages.map((message) => message.id)),
   );
 
   // Opening a thread marks it read, the same as any desktop client.
@@ -174,6 +176,31 @@ export function ThreadView({ thread, backHref, labels }: Props) {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
+        {/* The subject names the conversation, so it is stated once at the
+            top rather than buried inside the message that started it. */}
+        <div className="mb-5">
+          <h1 className="font-display text-[22px] font-semibold leading-snug tracking-[-0.02em]">
+            {thread.subject || "(no subject)"}
+          </h1>
+          {thread.labels.length > 0 && (
+            <ul className="mt-2 flex flex-wrap gap-1.5">
+              {thread.labels.map((entry) => (
+                <li
+                  key={entry.labelId}
+                  className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11.5px]"
+                >
+                  <span
+                    className="size-2 rounded-full"
+                    style={{ background: entry.label.color }}
+                    aria-hidden
+                  />
+                  {entry.label.name}
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+
         <ol>
           {thread.messages.map((item, index) => {
             const open = openIds.has(item.id);
@@ -253,32 +280,6 @@ export function ThreadView({ thread, backHref, labels }: Props) {
 
                 {open && (
                   <div className="mt-4">
-                    {/* The subject belongs to the conversation, so it is
-                        stated once, above the message that started it. */}
-                    {first && (
-                      <div className="mb-3">
-                        <h1 className="font-display text-[19px] font-semibold leading-snug tracking-[-0.02em]">
-                          {thread.subject || "(no subject)"}
-                        </h1>
-                        {thread.labels.length > 0 && (
-                          <ul className="mt-2 flex flex-wrap gap-1.5">
-                            {thread.labels.map((entry) => (
-                              <li
-                                key={entry.labelId}
-                                className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11.5px]"
-                              >
-                                <span
-                                  className="size-2 rounded-full"
-                                  style={{ background: entry.label.color }}
-                                  aria-hidden
-                                />
-                                {entry.label.name}
-                              </li>
-                            ))}
-                          </ul>
-                        )}
-                      </div>
-                    )}
                     {!item.isOutbound && <AuthBadges message={item} />}
                     {item.isOutbound && item.deliveryError && (
                       <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-[12px] text-destructive">
@@ -476,6 +477,11 @@ function OpenBadge({ message }: { message: Message }) {
   );
 }
 
+/**
+ * Sender authentication. Almost every message passes, so passing is the quiet
+ * case: one muted line, with the individual results on hover. Colour is kept
+ * for the rare message that fails one, where it actually carries a warning.
+ */
 function AuthBadges({ message }: { message: Message }) {
   const checks = [
     ["SPF", message.spf],
@@ -486,29 +492,41 @@ function AuthBadges({ message }: { message: Message }) {
   const known = checks.filter(([, value]) => value);
   if (known.length === 0) return null;
 
+  // "none" and "neutral" mean the domain published no policy to check
+  // against, which is not the same as a message failing one.
+  const failed = known.filter(
+    ([, value]) => value !== "pass" && value !== "none" && value !== "neutral",
+  );
+  const detail = known.map(([name, value]) => `${name} ${value}`).join(" · ");
+
+  if (failed.length === 0) {
+    const unchecked = known.some(([, value]) => value !== "pass");
+    return (
+      <p
+        title={detail}
+        className="mb-3 flex items-center gap-1.5 text-[11.5px] text-muted-foreground"
+      >
+        {unchecked ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
+        {unchecked ? "Sender partly checked" : "Sender verified"}
+        <span className="opacity-60">· {detail}</span>
+      </p>
+    );
+  }
+
   return (
     <ul className="mb-3 flex flex-wrap items-center gap-1.5">
-      {known.map(([name, value]) => {
-        // "none" and "neutral" mean the domain published no policy to check
-        // against, which is not the same as a message failing one.
-        const tone =
-          value === "pass" ? "ok" : value === "none" || value === "neutral" ? "neutral" : "danger";
-        return (
-          <li key={name}>
-            <Badge size="sm" tone={tone} title={`${name} ${value}`}>
-              {tone === "ok" ? (
-                <ShieldCheck />
-              ) : tone === "danger" ? (
-                <ShieldAlert />
-              ) : (
-                <ShieldOff />
-              )}
-              {name}
-              <span className="font-normal opacity-70">{value}</span>
-            </Badge>
-          </li>
-        );
-      })}
+      {failed.map(([name, value]) => (
+        <li key={name}>
+          <Badge size="sm" tone="danger" title={detail}>
+            <ShieldAlert />
+            {name}
+            <span className="font-normal opacity-70">{value}</span>
+          </Badge>
+        </li>
+      ))}
+      <li className="text-[11.5px] text-muted-foreground" title={detail}>
+        {failed.length === 1 ? "This check did not pass" : "These checks did not pass"}
+      </li>
     </ul>
   );
 }
