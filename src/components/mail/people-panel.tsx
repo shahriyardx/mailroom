@@ -40,7 +40,7 @@ import {
   setTeamMembershipAction,
   setTeamRoleAction,
 } from "@/server/team";
-import { ChevronDown, Plus, RotateCw, Trash2, UserPlus } from "lucide-react";
+import { ChevronDown, Plus, RotateCw, Trash2, UserPlus, Users } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -127,85 +127,25 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                 </span>
               </span>
 
-              {canManage || leadsTeamIds.length > 0 ? (
-                <DropdownMenu>
-                  <DropdownMenuTrigger asChild>
-                    <button
-                      type="button"
-                      className="flex w-28 shrink-0 items-center justify-between gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+              {/* Membership is changed on the teams below, so here it only
+                  says where this person belongs. */}
+              <span className="flex w-28 shrink-0 flex-wrap gap-1">
+                {person.teams.length === 0 ? (
+                  <span className="text-[12px] text-muted-foreground">No team</span>
+                ) : (
+                  person.teams.map((entry) => (
+                    <Badge
+                      key={entry.id}
+                      size="sm"
+                      tone={entry.isRoot ? "accent" : "neutral"}
+                      title={entry.lead ? `Leads ${entry.name}` : `In ${entry.name}`}
                     >
-                      <span className="truncate">
-                        {person.teams.length === 0
-                          ? "No team"
-                          : person.teams.length === 1
-                            ? `${person.teams[0].name}${person.teams[0].lead ? " · lead" : ""}`
-                            : `${person.teams[0].name}, +${person.teams.length - 1}`}
-                      </span>
-                      <ChevronDown className="size-3.5 shrink-0" />
-                    </button>
-                  </DropdownMenuTrigger>
-                  <DropdownMenuContent align="end" className="w-52">
-                    <DropdownMenuLabel>Teams</DropdownMenuLabel>
-                    {teams.map((entry) => {
-                      const membership = person.teams.find((t) => t.id === entry.id);
-                      const inTeam = Boolean(membership);
-                      return (
-                        <DropdownMenuCheckboxItem
-                          key={entry.id}
-                          checked={inTeam}
-                          disabled={!mayChangeTeam(entry.id)}
-                          // Several teams can be set without the menu closing
-                          // between each one.
-                          onSelect={(event) => event.preventDefault()}
-                          onCheckedChange={() =>
-                            run(
-                              () => setTeamMembershipAction(entry.id, person.userId, !inTeam),
-                              "Teams updated",
-                            )
-                          }
-                        >
-                          <span className="truncate">{entry.name}</span>
-                          {inTeam && (
-                            // The role is per team, so it is set beside the
-                            // team rather than on the person.
-                            <button
-                              type="button"
-                              title={
-                                membership?.lead
-                                  ? `Make an ordinary member of ${entry.name}`
-                                  : `Make a lead of ${entry.name}`
-                              }
-                              onClick={(event) => {
-                                event.preventDefault();
-                                event.stopPropagation();
-                                run(
-                                  () =>
-                                    setTeamRoleAction(entry.id, person.userId, !membership?.lead),
-                                  "Team role changed",
-                                );
-                              }}
-                              className={cn(
-                                "ml-auto rounded-full px-1.5 py-0.5 text-[10.5px] font-medium",
-                                membership?.lead
-                                  ? "bg-primary-soft text-primary-soft-foreground"
-                                  : "bg-muted text-muted-foreground",
-                              )}
-                            >
-                              {membership?.lead ? "lead" : "member"}
-                            </button>
-                          )}
-                        </DropdownMenuCheckboxItem>
-                      );
-                    })}
-                  </DropdownMenuContent>
-                </DropdownMenu>
-              ) : (
-                person.teams.map((entry) => (
-                  <Badge key={entry.id} size="sm" tone={entry.isRoot ? "accent" : "neutral"}>
-                    {entry.name}
-                  </Badge>
-                ))
-              )}
+                      {entry.name}
+                      {entry.lead && " ★"}
+                    </Badge>
+                  ))
+                )}
+              </span>
 
               {/* An owner's role is editable only by another owner, and
                   nobody edits their own: that is how an instance ends up with
@@ -382,30 +322,110 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
         <List>
           {teams.map((entry) => {
             const inTeam = people.filter((person) => person.teams.some((t) => t.id === entry.id));
+            const leads = inTeam.filter((person) =>
+              person.teams.some((t) => t.id === entry.id && t.lead),
+            );
+
             return (
               <ListRow key={entry.id}>
+                <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground">
+                  <Users className="size-3.5" />
+                </span>
+
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-[13px] font-medium">{entry.name}</span>
                   <span className="block truncate text-[12px] text-muted-foreground">
                     {inTeam.length === 0
                       ? "Nobody yet"
                       : inTeam.map((person) => person.name).join(", ")}
+                    {leads.length > 0 && ` · led by ${leads.map((p) => p.name).join(", ")}`}
                   </span>
                 </span>
+
                 {entry.isRoot && (
                   <Badge size="sm" tone="accent">
                     Reaches everything
                   </Badge>
                 )}
-                {canManage && !entry.isRoot && (
-                  <IconButton
-                    variant="danger"
-                    label={`Delete ${entry.name}`}
-                    onClick={() => run(() => deleteTeamAction(entry.id), "Team deleted")}
-                  >
-                    <Trash2 />
-                  </IconButton>
+
+                {/* The same question from the team's side, since that is how
+                    you think about it when looking at a team. */}
+                {mayChangeTeam(entry.id) ? (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex w-24 shrink-0 items-center justify-between gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      >
+                        <span className="truncate">
+                          {inTeam.length === 0 ? "Nobody" : `${inTeam.length} in`}
+                        </span>
+                        <ChevronDown className="size-3.5 shrink-0" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="max-h-80 w-64 overflow-y-auto">
+                      <DropdownMenuLabel>Who is in {entry.name}</DropdownMenuLabel>
+                      {people.map((person) => {
+                        const membership = person.teams.find((t) => t.id === entry.id);
+                        return (
+                          <DropdownMenuCheckboxItem
+                            key={person.memberId}
+                            checked={Boolean(membership)}
+                            onSelect={(event) => event.preventDefault()}
+                            onCheckedChange={() =>
+                              run(
+                                () => setTeamMembershipAction(entry.id, person.userId, !membership),
+                                "Teams updated",
+                              )
+                            }
+                          >
+                            <span className="min-w-0 flex-1 truncate">{person.name}</span>
+                            {membership && (
+                              <button
+                                type="button"
+                                title={
+                                  membership.lead
+                                    ? `Make an ordinary member of ${entry.name}`
+                                    : `Make a lead of ${entry.name}`
+                                }
+                                onClick={(event) => {
+                                  event.preventDefault();
+                                  event.stopPropagation();
+                                  run(
+                                    () =>
+                                      setTeamRoleAction(entry.id, person.userId, !membership.lead),
+                                    "Team role changed",
+                                  );
+                                }}
+                                className={cn(
+                                  "ml-2 shrink-0 rounded-full px-1.5 py-0.5 text-[10.5px] font-medium",
+                                  membership.lead
+                                    ? "bg-primary-soft text-primary-soft-foreground"
+                                    : "bg-muted text-muted-foreground",
+                                )}
+                              >
+                                {membership.lead ? "lead" : "member"}
+                              </button>
+                            )}
+                          </DropdownMenuCheckboxItem>
+                        );
+                      })}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                ) : (
+                  <span className="w-24 shrink-0 text-right text-[12px] text-muted-foreground">
+                    {inTeam.length} in
+                  </span>
                 )}
+
+                <IconButton
+                  variant="danger"
+                  disabled={entry.isRoot || !canManage}
+                  label={entry.isRoot ? "The root team cannot be deleted" : `Delete ${entry.name}`}
+                  onClick={() => run(() => deleteTeamAction(entry.id), "Team deleted")}
+                >
+                  <Trash2 />
+                </IconButton>
               </ListRow>
             );
           })}
