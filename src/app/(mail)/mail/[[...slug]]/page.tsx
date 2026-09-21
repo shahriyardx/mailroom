@@ -37,15 +37,14 @@ export default async function MailPage({ params, searchParams }: PageProps) {
     db.query.label.findMany({ where: eq(label.organizationId, access.orgId) }),
   ]);
 
-  if (mailboxes.length === 0) {
-    // Someone with no access at all should not be sent to a screen they are
-    // not allowed to open. Whether they may add one is a different question
-    // from whether they can read one: a domain grant lets you create an
-    // address without yet having a mailbox of your own.
-    const creatable = await creatableDomainIds(access);
-    const mayAdd = can(access, "mailbox:manage") || creatable === "all" || creatable.length > 0;
-    return <NoMailboxes mayAdd={mayAdd} />;
-  }
+  // Whether this person may add an address is a different question from
+  // whether they can read one: a grant over a domain lets somebody create
+  // mailboxes before any exists. Only asked when it matters, which is when
+  // there is nothing to show.
+  const creatable = mailboxes.length === 0 ? await creatableDomainIds(access) : [];
+  const mayAddMailbox =
+    mailboxes.length === 0 &&
+    (can(access, "mailbox:manage") || creatable === "all" || creatable.length > 0);
 
   const scopeLabel =
     scope.kind === "all"
@@ -85,6 +84,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       scopeLabel={scopeLabel}
       threadCount={items.length}
       user={{ name: access.name, email: access.email }}
+      canAddMailbox={mayAddMailbox}
       openSubject={detail?.subject || undefined}
       threadOpen={Boolean(detail)}
       list={
@@ -107,37 +107,34 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
             <Inbox className="size-5" />
           </span>
-          <div className="space-y-1">
-            <p className="font-display text-[15px] font-semibold">{FOLDER_LABELS[folder]}</p>
-            <p className="text-[13px] text-muted-foreground">
-              Select a conversation, or press <span className="kbd">c</span> to write one.
-            </p>
-          </div>
+          {mailboxes.length === 0 ? (
+            <>
+              <div className="space-y-1">
+                <p className="font-display text-[15px] font-semibold">
+                  {mayAddMailbox ? "No addresses yet" : "Nothing shared with you yet"}
+                </p>
+                <p className="mx-auto max-w-xs text-[13px] text-muted-foreground">
+                  {mayAddMailbox
+                    ? "Add the first address on your domain, and the mail sent to it arrives here."
+                    : "Ask an administrator for a mailbox, and it will appear here."}
+                </p>
+              </div>
+              {mayAddMailbox && (
+                <Button variant="solid" size="sm" pill asChild>
+                  <Link href="/settings/mailboxes">Add a mailbox</Link>
+                </Button>
+              )}
+            </>
+          ) : (
+            <div className="space-y-1">
+              <p className="font-display text-[15px] font-semibold">{FOLDER_LABELS[folder]}</p>
+              <p className="text-[13px] text-muted-foreground">
+                Select a conversation, or press <span className="kbd">c</span> to write one.
+              </p>
+            </div>
+          )}
         </div>
       )}
     </MailShell>
-  );
-}
-
-function NoMailboxes({ mayAdd }: { mayAdd: boolean }) {
-  return (
-    <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-background p-10 text-center">
-      <Inbox className="size-8 text-muted-foreground/50" />
-      <div>
-        <h1 className="text-[15px] font-semibold">
-          {mayAdd ? "No mailboxes yet" : "No mail to read yet"}
-        </h1>
-        <p className="mx-auto mt-1.5 max-w-sm text-[12.5px] text-muted-foreground">
-          {mayAdd
-            ? "Add an address for each verified SES domain. There is no limit, and they all route through one Cloudflare worker."
-            : "You are signed in, but no mailbox has been shared with you. Ask an administrator to give you one, and it will appear here."}
-        </p>
-      </div>
-      {mayAdd && (
-        <Button variant="solid" size="sm" pill asChild>
-          <Link href="/settings/mailboxes">Add a mailbox</Link>
-        </Button>
-      )}
-    </div>
   );
 }

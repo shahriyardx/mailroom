@@ -87,6 +87,8 @@ interface Props {
   openSubject?: string;
   /** True when a conversation is open, which takes over the screen on mobile. */
   threadOpen?: boolean;
+  /** Whether to offer the first address. A 404 for anyone who may not add one. */
+  canAddMailbox?: boolean;
 }
 
 export function MailShell({
@@ -101,6 +103,7 @@ export function MailShell({
   children,
   openSubject,
   threadOpen = false,
+  canAddMailbox = false,
 }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -204,6 +207,7 @@ export function MailShell({
       counts={counts}
       domains={domains}
       mailboxes={mailboxes}
+      canAddMailbox={canAddMailbox}
       labels={labels}
       user={user}
       composer={composer}
@@ -339,6 +343,7 @@ function NavPanel({
   counts,
   domains,
   mailboxes,
+  canAddMailbox,
   labels,
   user,
   composer,
@@ -353,6 +358,7 @@ function NavPanel({
   counts: Counts;
   domains: [string, Mailbox[]][];
   mailboxes: Mailbox[];
+  canAddMailbox: boolean;
   labels: LabelRow[];
   user: { name: string; email: string };
   composer: ReturnType<typeof useComposer>;
@@ -430,9 +436,11 @@ function NavPanel({
           {mailboxes.length === 0 && (
             <li className="px-2 py-1.5 text-[12.5px] text-muted-foreground">
               None yet.{" "}
-              <Link href="/settings/mailboxes" className="text-primary hover:underline">
-                Add one
-              </Link>
+              {canAddMailbox && (
+                <Link href="/settings/mailboxes" className="text-primary hover:underline">
+                  Add one
+                </Link>
+              )}
             </li>
           )}
         </ul>
