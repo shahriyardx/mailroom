@@ -1,5 +1,5 @@
 {
-  "name": "mail-inbound-worker",
+  "name": "mailroom-worker",
   "private": true,
   "type": "module",
   "scripts": {

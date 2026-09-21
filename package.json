@@ -1,8 +1,31 @@
 {
-  "name": "mail",
-  "version": "0.1.0",
+  "name": "mailroom",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
+  "description": "Self-hosted email for a company: send through SES, receive through Cloudflare, read it in a browser.",
+  "keywords": [
+    "email",
+    "self-hosted",
+    "ses",
+    "smtp",
+    "mailbox",
+    "transactional-email",
+    "cloudflare-email-routing"
+  ],
+  "homepage": "https://mailroom-docs.shahriyar.dev",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shahriyardx/mailroom.git"
+  },
+  "bugs": {
+    "url": "https://github.com/shahriyardx/mailroom/issues"
+  },
+  "license": "PolyForm-Noncommercial-1.0.0",
+  "author": "Md Shahriyar Alam <mdshahriyaralam552@gmail.com>",
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev --turbopack",
     "build": "node scripts/bundle-worker.mjs && next build",
@@ -15,9 +38,9 @@
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
     "auth:generate": "better-auth generate --config src/lib/auth.ts",
-    "worker:dev": "pnpm --filter mail-inbound-worker run dev",
-    "worker:deploy": "pnpm --filter mail-inbound-worker run deploy",
-    "worker:tail": "pnpm --filter mail-inbound-worker run tail",
+    "worker:dev": "pnpm --filter mailroom-worker run dev",
+    "worker:deploy": "pnpm --filter mailroom-worker run deploy",
+    "worker:tail": "pnpm --filter mailroom-worker run tail",
     "ses:status": "node scripts/ses-status.mjs",
     "ses:setup": "node scripts/ses-setup-events.mjs",
     "reset-owner": "node scripts/reset-owner.mjs",

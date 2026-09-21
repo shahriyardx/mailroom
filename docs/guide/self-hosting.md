@@ -3,6 +3,17 @@
 Start to finish. Deploy **before** the SES and Cloudflare steps: both have to
 reach a real URL, so nothing past step 3 works against `localhost`.
 
+## Before you start: the licence
+
+Mailroom is under [PolyForm Noncommercial 1.0.0](https://github.com/shahriyardx/mailroom/blob/main/LICENSE).
+Personal projects, research, teaching and charitable work are free.
+
+**Running it for a business is not**, including a company hosting its own
+mail on it. That needs a commercial licence — write to
+<mdshahriyaralam552@gmail.com>.
+
+The Node SDK is MIT, so your application can use it whatever you are doing.
+
 ## 0. The image
 
 Published to GitHub's registry on every release, for `amd64` and `arm64`:

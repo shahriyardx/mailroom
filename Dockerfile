@@ -15,7 +15,7 @@ COPY docs/package.json ./docs/
 # Only the app and the worker are installed. The build bundles the worker, so
 # its dependencies are needed; the docs site and the SDK are built and
 # published separately and would add VitePress and wrangler for nothing.
-RUN pnpm install --frozen-lockfile --filter mail --filter mail-inbound-worker
+RUN pnpm install --frozen-lockfile --filter mailroom --filter mailroom-worker
 
 # ---- build -----------------------------------------------------------------
 FROM node:22-alpine AS builder
@@ -48,6 +48,15 @@ RUN pnpm run build
 # ---- runtime ---------------------------------------------------------------
 FROM node:22-alpine AS runner
 WORKDIR /app
+
+# What the package page shows, and what links the image back to its source.
+LABEL org.opencontainers.image.title="Mailroom" \
+      org.opencontainers.image.description="Self-hosted email for a company: send through SES, receive through Cloudflare, read it in a browser." \
+      org.opencontainers.image.url="https://mailroom-docs.shahriyar.dev" \
+      org.opencontainers.image.documentation="https://mailroom-docs.shahriyar.dev" \
+      org.opencontainers.image.source="https://github.com/shahriyardx/mailroom" \
+      org.opencontainers.image.licenses="PolyForm-Noncommercial-1.0.0" \
+      org.opencontainers.image.vendor="Md Shahriyar Alam"
 
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1

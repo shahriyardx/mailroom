@@ -292,4 +292,11 @@ Routing and R2 · Biome
 
 ## Licence
 
-MIT
+[PolyForm Noncommercial 1.0.0](LICENSE). Free for personal projects,
+research, teaching, and charitable work — install it, change it, share it.
+
+Any use by or for a business needs a commercial licence, including running
+it as a company's own mail. Write to <mdshahriyaralam552@gmail.com>.
+
+The Node SDK in [`packages/sdk`](packages/sdk) stays MIT, so it can be
+embedded in anything.
