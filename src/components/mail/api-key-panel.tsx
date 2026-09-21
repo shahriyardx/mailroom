@@ -16,8 +16,6 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
   Field,
-  Fieldset,
-  FieldsetActions,
   IconButton,
   Input,
   List,
@@ -60,6 +58,7 @@ import {
   KeyRound,
   MoreHorizontal,
   Pencil,
+  Plus,
   Trash2,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -111,6 +110,7 @@ function reachOf(entry: ApiKey): Reach | null {
 }
 
 export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
+  const [creating, setCreating] = useState(false);
   const router = useRouter();
   const [pending, start] = useTransition();
   const [sending, submit] = useSubmit();
@@ -143,6 +143,12 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
       title="Your keys"
       description="Send and read mail from your own code. A key holds a list of things it may do, and can be locked to one mailbox."
       meta={`${active} active`}
+      action={
+        <Button variant="solid" size="sm" pill onClick={() => setCreating(true)}>
+          <Plus />
+          New key
+        </Button>
+      }
     >
       {fresh && <FreshKey token={fresh} />}
 
@@ -150,7 +156,7 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
         <BlankSlate
           icon={<KeyRound />}
           title="No keys yet"
-          hint="Make one below to reach this mailbox from a script, a server, or an agent."
+          hint="Make one to reach this mailbox from a script, a server, or an agent."
         />
       ) : (
         <>
@@ -265,78 +271,104 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
         }}
       />
 
-      <Fieldset title="Create a key">
-        <Field label="Name" htmlFor="key-name">
-          <Input
-            id="key-name"
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Billing service"
-          />
-        </Field>
+      {/* Making a key is a handful of decisions taken once. Laid out under the
+          list it doubled the length of the page for everybody who had already
+          made theirs. */}
+      <Dialog
+        open={creating}
+        onOpenChange={(open) => {
+          setCreating(open);
+          if (!open) setName("");
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Create a key</DialogTitle>
+          </DialogHeader>
 
-        <ReachPicker
-          className="mt-4"
-          mailboxes={mailboxes}
-          domains={domains}
-          reach={reach}
-          onChange={setReach}
-        />
+          <div className="max-h-[60vh] overflow-y-auto px-1">
+            <Field label="Name" htmlFor="key-name">
+              <Input
+                id="key-name"
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Billing service"
+              />
+            </Field>
 
-        <ScopePicker
-          preset={preset}
-          chosen={chosen}
-          onPreset={applyPreset}
-          onChange={(scopes) => {
-            setPreset(CUSTOM);
-            setChosen(scopes);
-          }}
-        />
+            <ReachPicker
+              className="mt-4"
+              mailboxes={mailboxes}
+              domains={domains}
+              reach={reach}
+              onChange={setReach}
+            />
 
-        <div className="mt-4 flex items-start gap-3 rounded-xl border border-border p-3">
-          <Switch id="key-test" checked={testKey} onCheckedChange={setTestKey} />
-          <label htmlFor="key-test" className="min-w-0 flex-1 cursor-pointer">
-            <span className="block text-[13px] font-medium">Test key</span>
-            <span className="block text-[12px] text-muted-foreground">
-              Runs every check and every webhook, and stops before SES. Nothing leaves the building,
-              nothing costs anything, and nothing counts towards your sending quota. A recipient of{" "}
-              <code className="font-mono">bounce@…</code> or{" "}
-              <code className="font-mono">complaint@…</code> is made to look like one.
-            </span>
-          </label>
-        </div>
+            <ScopePicker
+              preset={preset}
+              chosen={chosen}
+              onPreset={applyPreset}
+              onChange={(scopes) => {
+                setPreset(CUSTOM);
+                setChosen(scopes);
+              }}
+            />
 
-        <FieldsetActions note="The key is shown once. Store it somewhere safe.">
-          <Button
-            variant="solid"
-            pill
-            loading={sending}
-            disabled={
-              !name.trim() || chosen.length === 0 || sending || (reach !== null && isEmpty(reach))
-            }
-            onClick={() =>
-              submit(async () => {
-                try {
-                  const result = await createApiKeyAction(
-                    name.trim(),
-                    reach ?? undefined,
-                    chosen,
-                    null,
-                    testKey ? "test" : "live",
-                  );
-                  setFresh(result.token);
-                  setName("");
-                  router.refresh();
-                } catch (error) {
-                  toast.error(error instanceof Error ? error.message : "Could not make the key");
-                }
-              })
-            }
-          >
-            Create key
-          </Button>
-        </FieldsetActions>
-      </Fieldset>
+            <div className="mt-4 flex items-start gap-3 rounded-xl border border-border p-3">
+              <Switch id="key-test" checked={testKey} onCheckedChange={setTestKey} />
+              <label htmlFor="key-test" className="min-w-0 flex-1 cursor-pointer">
+                <span className="block text-[13px] font-medium">Test key</span>
+                <span className="block text-[12px] text-muted-foreground">
+                  Runs every check and every webhook, and stops before SES. Nothing leaves the
+                  building, nothing costs anything, and nothing counts towards your sending quota. A
+                  recipient of <code className="font-mono">bounce@…</code> or{" "}
+                  <code className="font-mono">complaint@…</code> is made to look like one.
+                </span>
+              </label>
+            </div>
+          </div>
+
+          <DialogFooter>
+            <Note className="mr-auto max-w-xs text-left">
+              The key is shown once. Store it somewhere safe.
+            </Note>
+            <Button variant="ghost" pill onClick={() => setCreating(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="solid"
+              pill
+              loading={sending}
+              disabled={
+                !name.trim() || chosen.length === 0 || sending || (reach !== null && isEmpty(reach))
+              }
+              onClick={() =>
+                submit(async () => {
+                  try {
+                    const result = await createApiKeyAction(
+                      name.trim(),
+                      reach ?? undefined,
+                      chosen,
+                      null,
+                      testKey ? "test" : "live",
+                    );
+                    setFresh(result.token);
+                    setName("");
+                    // The token itself is shown on the panel behind this, and
+                    // it is the one thing that is never shown again.
+                    setCreating(false);
+                    router.refresh();
+                  } catch (error) {
+                    toast.error(error instanceof Error ? error.message : "Could not make the key");
+                  }
+                })
+              }
+            >
+              Create key
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <EditKeyDialog
         entry={editing}
