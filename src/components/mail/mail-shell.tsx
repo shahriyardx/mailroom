@@ -15,9 +15,6 @@ import {
   Sheet,
   SheetContent,
   SheetTitle,
-  Tabs,
-  TabsList,
-  TabsTrigger,
   Wordmark,
 } from "@/components/kit";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
@@ -29,7 +26,6 @@ import {
   type ViewFolder,
   scopeHref,
   scopeKey,
-  supportsUnreadFilter,
 } from "@/lib/scope";
 import { cn, colorOf } from "@/lib/utils";
 import {
@@ -177,7 +173,6 @@ export function MailShell({
   useEffect(() => setNavOpen(false), [pathname, params]);
 
   const activeKey = scopeKey(scope);
-  const unreadOnly = params.get("unread") === "1";
   const searchValue = params.get("q") ?? "";
   const activeLabel = params.get("label");
 
@@ -267,29 +262,10 @@ export function MailShell({
                 threadOpen ? "hidden" : "flex",
               )}
             >
-              {/* Filters sit over the list, never over the whole app. */}
-              {supportsUnreadFilter(folder) && (
-                <div className="hidden shrink-0 items-center gap-2 px-4 py-3 md:flex">
-                  <Tabs
-                    value={unreadOnly ? "unread" : "all"}
-                    onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
-                    className="min-w-0"
-                  >
-                    <TabsList
-                      variant="segmented"
-                      className="h-9 gap-1 rounded-xl border border-border bg-muted/70 p-1"
-                    >
-                      <TabsTrigger value="all" className="h-7 rounded-lg px-3">
-                        All
-                      </TabsTrigger>
-                      <TabsTrigger value="unread" className="h-7 rounded-lg px-3">
-                        Unread
-                      </TabsTrigger>
-                    </TabsList>
-                  </Tabs>
-                </div>
-              )}
-
+              {/* The list starts here. An All/Unread switch sat above it, and
+                  All is the answer almost every time — a row of chrome to say
+                  so cost a message on every screen it was on. Unread is still
+                  a URL: ?unread=1. */}
               <div className="min-h-0 flex-1 overflow-hidden">{list}</div>
             </section>
 
