@@ -30,6 +30,7 @@ import {
   Textarea,
 } from "@/components/kit";
 import type { Domain, Label as LabelRow, Mailbox } from "@/db/schema";
+import { cn } from "@/lib/utils";
 import {
   createLabelAction,
   createMailboxAction,
@@ -39,9 +40,9 @@ import {
   deleteRuleAction,
   updateMailboxAction,
 } from "@/server/actions";
-import { MoreHorizontal, PenLine, Plus, Star, Trash2, X } from "lucide-react";
+import { ChevronDown, MoreHorizontal, PenLine, Plus, Star, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 export function MailboxPanel({
@@ -64,6 +65,26 @@ export function MailboxPanel({
   const router = useRouter();
   const [pending, start] = useTransition();
   const [local, setLocal] = useState("");
+  // One group per domain. A company with six domains and thirty addresses
+  // reads as thirty rows otherwise.
+  const grouped = useMemo(() => {
+    const byDomain = new Map<string, Mailbox[]>();
+    for (const box of mailboxes) {
+      byDomain.set(box.domain, [...(byDomain.get(box.domain) ?? []), box]);
+    }
+    return [...byDomain.entries()]
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([name, boxes]) => ({
+        name,
+        boxes: boxes.sort((a, b) => a.address.localeCompare(b.address)),
+        ready: domains.some(
+          (item) => item.name === name && item.sendingEnabled && item.status === "verified",
+        ),
+      }));
+  }, [mailboxes, domains]);
+
+  const [collapsed, setCollapsed] = useState<string[]>([]);
+
   const addable = creatable ?? domains;
   const sendable = addable.filter((item) => item.sendingEnabled && item.status === "verified");
   const [domain, setDomain] = useState(sendable[0]?.name ?? addable[0]?.name ?? "");
@@ -113,21 +134,49 @@ export function MailboxPanel({
       description="One row per address you send from or receive at. There is no limit."
       meta={`${mailboxes.length} active`}
     >
-      <List>
-        {mailboxes.map((box) => (
-          <MailboxRow
-            key={box.id}
-            mailbox={box}
-            administers={administers ?? true}
-            canManage={manageable ? manageable.includes(box.id) : true}
-            domainReady={domains.some(
-              (item) =>
-                item.name === box.domain && item.sendingEnabled && item.status === "verified",
+      {grouped.map(({ name, boxes, ready }) => {
+        const shut = collapsed.includes(name);
+        return (
+          <div key={name} className="border-border border-b last:border-b-0">
+            <button
+              type="button"
+              onClick={() =>
+                setCollapsed((current) =>
+                  shut ? current.filter((entry) => entry !== name) : [...current, name],
+                )
+              }
+              className="flex w-full items-center gap-2.5 py-3 text-left"
+            >
+              <ChevronDown
+                className={cn(
+                  "size-4 shrink-0 text-muted-foreground transition-transform",
+                  shut && "-rotate-90",
+                )}
+              />
+              <span className="min-w-0 flex-1 truncate font-mono text-[13px]">{name}</span>
+              <span className="shrink-0 text-[12px] text-muted-foreground tabular-nums">
+                {boxes.length}
+              </span>
+              {!ready && <StatusPill state="pending">Domain pending</StatusPill>}
+            </button>
+
+            {!shut && (
+              <div className="divide-y divide-border border-border border-t pb-1">
+                {boxes.map((box) => (
+                  <MailboxRow
+                    key={box.id}
+                    mailbox={box}
+                    administers={administers ?? true}
+                    canManage={manageable ? manageable.includes(box.id) : true}
+                    domainReady={ready}
+                  />
+                ))}
+              </div>
             )}
-          />
-        ))}
-        {mailboxes.length === 0 && <ListEmpty>No mailboxes yet.</ListEmpty>}
-      </List>
+          </div>
+        );
+      })}
+      {mailboxes.length === 0 && <ListEmpty>No mailboxes yet.</ListEmpty>}
 
       {addable.length > 0 && (
         <Fieldset title="Add a mailbox">

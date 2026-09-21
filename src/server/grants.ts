@@ -168,11 +168,7 @@ export async function mailboxAdministration(access: Access) {
  * which makes for the odd position of creating something you cannot
  * configure. Administrators need no grant, so they get none.
  */
-export async function grantCreatorAccess(
-  orgId: string,
-  memberId: string,
-  mailboxId: string,
-) {
+export async function grantCreatorAccess(orgId: string, memberId: string, mailboxId: string) {
   await db
     .insert(accessGrant)
     .values({
