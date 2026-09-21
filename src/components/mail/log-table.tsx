@@ -14,8 +14,8 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/kit";
+import { DAY_RANGES, type Direction, type LogRow, SENDING_STATUSES } from "@/lib/log-view";
 import { cn } from "@/lib/utils";
-import { DAY_RANGES, type Direction, type LogRow, SENDING_STATUSES } from "@/server/logs";
 import { Inbox, Search, Send } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
