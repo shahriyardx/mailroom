@@ -4,7 +4,7 @@ layout: home
 hero:
   name: Mailroom
   text: Your own mail, on your own domain
-  tagline: Sends through Amazon SES, receives through a Cloudflare Email Worker, keeps everything in your Postgres. One person owns an instance.
+  tagline: Sends through Amazon SES, receives through a Cloudflare Email Worker, keeps everything in your Postgres. One company, one instance, as many people as you invite.
   actions:
     - theme: brand
       text: Get started
@@ -19,6 +19,8 @@ hero:
 features:
   - title: A real inbox, not just an outbox
     details: Threading, search, labels, filters, drafts, signatures and attachments, across unlimited mailboxes on any number of domains. New mail appears as it lands.
+  - title: People, roles and teams
+    details: Invite colleagues, give each an owner, admin or member role, and grant mailboxes one at a time or a team at a time. A member sees only what you give them.
   - title: Domains managed from the app
     details: Add a domain, copy its DNS records, watch it verify. A subdomain of a domain you already verified needs no records at all.
   - title: A complete API

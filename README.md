@@ -3,14 +3,18 @@
 Self-hosted email. Sends through **Amazon SES**, receives through a
 **Cloudflare Email Worker**, keeps everything in **Postgres**.
 
-One person owns an instance. The first GitHub account to sign in claims it,
-and nobody else can register after that.
+One company runs one instance. The first person to sign in becomes its
+owner; everyone else joins by invitation, with a role and their own view of
+the mailboxes they may reach. There is no public sign-up, so a stranger who
+finds the sign-in page cannot give themselves an inbox.
 
 ![built with Next.js, Postgres, SES and Cloudflare](https://img.shields.io/badge/stack-Next.js%2015%20%C2%B7%20Postgres%20%C2%B7%20SES%20%C2%B7%20Cloudflare-5a45d6)
 
 ## What you get
 
 - **Unlimited mailboxes** across any number of domains
+- **People and teams** — invite colleagues, give each a role, and grant
+  mailboxes one by one or a team at a time
 - **Scope switching** — read all mail, one domain, or one address, in any folder
 - Threading, search, labels, filters, drafts, signatures, attachments
 - **Live updates** — new mail appears as it lands, no refresh
@@ -18,7 +22,9 @@ and nobody else can register after that.
 - **Subdomains for free** — a subdomain of a verified domain needs no records at all
 - **Worker deployed from the app** — no `wrangler`, no separate deploy
 - **Delivery reporting** — delivered, bounced, complained, with automatic suppression
-- **An API** for sending from your own code
+- **A complete API** — 28 endpoints for sending, reading, filing and replying,
+  with scoped keys and signed webhooks
+- **A typed Node SDK**, `@shahriyardx/mailroom`
 
 ## Before you start
 
@@ -129,8 +135,12 @@ URL, so nothing below works against `localhost`.
 
 ## 4. Sign in
 
-Open your URL and sign in with GitHub. That first account becomes the owner
-and registration closes behind you.
+Open your URL and sign in with GitHub. That first account becomes the
+**owner**, and public sign-up closes behind you — everyone after that joins
+through an invitation you send them.
+
+Invited people set a **password** rather than needing a GitHub account of
+their own.
 
 ## 5. Add your sending domains
 
@@ -260,7 +270,8 @@ laptop, so deploy it somewhere to test inbound mail.
 
 ## Worth knowing
 
-- **One owner.** Later sign-ins are rejected, not queued for approval.
+- **No public sign-up.** An uninvited sign-in is rejected outright, not queued
+  for approval. Invitations are the only way in after the first account.
 - **Secrets are encrypted** before storage, keyed from `BETTER_AUTH_SECRET`.
 - **The inbound webhook is signed** — HMAC over timestamp and body, with a
   freshness window, so only your worker can post mail.

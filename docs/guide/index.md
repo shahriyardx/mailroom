@@ -17,10 +17,14 @@ AWS and Cloudflare.
 
 ## Who it is for
 
-One person owns an instance. The first GitHub account to sign in claims it,
-and registration closes behind them. Teams are supported inside that
-instance — you invite people, and each gets their own view of the mailboxes
-they may reach.
+One company runs one instance, and as many people work in it as you invite.
+
+The first person to sign in becomes the **owner**. After that, public sign-up
+is closed: everyone else arrives through an invitation, picks up a role, and
+sees only the mailboxes they have been granted. Teams let you grant several
+people at once.
+
+A stranger who finds the sign-in page cannot give themselves an inbox.
 
 It suits you if you want:
 

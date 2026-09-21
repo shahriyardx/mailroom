@@ -97,8 +97,12 @@ On **Coolify**: point it at your fork, build pack **Dockerfile**, port
 
 ## 4. Sign in
 
-Open your URL and sign in with GitHub. That first account becomes the owner,
-and registration closes behind you.
+Open your URL and sign in with GitHub. That first account becomes the
+**owner**, and public sign-up closes behind you.
+
+Everyone after that joins through an invitation you send from
+**Settings → People**. Invited people set a **password**, so your colleagues
+do not each need a GitHub account to read their own mail.
 
 ## 5. Domains and delivery reporting
 

@@ -25,19 +25,40 @@ hand-create `noreply@` before a script can run.
 
 ## People
 
-**Settings → Team.** You invite people by email, and an invitation is sent
-from a mailbox you choose.
+**Settings → People.** You invite somebody by email, and the invitation is
+sent from a mailbox you choose.
 
-Each person gets a **role**, which decides what they can do:
+An invited person sets a **password** — your colleagues do not each need a
+GitHub account to read their own mail. Only the owner signs in with GitHub.
+
+### Roles
 
 | Role | Can |
 | --- | --- |
-| **Owner** | Everything, including billing-shaped settings and removing people |
-| **Admin** | Manage domains, mailboxes, keys, webhooks and people |
-| **Member** | Read and send from the mailboxes they are given |
+| **Owner** | Everything an admin can, **plus** sending domains, the inbound worker, and handing the instance to somebody else |
+| **Admin** | Mailboxes, people, teams, access, API keys, webhooks, labels, filters and the blocked list |
+| **Member** | Read and send from the mailboxes they have been given, and nothing else |
 
-Roles are about *what kind of thing* somebody can do. Which mail they can see
-is separate, and is decided by the mailboxes granted to them.
+The split follows who carries the consequences. Adding a domain changes what
+the company can send as and touches DNS, so it stays at owner level.
+Running the place day to day is an administrator's work.
+
+There can be more than one owner: an owner may promote somebody else to it.
+
+An owner's role can only be changed by another owner, and nobody can remove an
+owner from the list.
+
+### Access
+
+Roles say *what kind of thing* somebody may do. **Which mail they can see is
+separate**, and is decided under **Settings → Access**.
+
+Grant a mailbox to a person, or to a **team** so that several people get it at
+once. A team can have a **lead**, who may change that team's membership
+without being an admin of the whole instance.
+
+A member with no grants sees no mail at all. That is the intended starting
+point: access is given, not assumed.
 
 ## Scope switching
 

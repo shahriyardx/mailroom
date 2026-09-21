@@ -79,7 +79,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
           </h1>
           <p className="mt-3 max-w-[22rem] text-[13px] text-muted-foreground">
             {registrationOpen
-              ? "Nobody owns this instance yet. The first GitHub account to sign in claims it, and the door closes behind you."
+              ? "Nobody owns this instance yet. The first GitHub account to sign in becomes the owner, and public sign-up closes behind you — everyone after that joins by invitation."
               : "Sign in with the password you chose when you accepted your invitation, or with GitHub if that is the account you were invited on."}
           </p>
         </header>
