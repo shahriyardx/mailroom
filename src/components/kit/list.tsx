@@ -37,15 +37,12 @@ export function BlankSlate({
   icon,
   title,
   hint,
-  action,
   className,
   ...props
 }: React.ComponentProps<"div"> & {
   icon?: React.ReactNode;
   title: React.ReactNode;
   hint?: React.ReactNode;
-  /** The one thing to do from here. Inside the slate, not stranded below it. */
-  action?: React.ReactNode;
 }) {
   return (
     <div
@@ -63,7 +60,6 @@ export function BlankSlate({
       )}
       <p className="text-[13px] font-medium">{title}</p>
       {hint && <p className="max-w-xs text-[12.5px] text-muted-foreground">{hint}</p>}
-      {action && <div className="mt-2">{action}</div>}
     </div>
   );
 }
