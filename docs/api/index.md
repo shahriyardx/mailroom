@@ -134,3 +134,17 @@ See [Errors](/api/errors).
 
 The [Node SDK](/sdk/) wraps all of it, typed, with retries, pagination and
 webhook signature checking already done.
+
+## Using an AI assistant?
+
+These docs are published in the [llms.txt](https://llmstxt.org) format, so a
+coding assistant can read the whole API in one fetch rather than crawling
+pages.
+
+| | |
+| --- | --- |
+| [`/llms.txt`](https://mailroom-docs.shahriyar.dev/llms.txt) | An index: every page, with a line on what it covers |
+| [`/llms-full.txt`](https://mailroom-docs.shahriyar.dev/llms-full.txt) | Every page, concatenated. Around 26k tokens |
+
+Both are generated from the pages themselves at build time, so they cannot
+fall behind what is written here.
