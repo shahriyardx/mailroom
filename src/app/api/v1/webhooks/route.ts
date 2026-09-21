@@ -1,11 +1,16 @@
 import { db } from "@/db";
-import { mailbox, webhook } from "@/db/schema";
+import { webhook } from "@/db/schema";
 import { fail, ok, page, readBody } from "@/lib/api-http";
 import { newId } from "@/lib/utils";
-import { apiRoute, callerMailboxIds } from "@/server/api-auth";
+import { apiRoute, mayWatchMailbox, reachableWebhookIds } from "@/server/api-auth";
 import { serializeWebhook } from "@/server/api-serialize";
-import { WEBHOOK_EVENTS, isWebhookEvent, makeWebhookSecret } from "@/server/webhooks";
-import { and, desc, eq } from "drizzle-orm";
+import {
+  WEBHOOK_EVENTS,
+  checkWebhookUrl,
+  isWebhookEvent,
+  makeWebhookSecret,
+} from "@/server/webhooks";
+import { and, desc, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -13,10 +18,17 @@ export const dynamic = "force-dynamic";
 
 /** GET /api/v1/webhooks — the endpoints events are sent to, and their health. */
 export const GET = apiRoute("webhooks:read", async ({ caller }) => {
+  const visible = await reachableWebhookIds(caller);
+  if (visible !== null && visible.length === 0) return page([], null);
+
   const rows = await db
     .select()
     .from(webhook)
-    .where(eq(webhook.organizationId, caller.orgId))
+    .where(
+      visible === null
+        ? eq(webhook.organizationId, caller.orgId)
+        : and(eq(webhook.organizationId, caller.orgId), inArray(webhook.id, visible)),
+    )
     .orderBy(desc(webhook.createdAt));
   return page(
     rows.map((row) => serializeWebhook(row)),
@@ -44,10 +56,8 @@ const createSchema = z.object({
 export const POST = apiRoute("webhooks:write", async ({ caller, request }) => {
   const input = await readBody(request, createSchema);
 
-  const target = new URL(input.url);
-  if (target.protocol !== "https:" && target.hostname !== "localhost") {
-    return fail("invalid_request", "A webhook URL must be https");
-  }
+  const target = checkWebhookUrl(input.url);
+  if (!target.ok) return fail("invalid_request", target.reason);
 
   const events = input.events ?? ["*"];
   const unknown = events.filter((event) => event !== "*" && !isWebhookEvent(event));
@@ -58,22 +68,19 @@ export const POST = apiRoute("webhooks:write", async ({ caller, request }) => {
     );
   }
 
-  if (input.mailbox_id) {
-    const reachable = await callerMailboxIds(caller);
-    if (!reachable.includes(input.mailbox_id)) {
-      return fail("not_found", "No such mailbox");
-    }
-    const owns = await db.query.mailbox.findFirst({
-      where: and(eq(mailbox.id, input.mailbox_id), eq(mailbox.organizationId, caller.orgId)),
-    });
-    if (!owns) return fail("not_found", "No such mailbox");
+  // A webhook with no mailbox hears about every address. A key that reaches
+  // only part of the account must not be able to make one, or it would be a
+  // way to receive mail the key cannot read.
+  const watching = await mayWatchMailbox(caller, input.mailbox_id);
+  if (!watching.ok) {
+    return fail(watching.reason === "No such mailbox" ? "not_found" : "forbidden", watching.reason);
   }
 
   const id = newId("whk");
   await db.insert(webhook).values({
     id,
     organizationId: caller.orgId,
-    url: input.url,
+    url: target.url.toString(),
     description: input.description ?? null,
     events,
     secret: makeWebhookSecret(),

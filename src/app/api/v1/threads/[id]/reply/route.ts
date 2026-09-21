@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { mailbox, message, thread } from "@/db/schema";
 import { fail, ok, readBody } from "@/lib/api-http";
-import { parseAddress, quoteForReply, replySubject } from "@/lib/mail";
+import { parseAddress, quoteForReply, replySubject, textToHtml } from "@/lib/mail";
 import { apiRoute, callerMailboxIds } from "@/server/api-auth";
 import { sendOne, toList } from "@/server/api-send";
 import { SendError } from "@/server/send";
@@ -99,7 +99,13 @@ export const POST = apiRoute<{ id: string }>("mail:write", async ({ caller, para
         })
       : "";
 
-  const html = input.html?.trim() ? `${input.html}${quote}` : undefined;
+  // A text-only reply still gets the quote: dropping it because nobody sent
+  // HTML would silently answer without saying what was being answered.
+  const html = input.html?.trim()
+    ? `${input.html}${quote}`
+    : quote && input.text?.trim()
+      ? `${textToHtml(input.text)}${quote}`
+      : undefined;
 
   try {
     const result = await sendOne(caller, {

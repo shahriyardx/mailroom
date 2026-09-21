@@ -26,8 +26,13 @@ export const POST = apiRoute<{ id: string }>("domains:write", async ({ caller, p
         eq(domain.name, params.id.toLowerCase().trim()),
         eq(domain.organizationId, caller.orgId),
       ),
-    }));
+    })) ??
+    null;
 
+  // A key that reaches some domains may re-check those, and no others.
+  if (row && !caller.reach.unrestricted && !caller.reach.domainIds.includes(row.id)) {
+    return fail("not_found", "No such domain");
+  }
   if (!row) return fail("not_found", "No such domain");
 
   try {

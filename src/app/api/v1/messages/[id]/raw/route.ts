@@ -27,9 +27,16 @@ export const GET = apiRoute<{ id: string }>("mail:read", async ({ caller, params
     return fail("not_found", "The original of this message was not kept");
   }
 
-  const object = await getObject(row.rawKey);
-  const bytes = await object.Body?.transformToByteArray();
-  if (!bytes) return fail("not_found", "The original of this message could not be read");
+  // The row can outlive the object: a bucket lifecycle rule, or a restore
+  // that did not bring the attachments back.
+  let bytes: Uint8Array | undefined;
+  try {
+    const object = await getObject(row.rawKey);
+    bytes = await object.Body?.transformToByteArray();
+  } catch {
+    bytes = undefined;
+  }
+  if (!bytes) return fail("not_found", "The original of this message is no longer stored");
 
   return new Response(Buffer.from(bytes), {
     headers: {

@@ -1,5 +1,5 @@
 import { fail, ok } from "@/lib/api-http";
-import { apiRoute } from "@/server/api-auth";
+import { apiRoute, reachableWebhookIds } from "@/server/api-auth";
 import { pingWebhook } from "@/server/webhooks";
 
 export const runtime = "nodejs";
@@ -13,6 +13,11 @@ export const dynamic = "force-dynamic";
  * checking the signature correctly.
  */
 export const POST = apiRoute<{ id: string }>("webhooks:write", async ({ caller, params }) => {
+  const visible = await reachableWebhookIds(caller);
+  if (visible !== null && !visible.includes(params.id)) {
+    return fail("not_found", "No such webhook");
+  }
+
   const result = await pingWebhook(caller.orgId, params.id);
   if (!result) return fail("not_found", "No such webhook");
 

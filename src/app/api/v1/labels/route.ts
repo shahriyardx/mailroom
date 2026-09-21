@@ -41,11 +41,20 @@ export const POST = apiRoute("labels:write", async ({ caller, request }) => {
       name,
       color: input.color ?? "#64748b",
     });
-  } catch {
-    // The only constraint here is one name per company.
-    return fail("conflict", `A label called "${name}" already exists`);
+  } catch (error) {
+    // 23505 is a unique violation: one name per company. Anything else is
+    // ours to own, not the caller's to be told they repeated themselves.
+    if (isUniqueViolation(error)) {
+      return fail("conflict", `A label called "${name}" already exists`);
+    }
+    throw error;
   }
 
   const [row] = await db.select().from(label).where(eq(label.id, id));
   return ok(serializeLabel(row!), 201);
 });
+
+/** Postgres reports a broken unique index as SQLSTATE 23505. */
+function isUniqueViolation(error: unknown) {
+  return typeof error === "object" && error !== null && "code" in error && error.code === "23505";
+}

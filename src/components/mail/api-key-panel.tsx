@@ -368,7 +368,6 @@ function ReachPicker({
       name: entry.name,
       mailboxes: mailboxes.filter((box) => box.domainId === entry.id),
     }))
-    .filter((group) => group.mailboxes.length > 0 || true)
     .sort((a, b) => a.name.localeCompare(b.name));
 
   const loose = mailboxes.filter((box) => !domains.some((entry) => entry.id === box.domainId));

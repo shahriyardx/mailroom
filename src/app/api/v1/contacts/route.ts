@@ -1,6 +1,6 @@
 import { db } from "@/db";
 import { contact } from "@/db/schema";
-import { limitOf, makeCursor, page, splitCursor } from "@/lib/api-http";
+import { fail, limitOf, makeCursor, page, splitCursor } from "@/lib/api-http";
 import { apiRoute } from "@/server/api-auth";
 import { serializeContact } from "@/server/api-serialize";
 import { and, asc, desc, eq, gt, ilike, lt, or } from "drizzle-orm";
@@ -15,6 +15,16 @@ export const dynamic = "force-dynamic";
  * Filters: `q` (matches address or name), `order` (`recent` or `frequent`).
  */
 export const GET = apiRoute("contacts:read", async ({ caller, url }) => {
+  // Contacts are kept per account, not per mailbox, so there is no honest way
+  // to narrow them. A key that reaches one department must not read every
+  // address the company has ever written to.
+  if (!caller.reach.unrestricted) {
+    return fail(
+      "forbidden",
+      "Contacts are kept for the whole account, so only a key that reaches all of it can read them",
+    );
+  }
+
   const limit = limitOf(url);
   const filters = [eq(contact.organizationId, caller.orgId)];
 

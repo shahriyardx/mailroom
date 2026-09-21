@@ -89,6 +89,33 @@ export const PATCH = apiRoute<{ id: string }>("mail:write", async ({ caller, par
   const row = await findThread(caller.orgId, mailboxIds, params.id);
   if (!row) return fail("not_found", "No such thread");
 
+  // Labels are resolved and checked before anything is written. Reporting an
+  // unknown label after the thread has already been moved would leave the
+  // caller with a 422 and a change they did not get told about.
+  const wanted = [...(input.add_labels ?? []), ...(input.remove_labels ?? [])];
+  let adding: string[] = [];
+  let removing: string[] = [];
+
+  if (wanted.length > 0) {
+    const owned = await db
+      .select({ id: label.id, name: label.name })
+      .from(label)
+      .where(eq(label.organizationId, caller.orgId));
+
+    // Labels may be named as well as identified, because an id is not
+    // something a script writer has to hand.
+    const resolve = (given: string) =>
+      owned.find((entry) => entry.id === given || entry.name === given)?.id ?? null;
+
+    const unknown = wanted.filter((given) => resolve(given) === null);
+    if (unknown.length > 0) {
+      return fail("invalid_request", `No such label: ${unknown.join(", ")}`);
+    }
+
+    adding = (input.add_labels ?? []).map(resolve).filter((id): id is string => id !== null);
+    removing = (input.remove_labels ?? []).map(resolve).filter((id): id is string => id !== null);
+  }
+
   if (input.folder) {
     // Drafts stay where they are: moving one into the archive would lose the
     // only place the composer looks for it.
@@ -110,39 +137,16 @@ export const PATCH = apiRoute<{ id: string }>("mail:write", async ({ caller, par
     await db.update(thread).set({ isStarred: input.is_starred }).where(eq(thread.id, row.id));
   }
 
-  const wanted = [...(input.add_labels ?? []), ...(input.remove_labels ?? [])];
-  if (wanted.length > 0) {
-    const owned = await db
-      .select({ id: label.id, name: label.name })
-      .from(label)
-      .where(eq(label.organizationId, caller.orgId));
-
-    // Labels may be named as well as identified, because an id is not
-    // something a script writer has to hand.
-    const resolve = (given: string) =>
-      owned.find((entry) => entry.id === given || entry.name === given)?.id ?? null;
-
-    const adding = (input.add_labels ?? []).map(resolve).filter((id): id is string => id !== null);
-    const removing = (input.remove_labels ?? [])
-      .map(resolve)
-      .filter((id): id is string => id !== null);
-
-    const unknown = wanted.filter((given) => resolve(given) === null);
-    if (unknown.length > 0) {
-      return fail("invalid_request", `No such label: ${unknown.join(", ")}`);
-    }
-
-    if (adding.length > 0) {
-      await db
-        .insert(threadLabel)
-        .values(adding.map((labelId) => ({ threadId: row.id, labelId })))
-        .onConflictDoNothing();
-    }
-    if (removing.length > 0) {
-      await db
-        .delete(threadLabel)
-        .where(and(eq(threadLabel.threadId, row.id), inArray(threadLabel.labelId, removing)));
-    }
+  if (adding.length > 0) {
+    await db
+      .insert(threadLabel)
+      .values(adding.map((labelId) => ({ threadId: row.id, labelId })))
+      .onConflictDoNothing();
+  }
+  if (removing.length > 0) {
+    await db
+      .delete(threadLabel)
+      .where(and(eq(threadLabel.threadId, row.id), inArray(threadLabel.labelId, removing)));
   }
 
   await recomputeThread(row.id);

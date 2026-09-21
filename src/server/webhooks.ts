@@ -5,11 +5,96 @@ import { db } from "@/db";
 import { webhook, webhookDelivery } from "@/db/schema";
 import { newId } from "@/lib/utils";
 import type { WebhookEvent } from "@/lib/webhook-events";
+
+/**
+ * A test sent from the settings screen. Not in WEBHOOK_EVENTS, because it is
+ * not something an endpoint subscribes to — and sending a test under a real
+ * event name would have a receiver record a delivery that never happened.
+ */
+export const TEST_EVENT = "webhook.test" as const;
+
+type EventName = WebhookEvent | typeof TEST_EVENT;
 import { and, eq, sql } from "drizzle-orm";
 
 // The event names live in lib so the settings screen can list them without
 // pulling this module, and the database, into the browser bundle.
 export { WEBHOOK_EVENTS, isWebhookEvent, type WebhookEvent } from "@/lib/webhook-events";
+
+/* -------------------------------------------------------------------------- */
+/* Where an endpoint is allowed to point                                      */
+/* -------------------------------------------------------------------------- */
+
+/** Hosts that only ever mean "something inside the network this runs on". */
+const METADATA_HOSTS = new Set([
+  "169.254.169.254",
+  "metadata.google.internal",
+  "metadata.goog",
+  "instance-data",
+]);
+
+function isPrivateHost(hostname: string) {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+
+  if (METADATA_HOSTS.has(host)) return true;
+  if (host === "localhost" || host.endsWith(".localhost")) return true;
+  if (host.endsWith(".internal") || host.endsWith(".local")) return true;
+
+  // IPv6 loopback and the unique-local and link-local ranges.
+  if (host === "::1" || host === "::") return true;
+  if (/^f[cd][0-9a-f]{2}:/.test(host)) return true;
+  if (/^fe[89ab][0-9a-f]:/.test(host)) return true;
+
+  const parts = host.split(".");
+  if (parts.length === 4 && parts.every((part) => /^\d{1,3}$/.test(part))) {
+    const [a, b] = parts.map(Number) as [number, number, number, number];
+    if (a === 127 || a === 0 || a === 10) return true;
+    if (a === 172 && b >= 16 && b <= 31) return true;
+    if (a === 192 && b === 168) return true;
+    if (a === 169 && b === 254) return true;
+    if (a >= 224) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Whether an endpoint may be pointed at this URL.
+ *
+ * A webhook is fetched by this server and the reply is stored where the key
+ * holder can read it, so an unchecked URL is a way to read whatever this
+ * container can reach — a database admin page, a cloud metadata service —
+ * from outside. Private and loopback addresses are refused; localhost is
+ * allowed off production, because a local receiver is how one is tried out.
+ *
+ * This is not airtight: a name that resolves to a private address passes.
+ * It stops the direct attempt, which is the one somebody actually makes.
+ */
+export function checkWebhookUrl(
+  raw: string,
+): { ok: true; url: URL } | { ok: false; reason: string } {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return { ok: false, reason: "That is not a URL" };
+  }
+
+  const local = url.hostname === "localhost" || url.hostname === "127.0.0.1";
+  const development = process.env.NODE_ENV !== "production";
+
+  if (url.protocol !== "https:" && !(local && development)) {
+    return { ok: false, reason: "A webhook URL must be https" };
+  }
+
+  if (isPrivateHost(url.hostname) && !(local && development)) {
+    return {
+      ok: false,
+      reason: "A webhook URL must point at a public address, not one inside the network",
+    };
+  }
+
+  return { ok: true, url };
+}
 
 export function makeWebhookSecret() {
   return `whsec_${randomBytes(24).toString("base64url")}`;
@@ -133,7 +218,7 @@ export async function dispatchWebhooks(
   }
 }
 
-function envelope(event: WebhookEvent, data: Record<string, unknown>, deliveryId: string) {
+function envelope(event: EventName, data: Record<string, unknown>, deliveryId: string) {
   return {
     id: deliveryId,
     object: "event",
@@ -143,7 +228,7 @@ function envelope(event: WebhookEvent, data: Record<string, unknown>, deliveryId
   };
 }
 
-async function deliverWithRetries(hook: Hook, event: WebhookEvent, data: Record<string, unknown>) {
+async function deliverWithRetries(hook: Hook, event: EventName, data: Record<string, unknown>) {
   const deliveryId = newId("whd");
   const body = JSON.stringify(envelope(event, data, deliveryId));
 
@@ -176,11 +261,7 @@ interface AttemptResult {
   durationMs: number;
 }
 
-async function attemptDelivery(
-  hook: Hook,
-  event: WebhookEvent,
-  body: string,
-): Promise<AttemptResult> {
+async function attemptDelivery(hook: Hook, event: EventName, body: string): Promise<AttemptResult> {
   const started = Date.now();
   const { header } = signPayload(hook.secret, body);
   const controller = new AbortController();
@@ -224,7 +305,7 @@ async function attemptDelivery(
 
 async function recordAttempt(
   hook: Hook,
-  event: WebhookEvent,
+  event: EventName,
   data: Record<string, unknown>,
   attempt: number,
   result: AttemptResult,
@@ -297,9 +378,9 @@ export async function replayDelivery(orgId: string, deliveryId: string) {
     .limit(1);
   if (!hook) return null;
 
-  const body = JSON.stringify(envelope(row.event as WebhookEvent, row.payload, newId("whd")));
-  const result = await attemptDelivery(hook, row.event as WebhookEvent, body);
-  await recordAttempt(hook, row.event as WebhookEvent, row.payload, row.attempt + 1, result);
+  const body = JSON.stringify(envelope(row.event as EventName, row.payload, newId("whd")));
+  const result = await attemptDelivery(hook, row.event as EventName, body);
+  await recordAttempt(hook, row.event as EventName, row.payload, row.attempt + 1, result);
   if (result.succeeded) await markHealthy(hook.id, result.statusCode ?? 200);
   return result;
 }
@@ -314,9 +395,9 @@ export async function pingWebhook(orgId: string, hookId: string) {
   if (!hook) return null;
 
   const data = { message: "This is a test event from Mailroom." };
-  const body = JSON.stringify(envelope("email.sent", data, newId("whd")));
-  const result = await attemptDelivery(hook, "email.sent", body);
-  await recordAttempt(hook, "email.sent", data, 1, result);
+  const body = JSON.stringify(envelope(TEST_EVENT, data, newId("whd")));
+  const result = await attemptDelivery(hook, TEST_EVENT, body);
+  await recordAttempt(hook, TEST_EVENT, data, 1, result);
   if (result.succeeded) await markHealthy(hook.id, result.statusCode ?? 200);
   return result;
 }

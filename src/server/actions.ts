@@ -41,7 +41,7 @@ import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./in
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
-import { makeWebhookSecret, pingWebhook } from "./webhooks";
+import { checkWebhookUrl, makeWebhookSecret, pingWebhook } from "./webhooks";
 
 async function assertOwnsThreads(orgId: string, threadIds: string[], allowed?: string[]) {
   if (threadIds.length === 0) return [];
@@ -874,15 +874,8 @@ export async function createWebhookAction(input: {
   const access = await requireAccess();
   assertCan(access, "apikey:manage");
 
-  let target: URL;
-  try {
-    target = new URL(input.url.trim());
-  } catch {
-    return { ok: false as const, error: "That is not a URL" };
-  }
-  if (target.protocol !== "https:" && target.hostname !== "localhost") {
-    return { ok: false as const, error: "A webhook URL must be https" };
-  }
+  const target = checkWebhookUrl(input.url);
+  if (!target.ok) return { ok: false as const, error: target.reason };
 
   const events = input.events.includes("*")
     ? ["*"]
@@ -903,7 +896,7 @@ export async function createWebhookAction(input: {
   await db.insert(webhook).values({
     id,
     organizationId: access.orgId,
-    url: target.toString(),
+    url: target.url.toString(),
     description: input.description?.trim() || null,
     events,
     secret,
@@ -927,16 +920,8 @@ export async function updateWebhookAction(
   });
   if (!owns) return { ok: false as const, error: "Unknown webhook" };
 
-  if (patch.url) {
-    try {
-      const target = new URL(patch.url.trim());
-      if (target.protocol !== "https:" && target.hostname !== "localhost") {
-        return { ok: false as const, error: "A webhook URL must be https" };
-      }
-    } catch {
-      return { ok: false as const, error: "That is not a URL" };
-    }
-  }
+  const target = patch.url ? checkWebhookUrl(patch.url) : null;
+  if (target && !target.ok) return { ok: false as const, error: target.reason };
 
   const events = patch.events
     ? patch.events.includes("*")
@@ -948,7 +933,7 @@ export async function updateWebhookAction(
   await db
     .update(webhook)
     .set({
-      url: patch.url?.trim() || owns.url,
+      url: target?.ok ? target.url.toString() : owns.url,
       description: patch.description === undefined ? owns.description : patch.description,
       events,
       enabled: patch.enabled ?? owns.enabled,

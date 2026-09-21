@@ -1,25 +1,34 @@
 import { db } from "@/db";
 import { webhook } from "@/db/schema";
 import { boolOf, fail, ok, readBody } from "@/lib/api-http";
-import { apiRoute, callerMailboxIds } from "@/server/api-auth";
+import { type ApiCaller, apiRoute, mayWatchMailbox, reachableWebhookIds } from "@/server/api-auth";
 import { serializeWebhook } from "@/server/api-serialize";
-import { WEBHOOK_EVENTS, isWebhookEvent, makeWebhookSecret } from "@/server/webhooks";
+import {
+  WEBHOOK_EVENTS,
+  checkWebhookUrl,
+  isWebhookEvent,
+  makeWebhookSecret,
+} from "@/server/webhooks";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-async function findHook(orgId: string, id: string) {
+/** The webhook, if this key reaches the mail it hears about. */
+async function findHook(caller: ApiCaller, id: string) {
+  const visible = await reachableWebhookIds(caller);
+  if (visible !== null && !visible.includes(id)) return null;
+
   const row = await db.query.webhook.findFirst({
-    where: and(eq(webhook.id, id), eq(webhook.organizationId, orgId)),
+    where: and(eq(webhook.id, id), eq(webhook.organizationId, caller.orgId)),
   });
   return row ?? null;
 }
 
 /** GET /api/v1/webhooks/:id */
 export const GET = apiRoute<{ id: string }>("webhooks:read", async ({ caller, params }) => {
-  const row = await findHook(caller.orgId, params.id);
+  const row = await findHook(caller, params.id);
   if (!row) return fail("not_found", "No such webhook");
   return ok(serializeWebhook(row));
 });
@@ -46,15 +55,11 @@ export const PATCH = apiRoute<{ id: string }>(
   "webhooks:write",
   async ({ caller, params, request }) => {
     const input = await readBody(request, patchSchema);
-    const row = await findHook(caller.orgId, params.id);
+    const row = await findHook(caller, params.id);
     if (!row) return fail("not_found", "No such webhook");
 
-    if (input.url) {
-      const target = new URL(input.url);
-      if (target.protocol !== "https:" && target.hostname !== "localhost") {
-        return fail("invalid_request", "A webhook URL must be https");
-      }
-    }
+    const target = input.url ? checkWebhookUrl(input.url) : null;
+    if (target && !target.ok) return fail("invalid_request", target.reason);
 
     if (input.events) {
       const unknown = input.events.filter((event) => event !== "*" && !isWebhookEvent(event));
@@ -66,9 +71,16 @@ export const PATCH = apiRoute<{ id: string }>(
       }
     }
 
-    if (input.mailbox_id) {
-      const reachable = await callerMailboxIds(caller);
-      if (!reachable.includes(input.mailbox_id)) return fail("not_found", "No such mailbox");
+    // Clearing the mailbox would widen the webhook to the whole account,
+    // which a key reaching part of it must not be able to do.
+    if (input.mailbox_id !== undefined) {
+      const watching = await mayWatchMailbox(caller, input.mailbox_id);
+      if (!watching.ok) {
+        return fail(
+          watching.reason === "No such mailbox" ? "not_found" : "forbidden",
+          watching.reason,
+        );
+      }
     }
 
     const secret = input.rotate_secret ? makeWebhookSecret() : row.secret;
@@ -76,7 +88,7 @@ export const PATCH = apiRoute<{ id: string }>(
     await db
       .update(webhook)
       .set({
-        url: input.url ?? row.url,
+        url: target?.ok ? target.url.toString() : row.url,
         description: input.description === undefined ? row.description : input.description,
         events: input.events ?? row.events,
         enabled: input.enabled ?? row.enabled,
@@ -95,7 +107,7 @@ export const PATCH = apiRoute<{ id: string }>(
 export const DELETE = apiRoute<{ id: string }>(
   "webhooks:write",
   async ({ caller, params, url }) => {
-    const row = await findHook(caller.orgId, params.id);
+    const row = await findHook(caller, params.id);
     if (!row) return fail("not_found", "No such webhook");
 
     // Turning it off keeps the history, which is usually what somebody wants

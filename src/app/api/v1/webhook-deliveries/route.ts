@@ -1,9 +1,9 @@
 import { db } from "@/db";
 import { webhookDelivery } from "@/db/schema";
 import { boolOf, limitOf, makeCursor, page, splitCursor } from "@/lib/api-http";
-import { apiRoute } from "@/server/api-auth";
+import { apiRoute, reachableWebhookIds } from "@/server/api-auth";
 import { serializeDelivery } from "@/server/api-serialize";
-import { and, asc, desc, eq, gt, lt, or } from "drizzle-orm";
+import { and, asc, desc, eq, gt, inArray, lt, or } from "drizzle-orm";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -17,6 +17,14 @@ export const dynamic = "force-dynamic";
 export const GET = apiRoute("webhooks:read", async ({ caller, url }) => {
   const limit = limitOf(url);
   const filters = [eq(webhookDelivery.organizationId, caller.orgId)];
+
+  // A delivery carries the payload of the event it was sent for, so it is
+  // only readable through a webhook this key may see.
+  const visible = await reachableWebhookIds(caller);
+  if (visible !== null) {
+    if (visible.length === 0) return page([], null);
+    filters.push(inArray(webhookDelivery.webhookId, visible));
+  }
 
   const hookId = url.searchParams.get("webhook_id");
   if (hookId) filters.push(eq(webhookDelivery.webhookId, hookId));

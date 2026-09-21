@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { apiKey, mailbox } from "@/db/schema";
+import { apiKey, mailbox, webhook } from "@/db/schema";
 import { BodyError, fail, serverError } from "@/lib/api-http";
 import { bearerToken, hashApiKey } from "@/lib/api-key";
 import { type Scope, expandScopes, hasScope } from "@/lib/api-scopes";
@@ -179,8 +179,14 @@ export function apiRoute<P = Record<string, never>>(scope: Scope | null, handler
       }
       return response;
     } catch (error) {
-      if (error instanceof BodyError) return error.response;
-      return serverError(new URL(request.url).pathname, error);
+      const response =
+        error instanceof BodyError
+          ? error.response
+          : serverError(new URL(request.url).pathname, error);
+      for (const [name, value] of Object.entries(rateHeaders(rate))) {
+        response.headers.set(name, value);
+      }
+      return response;
     }
   };
 }
@@ -238,6 +244,57 @@ export async function scopedMailboxIds(caller: ApiCaller, url: URL): Promise<str
     .filter((row) => (wantedAddress ? row.address === wantedAddress.toLowerCase().trim() : true))
     .filter((row) => (wantedDomain ? row.domain === wantedDomain.toLowerCase().trim() : true))
     .map((row) => row.id);
+}
+
+/**
+ * The webhooks a key may see and change. Null means every one in the account.
+ *
+ * A webhook with no mailbox of its own hears about every address, so a key
+ * that reaches part of the account must not be able to make, read or change
+ * one — that would be a way to receive mail the key itself cannot read.
+ */
+export async function reachableWebhookIds(caller: ApiCaller): Promise<string[] | null> {
+  if (caller.reach.unrestricted) return null;
+
+  const allowed = new Set(await callerMailboxIds(caller));
+  const rows = await db
+    .select({ id: webhook.id, mailboxId: webhook.mailboxId })
+    .from(webhook)
+    .where(eq(webhook.organizationId, caller.orgId));
+
+  return rows
+    .filter((row) => row.mailboxId !== null && allowed.has(row.mailboxId))
+    .map((row) => row.id);
+}
+
+/**
+ * Whether a key may attach a webhook to this mailbox. A restricted key must
+ * name one, and it must be a mailbox the key already reaches.
+ */
+export async function mayWatchMailbox(caller: ApiCaller, mailboxId: string | null | undefined) {
+  // Ownership first, and for every caller: an unrestricted key reaches all of
+  // its own account, which is not the same as all of everybody's.
+  if (mailboxId) {
+    const owns = await db.query.mailbox.findFirst({
+      where: and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, caller.orgId)),
+      columns: { id: true },
+    });
+    if (!owns) return { ok: false as const, reason: "No such mailbox" };
+  }
+
+  if (caller.reach.unrestricted) return { ok: true as const };
+  if (!mailboxId) {
+    return {
+      ok: false as const,
+      reason:
+        "This API key reaches only part of the account, so a webhook on it must name a mailbox",
+    };
+  }
+  const allowed = await callerMailboxIds(caller);
+  if (!allowed.includes(mailboxId)) {
+    return { ok: false as const, reason: "No such mailbox" };
+  }
+  return { ok: true as const };
 }
 
 /** The domains a key may create new addresses on. Null means every one. */

@@ -10,10 +10,18 @@ import { z } from "zod";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/v1/domains — what this account can send from, and the DNS it needs. */
+/**
+ * GET /api/v1/domains — what this account can send from, and the DNS it needs.
+ *
+ * A key limited to some domains sees those. A domain name and its records are
+ * not secret, but they are not this key's business either.
+ */
 export const GET = apiRoute("domains:read", async ({ caller }) => {
   const rows = await listDomainsForUser(caller.orgId);
-  return page(rows.map(serializeDomain), null);
+  const visible = caller.reach.unrestricted
+    ? rows
+    : rows.filter((row) => caller.reach.domainIds.includes(row.id));
+  return page(visible.map(serializeDomain), null);
 });
 
 const createSchema = z.object({ name: z.string().min(3) });
@@ -27,6 +35,11 @@ const createSchema = z.object({ name: z.string().min(3) });
  */
 export const POST = apiRoute("domains:write", async ({ caller, request }) => {
   const input = await readBody(request, createSchema);
+
+  // Adding a domain changes the account, not one corner of it.
+  if (!caller.reach.unrestricted) {
+    return fail("forbidden", "Only a key that reaches the whole account can add a domain");
+  }
 
   try {
     const created = await addDomain(caller.orgId, input.name);
