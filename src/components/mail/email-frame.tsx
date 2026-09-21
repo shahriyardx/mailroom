@@ -2,13 +2,18 @@
 
 import { EMAIL_FRAME_STYLES, prepareEmailHtml } from "@/lib/sanitize-email";
 import { cn } from "@/lib/utils";
-import { ImageOff, MoreHorizontal } from "lucide-react";
+import { setImageChoiceAction } from "@/server/actions";
+import { Image as ImageIcon, ImageOff, MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface Props {
   html: string | null;
   text: string | null;
   inlineImages?: Record<string, string>;
+  /** Who sent it, so a choice about images can be remembered against them. */
+  sender?: string;
+  /** What this reader decided about that sender last time. */
+  imagesAllowed?: boolean;
 }
 
 /**
@@ -18,8 +23,8 @@ interface Props {
  * collapsed to a fixed guess. Scripts stay off, which is what actually matters:
  * no `allow-scripts` means nothing in the message can execute.
  */
-export function EmailFrame({ html, text, inlineImages }: Props) {
-  const [showImages, setShowImages] = useState(false);
+export function EmailFrame({ html, text, inlineImages, sender, imagesAllowed = false }: Props) {
+  const [showImages, setShowImages] = useState(imagesAllowed);
   const [showQuote, setShowQuote] = useState(false);
   const [dark, setDark] = useState(false);
 
@@ -40,6 +45,7 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
         quoted: null,
         quotedOwnsBackground: false,
         blockedImages: 0,
+        remoteImages: 0,
         ownsBackground: false,
       };
     }
@@ -55,6 +61,16 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
   const body = prepared.html ?? `<pre>${escapeHtml(text ?? "")}</pre>`;
   const themed = dark && !prepared.ownsBackground;
 
+  /**
+   * A choice made here is a choice about the sender, not about this one
+   * message. Saying it again on every message they send is the thing being
+   * fixed, so the answer is written down and read back next time.
+   */
+  function decide(allowed: boolean) {
+    setShowImages(allowed);
+    if (sender) void setImageChoiceAction(sender, allowed);
+  }
+
   return (
     <div>
       {/* Blocking remote images is the protection working, not a fault, so
@@ -68,10 +84,25 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
           </span>
           <button
             type="button"
-            onClick={() => setShowImages(true)}
+            onClick={() => decide(true)}
             className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
           >
-            Show images
+            {sender ? "Always show from this sender" : "Show images"}
+          </button>
+        </div>
+      )}
+
+      {/* The way back. Without it, one click trusts a sender for good. */}
+      {prepared.remoteImages > 0 && showImages && sender && (
+        <div className="mb-3 flex items-center gap-2 text-[11.5px] text-muted-foreground">
+          <ImageIcon className="size-3.5 shrink-0" />
+          <span>Images load from {sender}.</span>
+          <button
+            type="button"
+            onClick={() => decide(false)}
+            className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+          >
+            Stop loading them
           </button>
         </div>
       )}

@@ -7,6 +7,7 @@ import { label } from "@/db/schema";
 import { FOLDER_LABELS, parseRoute, scopeHref, supportsUnreadFilter } from "@/lib/scope";
 import { requireAccess } from "@/server/access";
 import { creatableDomainIds, readableMailboxIds } from "@/server/grants";
+import { imageChoices as imageChoicesFor } from "@/server/image-trust";
 import { listMailboxesFor } from "@/server/mailboxes";
 import { can } from "@/server/permissions";
 import { getThreadDetail, listThreads } from "@/server/threads";
@@ -62,6 +63,20 @@ export default async function MailPage({ params, searchParams }: PageProps) {
     query.t ? getThreadDetail(access.orgId, query.t, allowed) : Promise.resolve(null),
   ]);
 
+  /**
+   * What this reader has already said about the senders in this conversation.
+   * Asked for once here rather than per message, so opening a long thread is
+   * still one query.
+   */
+  const imageChoices = detail
+    ? Object.fromEntries(
+        await imageChoicesFor(
+          access,
+          detail.messages.map((item) => item.fromAddress),
+        ),
+      )
+    : {};
+
   const base = scopeHref(scope, folder);
   const listParams = new URLSearchParams();
   if (query.q) listParams.set("q", query.q);
@@ -97,7 +112,12 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       }
     >
       {detail ? (
-        <ThreadView thread={detail} backHref={backHref} labels={labels} />
+        <ThreadView
+          thread={detail}
+          backHref={backHref}
+          labels={labels}
+          imageChoices={imageChoices}
+        />
       ) : (
         <div className="flex h-full flex-col items-center justify-center gap-3 bg-card px-6 text-center">
           <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">

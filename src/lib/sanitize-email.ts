@@ -202,6 +202,15 @@ export function prepareEmailHtml(
     return url ? `${prefix}${url}` : match;
   });
 
+  /**
+   * Counted whether or not they are blocked: once a reader has let them
+   * through there is nothing left in the markup to say the message ever had
+   * any, and without that there is nothing to offer to hide again.
+   */
+  const remoteImages =
+    (output.match(/<img[^>]*\ssrc\s*=\s*["']https?:\/\//gi) ?? []).length +
+    (output.match(/\ssrcset\s*=\s*["'][^"']*https?:\/\//gi) ?? []).length;
+
   let blockedImages = 0;
   if (!options.showRemoteImages) {
     // Swap the real source for a transparent pixel so the browser shows our
@@ -277,6 +286,8 @@ export function prepareEmailHtml(
     quoted: quotedHtml,
     quotedOwnsBackground: quotedHtml ? declaresBackground(quotedHtml) : false,
     blockedImages,
+    /** How many the message carries, blocked or not. */
+    remoteImages,
     ownsBackground: written.some((part) => declaresBackground(part)),
   };
 }

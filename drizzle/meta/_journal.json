@@ -176,6 +176,13 @@
       "when": 1789976050306,
       "tag": "0024_message_provenance",
       "breakpoints": true
+    },
+    {
+      "idx": 25,
+      "version": "7",
+      "when": 1789976110306,
+      "tag": "0025_image_trust",
+      "breakpoints": true
     }
   ]
 }

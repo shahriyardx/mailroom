@@ -30,6 +30,7 @@ import {
   grantCreatorAccess,
   readableMailboxIds,
 } from "@/server/grants";
+import { rememberImageChoice } from "@/server/image-trust";
 import { assertCan, can } from "@/server/permissions";
 import type { EventType } from "@aws-sdk/client-sesv2";
 import { and, eq, inArray, sql } from "drizzle-orm";
@@ -284,6 +285,17 @@ export async function setStarAction(threadIds: string[], isStarred: boolean) {
   await db.update(message).set({ isStarred }).where(inArray(message.threadId, owned));
   await db.update(thread).set({ isStarred }).where(inArray(thread.id, owned));
   revalidatePath("/mail", "layout");
+}
+
+/**
+ * Remembers whether this reader lets a sender's remote images load.
+ *
+ * No revalidation: the frame already has the images on screen by the time
+ * this returns, and the answer only matters for the next message.
+ */
+export async function setImageChoiceAction(sender: string, allowed: boolean) {
+  const access = await requireAccess();
+  await rememberImageChoice(access, sender, allowed);
 }
 
 /** Trash first, permanent delete only from trash. */

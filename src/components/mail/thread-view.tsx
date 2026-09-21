@@ -59,9 +59,11 @@ interface Props {
   backHref: string;
   /** Every label the user has, so one can be put on this conversation. */
   labels: LabelRow[];
+  /** Senders this reader has already decided about, for remote images. */
+  imageChoices?: Record<string, boolean>;
 }
 
-export function ThreadView({ thread, backHref, labels }: Props) {
+export function ThreadView({ thread, backHref, labels, imageChoices = {} }: Props) {
   const router = useRouter();
   const composer = useComposer();
   const [, startTransition] = useTransition();
@@ -305,6 +307,8 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                           </p>
                         )}
                         <EmailFrame
+                          sender={item.fromAddress}
+                          imagesAllowed={imageChoices[item.fromAddress.toLowerCase()] ?? false}
                           html={item.htmlBody}
                           text={item.textBody}
                           inlineImages={Object.fromEntries(

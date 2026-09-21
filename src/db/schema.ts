@@ -697,6 +697,33 @@ export const apiKey = pgTable(
   ],
 );
 
+/**
+ * Whether one reader lets one sender's remote images load.
+ *
+ * Per person rather than per company: fetching a remote image tells the sender
+ * that somebody opened the message, and which somebody is not a colleague's to
+ * decide. A row exists only once a choice has been made — no row means the
+ * default, which is that images stay blocked.
+ */
+export const imageTrust = pgTable(
+  "image_trust",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    /** The From address, lowercased. */
+    sender: text("sender").notNull(),
+    allowed: boolean("allowed").notNull().default(true),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("image_trust_user_sender_idx").on(t.userId, t.sender)],
+);
+
 /** Rules applied to inbound mail, highest priority first. */
 export const filterRule = pgTable("filter_rule", {
   id: text("id").primaryKey(),
