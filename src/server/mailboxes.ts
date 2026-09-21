@@ -41,7 +41,7 @@ export async function resolveScope(orgId: string, scope: Scope, allowed?: string
   return visible.filter((box) => box.id === scope.mailboxId).map((box) => box.id);
 }
 
-/** The mailboxes a person may see, for the sidebar and the composer. */
+/** The mailboxes a person may see, for the sidebar and the list. */
 export async function listMailboxesFor(access: {
   orgId: string;
   isRoot: boolean;
@@ -110,4 +110,22 @@ export async function mailboxForSending(orgId: string, address: string) {
       where: and(eq(mailbox.address, normalized), eq(mailbox.organizationId, orgId)),
     })) ?? null
   );
+}
+
+/**
+ * The mailboxes a person may write from. Offering one they cannot send as
+ * only produces a refusal at the end of writing a message.
+ */
+export async function sendableMailboxesFor(access: {
+  orgId: string;
+  isRoot: boolean;
+  memberId: string;
+  teamIds: string[];
+}) {
+  const boxes = await listMailboxes(access.orgId);
+  if (access.isRoot) return boxes;
+
+  const { sendableMailboxIds } = await import("./grants");
+  const allowed = await sendableMailboxIds(access as never);
+  return boxes.filter((box) => allowed.includes(box.id));
 }

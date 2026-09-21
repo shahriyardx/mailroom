@@ -150,18 +150,24 @@ export function ThreadView({ thread, backHref, labels }: Props) {
           <Star className={cn(thread.isStarred && "fill-warn text-warn")} />
         </Action>
 
-        <div className="ml-auto flex items-center gap-1">
-          <Action label="Reply to all" onClick={() => replyDraft("replyAll")}>
-            <ReplyAll />
-          </Action>
-          <Action label="Forward" onClick={() => replyDraft("forward")}>
-            <Forward />
-          </Action>
-          <Button variant="soft" size="sm" pill onClick={() => replyDraft("reply")}>
-            <Reply />
-            Reply
-          </Button>
-        </div>
+        {/* Replying from a mailbox you may only read would be refused when
+            you pressed send, so it is not offered. */}
+        {composer.canWriteAs(thread.mailbox.id) ? (
+          <div className="ml-auto flex items-center gap-1">
+            <Action label="Reply to all" onClick={() => replyDraft("replyAll")}>
+              <ReplyAll />
+            </Action>
+            <Action label="Forward" onClick={() => replyDraft("forward")}>
+              <Forward />
+            </Action>
+            <Button variant="soft" size="sm" pill onClick={() => replyDraft("reply")}>
+              <Reply />
+              Reply
+            </Button>
+          </div>
+        ) : (
+          <span className="ml-auto text-[12px] text-muted-foreground">Read only</span>
+        )}
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">

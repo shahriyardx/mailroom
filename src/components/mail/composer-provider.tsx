@@ -8,6 +8,10 @@ interface ComposerApi {
   open: (draft?: ComposerDraft) => void;
   close: () => void;
   isOpen: boolean;
+  /** False when this person holds no mailbox they may send as. */
+  canWrite: boolean;
+  /** Whether a reply could be sent from this particular mailbox. */
+  canWriteAs: (mailboxId: string) => boolean;
 }
 
 const Context = createContext<ComposerApi | null>(null);
@@ -29,8 +33,21 @@ export function ComposerProvider({
 
   const open = useCallback((next?: ComposerDraft) => setDraft(next ?? {}), []);
   const close = useCallback(() => setDraft(null), []);
+  const canWriteAs = useCallback(
+    (mailboxId: string) => mailboxes.some((box) => box.id === mailboxId),
+    [mailboxes],
+  );
 
-  const api = useMemo(() => ({ open, close, isOpen: draft !== null }), [open, close, draft]);
+  const api = useMemo(
+    () => ({
+      open,
+      close,
+      isOpen: draft !== null,
+      canWrite: mailboxes.length > 0,
+      canWriteAs,
+    }),
+    [open, close, draft, mailboxes, canWriteAs],
+  );
 
   return (
     <Context.Provider value={api}>

@@ -103,6 +103,12 @@ export async function creatableDomainIds(access: Access) {
   return rows.map((row) => row.resourceId);
 }
 
+/** The mailboxes this person may send as. What the composer may offer. */
+export async function sendableMailboxIds(access: Access) {
+  const rights = await mailboxRights(access);
+  return [...rights.entries()].filter(([, right]) => right.send).map(([id]) => id);
+}
+
 /** Throws unless the person may send as this mailbox. */
 export async function assertCanSendAs(access: Access, mailboxId: string) {
   const rights = await mailboxRights(access);

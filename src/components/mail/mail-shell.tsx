@@ -144,7 +144,7 @@ export function MailShell({
 
       if (event.key === "c") {
         event.preventDefault();
-        composer.open();
+        if (composer.canWrite) composer.open();
       } else if (lastKey === "g") {
         const jump: Record<string, ViewFolder> = {
           i: "inbox",
@@ -370,14 +370,17 @@ function NavPanel({
         <SearchField defaultValue={searchValue} onCommit={onSearch} />
       </div>
 
-      <div className="px-3 pb-4">
-        <Hint label="Compose — c" side="right">
-          <Button variant="solid" size="md" pill block onClick={() => composer.open()}>
-            <PenLine />
-            Compose
-          </Button>
-        </Hint>
-      </div>
+      {/* Nothing to write from, nothing to offer. */}
+      {composer.canWrite && (
+        <div className="px-3 pb-4">
+          <Hint label="Compose — c" side="right">
+            <Button variant="solid" size="md" pill block onClick={() => composer.open()}>
+              <PenLine />
+              Compose
+            </Button>
+          </Hint>
+        </div>
+      )}
 
       <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-4">
         <ul className="space-y-0.5">
