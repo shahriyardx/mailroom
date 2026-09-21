@@ -204,6 +204,33 @@ curl -X POST https://mail.yourdomain.com/api/v1/emails \
 - `GET /api/v1/emails/:id` — delivery status and the SES event trail
 - `GET /api/v1/domains` — your sending domains and their records
 
+### The Node SDK
+
+The whole API, typed, with retries, pagination and webhook signature checking:
+
+```sh
+npm install @shahriyardx/mailroom
+```
+
+```ts
+import { Mailroom } from "@shahriyardx/mailroom";
+
+const mail = new Mailroom({
+  apiKey: process.env.MAILROOM_API_KEY,
+  baseUrl: "https://mail.yourdomain.com",
+});
+
+await mail.emails.send({
+  from: "noreply@yourdomain.com",
+  to: "someone@example.com",
+  subject: "Hello",
+  html: "<p>Sent through SES</p>",
+});
+```
+
+It lives in [`packages/sdk`](packages/sdk#readme), in this repository, so it
+cannot drift away from the API it talks to.
+
 ## Running it locally
 
 ```sh
@@ -228,6 +255,8 @@ laptop, so deploy it somewhere to test inbound mail.
 | `pnpm lint` / `pnpm format` | Biome |
 | `pnpm typecheck` | TypeScript |
 | `pnpm reset-owner --yes` | Release the owner slot so another account can claim it |
+| `pnpm sdk:build` | Build the Node SDK |
+| `pnpm sdk:test` | Test the Node SDK |
 
 ## Worth knowing
 

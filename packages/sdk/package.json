@@ -1,0 +1,50 @@
+{
+  "name": "@shahriyardx/mailroom",
+  "version": "0.1.0",
+  "description": "Node and TypeScript SDK for Mailroom — send, read and organise mail on your own Mailroom instance.",
+  "license": "MIT",
+  "author": "shahriyardx",
+  "homepage": "https://github.com/shahriyardx/mailroom/tree/main/packages/sdk#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/shahriyardx/mailroom.git",
+    "directory": "packages/sdk"
+  },
+  "bugs": "https://github.com/shahriyardx/mailroom/issues",
+  "keywords": ["mailroom", "email", "transactional-email", "ses", "inbox", "webhooks", "sdk"],
+  "type": "module",
+  "sideEffects": false,
+  "engines": {
+    "node": ">=18"
+  },
+  "files": ["dist", "README.md", "LICENSE"],
+  "main": "./dist/index.cjs",
+  "module": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./dist/index.d.ts",
+        "default": "./dist/index.js"
+      },
+      "require": {
+        "types": "./dist/index.d.cts",
+        "default": "./dist/index.cjs"
+      }
+    },
+    "./package.json": "./package.json"
+  },
+  "scripts": {
+    "build": "node build.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm run build"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
+  "devDependencies": {
+    "esbuild": "^0.28.2",
+    "typescript": "^5.7.2"
+  }
+}

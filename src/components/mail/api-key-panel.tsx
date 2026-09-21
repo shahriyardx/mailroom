@@ -904,7 +904,8 @@ const ENDPOINTS: { group: string; rows: Endpoint[] }[] = [
 ];
 
 function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
-  const base = `${appUrl.replace(/\/+$/, "")}/api/v1`;
+  const origin = appUrl.replace(/\/+$/, "");
+  const base = `${origin}/api/v1`;
 
   return (
     <div className="mt-6 border-t border-border pt-5">
@@ -928,6 +929,30 @@ function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
     "html": "<p>Sent through SES</p>"
   }'`}
       </pre>
+
+      <div className="mt-4 rounded-xl border border-border p-3.5">
+        <p className="text-[12.5px] font-medium">Or use the Node SDK</p>
+        <Note className="mt-1">
+          The same API, typed, with retries, paging and webhook signature checking already done.
+        </Note>
+        <pre className="mt-2.5 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[11.5px] leading-relaxed">
+          {`npm install @shahriyardx/mailroom
+
+import { Mailroom } from "@shahriyardx/mailroom";
+
+const mail = new Mailroom({
+  apiKey: process.env.MAILROOM_API_KEY,
+  baseUrl: "${origin}",
+});
+
+await mail.emails.send({
+  from: "${sample}",
+  to: "someone@example.com",
+  subject: "Hello",
+  html: "<p>Sent through SES</p>",
+});`}
+        </pre>
+      </div>
 
       {ENDPOINTS.map((group) => (
         <div key={group.group} className="mt-5">

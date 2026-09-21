@@ -3,6 +3,7 @@ ignoreWorkspaceRootCheck: true
 packages:
   - "."
   - "worker"
+  - "packages/*"
 
 allowBuilds:
   "@biomejs/biome": true

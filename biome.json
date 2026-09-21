@@ -6,7 +6,7 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["node_modules", ".next", "drizzle/**", "worker/.wrangler"]
+    "ignore": ["node_modules", ".next", "drizzle/**", "worker/.wrangler", "packages/*/dist"]
   },
   "formatter": {
     "enabled": true,
