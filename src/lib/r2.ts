@@ -42,7 +42,10 @@ export async function signedDownloadUrl(key: string, filename: string, expiresIn
     new GetObjectCommand({
       Bucket: env.r2.bucket,
       Key: key,
-      ResponseContentDisposition: `attachment; filename="${filename.replace(/"/g, "")}"`,
+      // Control characters would let a filename write its own headers into
+      // the response.
+      // biome-ignore lint/suspicious/noControlCharactersInRegex: that is the point
+      ResponseContentDisposition: `attachment; filename="${filename.replace(/["\\\x00-\x1f\x7f]/g, "")}"`,
     }),
     { expiresIn },
   );

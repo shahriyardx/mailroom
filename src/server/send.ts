@@ -23,7 +23,7 @@ import { type MimeAttachment, buildMime } from "@/lib/mime";
 import { getObject } from "@/lib/r2";
 import { sendRawEmail } from "@/lib/ses";
 import { newId } from "@/lib/utils";
-import { and, eq, inArray, sql } from "drizzle-orm";
+import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
 import { publish } from "./realtime";
 
@@ -40,6 +40,13 @@ export interface DeliverInput {
   headers?: Record<string, string>;
   /** Attachment rows already staged in R2. */
   attachmentIds?: string[];
+  /**
+   * Who is attaching them. Staged rows are claimed by id, and an id is not
+   * a secret: without tying the claim to the uploader, anyone signed in
+   * could attach somebody else's upload — or a stored message's attachment
+   * from any account — to their own outgoing mail and read it that way.
+   */
+  senderUserId?: string;
   /** Attachments handed straight to us, as the public API does. */
   inlineAttachments?: MimeAttachment[];
   threadId?: string;
@@ -100,8 +107,22 @@ export async function deliverMessage(input: DeliverInput) {
     );
   }
 
+  if (input.attachmentIds?.length && !input.senderUserId) {
+    throw new SendError("Staged attachments need a signed-in sender");
+  }
   const staged = input.attachmentIds?.length
-    ? await db.select().from(attachment).where(inArray(attachment.id, input.attachmentIds))
+    ? await db
+        .select()
+        .from(attachment)
+        .where(
+          and(
+            inArray(attachment.id, input.attachmentIds),
+            // Only this person's own uploads, and only ones not yet part of
+            // a message.
+            eq(attachment.uploadedBy, input.senderUserId ?? ""),
+            isNull(attachment.messageId),
+          ),
+        )
     : [];
 
   const stagedFiles: MimeAttachment[] = await Promise.all(

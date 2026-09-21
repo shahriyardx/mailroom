@@ -1,4 +1,5 @@
 import { getAccess } from "@/server/access";
+import { readableMailboxIds } from "@/server/grants";
 import { type MailEvent, subscribe } from "@/server/realtime";
 import type { NextRequest } from "next/server";
 
@@ -16,6 +17,16 @@ const HEARTBEAT_MS = 25_000;
 export async function GET(request: NextRequest) {
   const access = await getAccess();
   if (!access) return new Response("Unauthorized", { status: 401 });
+
+  // Events go out per organisation, but a member only reaches some of its
+  // mailboxes — and an event names the sender and subject. Without this
+  // filter, anyone signed in would hear about every message arriving
+  // anywhere in the instance. Grants given after the stream opened take
+  // effect on the next connect, which the browser does on its own.
+  const allowed = access.isRoot ? null : new Set(await readableMailboxIds(access));
+  const audible = (event: MailEvent) =>
+    allowed === null || (event.mailboxId != null && allowed.has(event.mailboxId));
+
   const encoder = new TextEncoder();
 
   const stream = new ReadableStream({
@@ -36,6 +47,7 @@ export async function GET(request: NextRequest) {
       send(": connected\n\n");
 
       const unsubscribe = await subscribe(access.orgId, (event: MailEvent) => {
+        if (!audible(event)) return;
         send(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
       });
 

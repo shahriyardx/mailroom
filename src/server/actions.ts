@@ -85,6 +85,7 @@ export async function sendMessageAction(raw: ComposeInput) {
     html: input.html,
     text: input.text ?? null,
     attachmentIds: input.attachmentIds,
+    senderUserId: access.userId,
     threadId: input.threadId,
     inReplyTo: input.inReplyTo,
     references: input.references,
