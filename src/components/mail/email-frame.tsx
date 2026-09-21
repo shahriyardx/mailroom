@@ -1,6 +1,7 @@
 "use client";
 
 import { EMAIL_FRAME_STYLES, prepareEmailHtml } from "@/lib/sanitize-email";
+import { cn } from "@/lib/utils";
 import { ImageOff } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
@@ -38,9 +39,23 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
     return prepareEmailHtml(html, { showRemoteImages: showImages, inlineImages });
   }, [html, showImages, inlineImages]);
 
+  /**
+   * An HTML message brought its own colours, and it chose them against a white
+   * page — that is what every mail client has rendered on for thirty years.
+   * Mirroring the app's dark theme into the frame only half-applies: our rules
+   * set a light body colour, the message's own inline `color:#27272a` wins, and
+   * the reader gets near-black text on a near-black background.
+   *
+   * So a message that styles itself is always shown on white, in either theme.
+   * Only the plain-text fallback follows the app, because there we wrote the
+   * markup and know what colour it is.
+   */
+  const ownsColours = Boolean(prepared.html);
+
   const srcDoc = useMemo(() => {
     const body = prepared.html ?? `<pre>${escapeHtml(text ?? "")}</pre>`;
-    return `<!doctype html><html class="${dark ? "dark" : ""}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}</style></head><body>${body}</body></html>`;
+    const theme = dark && !prepared.html ? "dark" : "";
+    return `<!doctype html><html class="${theme}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}</style></head><body>${body}</body></html>`;
   }, [prepared.html, text, dark]);
 
   const measure = useCallback(() => {
@@ -118,16 +133,18 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
         </div>
       )}
 
-      <iframe
-        key={srcDoc.length}
-        ref={frameRef}
-        title="Message body"
-        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-        srcDoc={srcDoc}
-        onLoad={measure}
-        className="w-full border-0 bg-transparent"
-        style={{ height: height || 32 }}
-      />
+      <div className={cn(ownsColours && "overflow-hidden rounded-xl bg-white")}>
+        <iframe
+          key={srcDoc.length}
+          ref={frameRef}
+          title="Message body"
+          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+          srcDoc={srcDoc}
+          onLoad={measure}
+          className="w-full border-0 bg-transparent"
+          style={{ height: height || 32 }}
+        />
+      </div>
     </div>
   );
 }

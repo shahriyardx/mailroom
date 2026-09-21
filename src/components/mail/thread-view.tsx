@@ -635,7 +635,7 @@ function AuthBadges({ message }: { message: Message }) {
       >
         {unchecked ? <ShieldOff className="size-3.5" /> : <ShieldCheck className="size-3.5" />}
         {unchecked ? "Sender partly checked" : "Sender verified"}
-        <span className="opacity-60">· {detail}</span>
+        <span>· {detail}</span>
       </p>
     );
   }
