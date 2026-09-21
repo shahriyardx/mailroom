@@ -26,6 +26,7 @@ import {
   type ViewFolder,
   scopeHref,
   scopeKey,
+  supportsUnreadFilter,
 } from "@/lib/scope";
 import { cn, colorOf } from "@/lib/utils";
 import {
@@ -98,6 +99,7 @@ export function MailShell({
 }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
+  const unreadOnly = params.get("unread") === "1";
   const router = useRouter();
   const composer = useComposer();
 
@@ -194,6 +196,7 @@ export function MailShell({
       scope={scope}
       activeKey={activeKey}
       activeLabel={activeLabel}
+      unreadOnly={unreadOnly}
       counts={counts}
       domains={domains}
       mailboxes={mailboxes}
@@ -291,6 +294,7 @@ function NavPanel({
   scope,
   activeKey,
   activeLabel,
+  unreadOnly,
   counts,
   domains,
   mailboxes,
@@ -304,6 +308,8 @@ function NavPanel({
   scope: Scope;
   activeKey: string;
   activeLabel: string | null;
+  /** Whether the open folder is filtered to unread, so the sub-row can say so. */
+  unreadOnly: boolean;
   counts: Counts;
   domains: [string, Mailbox[]][];
   mailboxes: Mailbox[];
@@ -353,6 +359,27 @@ function NavPanel({
                     </span>
                   )}
                 </NavRow>
+
+                {/*
+                  An All/Unread switch used to sit above the list, where it
+                  cost a row of chrome on every screen to say "All", which is
+                  the answer almost every time. Here it only exists while the
+                  folder it belongs to is open.
+                */}
+                {active && supportsUnreadFilter(item) && (
+                  <ul className="mt-0.5 mb-1 ml-[19px] space-y-0.5 border-sidebar-border border-l pl-3">
+                    <li>
+                      <SubRow href={scopeHref(scope, item)} active={!unreadOnly}>
+                        All
+                      </SubRow>
+                    </li>
+                    <li>
+                      <SubRow href={`${scopeHref(scope, item)}?unread=1`} active={unreadOnly}>
+                        Unread
+                      </SubRow>
+                    </li>
+                  </ul>
+                )}
               </li>
             );
           })}
@@ -465,6 +492,31 @@ function NavPanel({
 }
 
 /** One row of the navigation list. Active state is a filled pill, not a border. */
+/** A choice within the open folder: narrower, quieter, and indented under it. */
+function SubRow({
+  href,
+  active,
+  children,
+}: {
+  href: string;
+  active: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Link
+      href={href}
+      className={cn(
+        "flex items-center rounded-[8px] px-2.5 py-1 text-[12.5px] transition-colors",
+        active
+          ? "bg-sidebar-accent font-semibold text-sidebar-accent-foreground"
+          : "text-muted-foreground hover:bg-sidebar-accent/60 hover:text-foreground",
+      )}
+    >
+      {children}
+    </Link>
+  );
+}
+
 function NavRow({
   href,
   active,
