@@ -5,7 +5,7 @@ import { EVENT_KINDS, OPTIONAL_KINDS, REQUIRED_SUMMARY } from "@/lib/ses-events"
 import { cn } from "@/lib/utils";
 import { setEventTypesAction, setUpEventsAction } from "@/server/actions";
 import type { EventsStatus } from "@/server/events";
-import { Check, Copy, Eye, Zap } from "lucide-react";
+import { Check, Copy, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -164,15 +164,10 @@ function Reported({ status }: { status: EventsStatus }) {
 
   return (
     <div className="mt-5">
-      <div className="mb-1 flex items-center gap-2">
-        <p className="text-[12.5px] font-semibold">What SES reports</p>
-        {status.destination.opens && (
-          <Badge size="sm" tone="warn">
-            <Eye />
-            Tracking image on
-          </Badge>
-        )}
-      </div>
+      {/* No badge for open tracking up here: the Opens row already says what
+          it does, in the warning colour, with its own switch beside it. A
+          second notice a few lines above it only asks to be read twice. */}
+      <p className="mb-1 text-[12.5px] font-semibold">What SES reports</p>
       <List>
         {/* The required five share a row: the app reads them to decide what
             happened to a message, and without bounces and complaints the
