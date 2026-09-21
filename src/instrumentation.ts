@@ -1,12 +1,21 @@
 /**
- * Runs pending database migrations once, as the server boots.
+ * Boot work: bring the database up to date, then start the send queue.
  *
- * Keeping this in app code means the migrator is traced into the standalone
+ * Keeping the migrator in app code means it is traced into the standalone
  * build, so the runtime image needs nothing extra. Drizzle records what it has
  * applied, so a restart is a no-op.
  */
 export async function register() {
   if (process.env.NEXT_RUNTIME !== "nodejs") return;
+
+  await runMigrations();
+
+  // After the migrations, because the worker reads a table one of them makes.
+  const { startOutboxWorker } = await import("@/server/outbox");
+  startOutboxWorker();
+}
+
+async function runMigrations() {
   if (process.env.RUN_MIGRATIONS_ON_BOOT === "false") return;
 
   const { drizzle } = await import("drizzle-orm/postgres-js");

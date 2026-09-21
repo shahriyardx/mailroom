@@ -37,6 +37,22 @@ export const deliveryStatusEnum = pgEnum("delivery_status", [
   "rejected",
   "delayed",
   "failed",
+  "canceled",
+]);
+
+/**
+ * Where a queued send is in its life.
+ *
+ * "pending" is waiting for its turn — either because SES could not take it
+ * yet, or because it is not due until later. "sending" is claimed by a worker
+ * and is the only state another worker must not touch.
+ */
+export const sendJobStatusEnum = pgEnum("send_job_status", [
+  "pending",
+  "sending",
+  "sent",
+  "failed",
+  "canceled",
 ]);
 
 export const eventTypeEnum = pgEnum("event_type", [
@@ -459,6 +475,17 @@ export const message = pgTable(
     openCount: integer("open_count").notNull().default(0),
     /** Set when the message came in through the public send API. */
     apiKeyId: text("api_key_id"),
+    /**
+     * When a scheduled message is due to go out. Null for anything sent, or
+     * attempted, the moment it was written.
+     */
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    /**
+     * Written by a test key, which never reaches SES. Kept out of the normal
+     * lists and counts: a test send that showed up beside real mail would make
+     * every number a question.
+     */
+    isTest: boolean("is_test").notNull().default(false),
 
     sizeBytes: integer("size_bytes").notNull().default(0),
     rawKey: text("raw_key"),
@@ -476,6 +503,7 @@ export const message = pgTable(
     uniqueIndex("message_rfc_id_idx").on(t.mailboxId, t.rfcMessageId),
     index("message_search_idx").using("gin", t.searchVector),
     index("message_ses_id_idx").on(t.sesMessageId),
+    index("message_scheduled_idx").on(t.scheduledAt),
   ],
 );
 
@@ -639,6 +667,12 @@ export const apiKey = pgTable(
      * call are allowed, the lock says which mail they may touch.
      */
     scopes: text("scopes").array().notNull().default(sql`'{}'::text[]`),
+    /**
+     * "live" or "test". A test key runs the whole send path — the mailbox
+     * check, the blocked list, building the MIME, the webhooks — and stops
+     * short of handing anything to SES, so nothing leaves the building.
+     */
+    mode: text("mode").notNull().default("live"),
     /** Requests per minute. Null falls back to the instance default. */
     rateLimit: integer("rate_limit"),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
@@ -766,6 +800,89 @@ export const idempotencyRecord = pgTable(
   ],
 );
 
+/**
+ * A message waiting to be handed to SES.
+ *
+ * Two things put a row here: a send SES could not take right now, and a send
+ * that is not due until later. Both are the same problem — a message that
+ * exists and has not gone out — so both are the same table, and the worker
+ * cannot tell them apart.
+ *
+ * The built MIME is kept here rather than rebuilt on each attempt. Rebuilding
+ * would mean reading the attachments back out of R2 every time, and would
+ * quietly change the message if a mailbox were renamed between attempts.
+ */
+export const sendJob = pgTable(
+  "send_job",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    messageId: text("message_id")
+      .notNull()
+      .references(() => message.id, { onDelete: "cascade" }),
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+
+    fromAddress: text("from_address").notNull(),
+    /** Every envelope recipient: to, cc and bcc together. */
+    recipients: text("recipients").array().notNull().default(sql`'{}'::text[]`),
+    /** The finished message, base64 so the bytes survive the round trip. */
+    rawMime: text("raw_mime").notNull(),
+
+    status: sendJobStatusEnum("status").notNull().default("pending"),
+    attempts: integer("attempts").notNull().default(0),
+    maxAttempts: integer("max_attempts").notNull().default(8),
+    /** Not before this. A scheduled send starts with its own send time here. */
+    nextAttemptAt: timestamp("next_attempt_at", { withTimezone: true }).notNull().defaultNow(),
+    /** When a worker claimed it, so a worker that died can be noticed. */
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    // The claim query's only filter, in its own order.
+    index("send_job_due_idx").on(t.status, t.nextAttemptAt),
+    uniqueIndex("send_job_message_idx").on(t.messageId),
+    index("send_job_org_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * A saved subject and body with holes in it, filled in per send.
+ *
+ * The point is that the wording lives here rather than inside whatever service
+ * calls the API: changing a receipt should not need a deploy, and the same
+ * receipt should read the same whichever service sent it.
+ */
+export const template = pgTable(
+  "template",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** What a person calls it. */
+    name: text("name").notNull(),
+    /** What a program calls it: stable, lowercase, unique in the account. */
+    slug: text("slug").notNull(),
+    description: text("description"),
+    subject: text("subject").notNull().default(""),
+    html: text("html"),
+    text: text("text"),
+    createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("template_slug_idx").on(t.organizationId, t.slug),
+    index("template_org_idx").on(t.organizationId),
+  ],
+);
+
 /* -------------------------------------------------------------------------- */
 /* Relations                                                                  */
 /* -------------------------------------------------------------------------- */
@@ -859,3 +976,7 @@ export type FilterRule = typeof filterRule.$inferSelect;
 export type MessageEvent = typeof messageEvent.$inferSelect;
 export type Webhook = typeof webhook.$inferSelect;
 export type WebhookDelivery = typeof webhookDelivery.$inferSelect;
+export type SendJob = typeof sendJob.$inferSelect;
+export type SendJobStatus = (typeof sendJobStatusEnum.enumValues)[number];
+export type DeliveryStatus = (typeof deliveryStatusEnum.enumValues)[number];
+export type Template = typeof template.$inferSelect;

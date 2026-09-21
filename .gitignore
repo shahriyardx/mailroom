@@ -11,3 +11,6 @@ worker/.wrangler
 .DS_Store
 .next-verify
 src/generated/
+
+# Built test bundles
+.test-build

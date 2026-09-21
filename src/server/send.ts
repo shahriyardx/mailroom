@@ -2,11 +2,13 @@ import "server-only";
 import { db } from "@/db";
 import {
   domain,
+  type DeliveryStatus,
   type Folder,
   attachment,
   contact,
   mailbox,
   message,
+  messageEvent,
   suppression,
   thread,
 } from "@/db/schema";
@@ -25,8 +27,9 @@ import { sendRawEmail } from "@/lib/ses";
 import { newId } from "@/lib/utils";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
+import { backoffMs, describeError, enqueueSend, isRetryableSendError } from "./outbox";
 import { publish } from "./realtime";
-import { dispatchWebhooks } from "./webhooks";
+import { type SentContext, announceSent, announceSimulated } from "./sent";
 
 export interface DeliverInput {
   orgId: string;
@@ -56,6 +59,42 @@ export interface DeliverInput {
   /** Existing draft row to convert into the sent message. */
   draftId?: string;
   apiKeyId?: string;
+  /**
+   * Hold the message until this time rather than sending it now. A time that
+   * has already passed is treated as "now", which is what somebody scheduling
+   * something a second ago meant.
+   */
+  scheduledAt?: Date | null;
+  /**
+   * Run everything except the part that hands the message to SES. Used by a
+   * test key, so a receiver can be pointed at a real send that never leaves.
+   */
+  testMode?: boolean;
+}
+
+export interface DeliverResult {
+  threadId: string;
+  messageId: string;
+  sesMessageId: string;
+  rfcMessageId: string;
+  /**
+   * What happened to it. "sent" reached SES; "scheduled" and "queued" are
+   * waiting, for the clock and for SES respectively; "delivered" is a test
+   * send, which never had anywhere to go.
+   */
+  status: "sent" | "scheduled" | "queued" | DeliveryStatus;
+  scheduledAt: Date | null;
+  /** Why it is waiting rather than sent, when it is waiting because of SES. */
+  queuedReason: string | null;
+}
+
+/** How a test send is made to look, chosen by who it is addressed to. */
+function simulatedOutcome(address: string): "delivered" | "bounced" | "complained" | "delayed" {
+  const local = address.split("@")[0]?.toLowerCase() ?? "";
+  if (local.startsWith("bounce")) return "bounced";
+  if (local.startsWith("complain")) return "complained";
+  if (local.startsWith("delay")) return "delayed";
+  return "delivered";
 }
 
 export class SendError extends Error {
@@ -71,8 +110,13 @@ export class SendError extends Error {
 /**
  * The single outbound path: builds MIME, hands it to SES, then records the
  * message in the Sent folder. Used by the composer and the public API alike.
+ *
+ * Three things can happen. It goes out, which is the usual one. It is held —
+ * because it was scheduled for later, or because SES could not take it right
+ * now — and the queue carries it from there. Or SES refuses it for a reason
+ * that will not change, and this throws, having written nothing.
  */
-export async function deliverMessage(input: DeliverInput) {
+export async function deliverMessage(input: DeliverInput): Promise<DeliverResult> {
   const box = await db.query.mailbox.findFirst({
     where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, input.orgId)),
   });
@@ -160,19 +204,60 @@ export async function deliverMessage(input: DeliverInput) {
     attachments: [...stagedFiles, ...(input.inlineAttachments ?? [])],
   });
 
+  /* ---------------------------------------------------------------------- */
+  /* Decide what happens to it before anything is written down               */
+  /* ---------------------------------------------------------------------- */
+
+  // Nothing is recorded until the outcome is known. A message SES refuses
+  // outright leaves no trace, which is what it did before there was a queue.
+
+  const due =
+    input.scheduledAt && input.scheduledAt.getTime() > Date.now() ? input.scheduledAt : null;
+  const envelope = recipients.map((entry) => entry.address);
+
   let sesMessageId = "";
-  try {
-    const result = await sendRawEmail({
-      raw,
-      from: box.address,
-      to: recipients.map((entry) => entry.address),
-      configurationSet: env.aws.configurationSet,
-    });
-    sesMessageId = result.messageId;
-  } catch (error) {
-    const detail = error instanceof Error ? error.message : "SES rejected the message";
-    throw new SendError(detail, 502);
+  let status: DeliverResult["status"] = "sent";
+  let queuedReason: string | null = null;
+  let queueAfterWrite: { attempts: number; dueAt: Date } | null = null;
+  let simulated: ReturnType<typeof simulatedOutcome> | null = null;
+
+  if (due) {
+    status = "scheduled";
+    queueAfterWrite = { attempts: 0, dueAt: due };
+  } else if (input.testMode) {
+    // A test key runs every check above this line and stops here. The address
+    // it is going to decides what it is made to look like.
+    simulated = simulatedOutcome(input.to[0]?.address ?? "");
+    status = simulated;
+    sesMessageId = "";
+  } else {
+    try {
+      const result = await sendRawEmail({
+        raw,
+        from: box.address,
+        to: envelope,
+        configurationSet: env.aws.configurationSet,
+      });
+      sesMessageId = result.messageId;
+    } catch (error) {
+      // SES turning a message away for a reason that will still be true in an
+      // hour is a refusal. Anything else — throttling, an outage, a dropped
+      // socket — is a "not right now", and losing the message over it is the
+      // bug this queue exists to fix.
+      if (!isRetryableSendError(error)) {
+        throw new SendError(describeError(error), 502);
+      }
+      status = "queued";
+      queuedReason = describeError(error);
+      queueAfterWrite = { attempts: 1, dueAt: new Date(Date.now() + backoffMs(1)) };
+    }
   }
+
+  const waiting = status === "scheduled" || status === "queued";
+
+  /* ---------------------------------------------------------------------- */
+  /* Write it down                                                          */
+  /* ---------------------------------------------------------------------- */
 
   let threadId = input.threadId;
   if (threadId) {
@@ -187,6 +272,7 @@ export async function deliverMessage(input: DeliverInput) {
   }
 
   const messageId = input.draftId ?? newId("msg");
+  const now = new Date();
   const values = {
     threadId,
     mailboxId: box.id,
@@ -208,11 +294,16 @@ export async function deliverMessage(input: DeliverInput) {
     isDraft: false,
     isOutbound: true,
     sesMessageId: sesMessageId || null,
-    deliveryStatus: "sent" as const,
+    deliveryStatus: (waiting ? "queued" : status) as DeliveryStatus,
+    deliveryError: queuedReason,
     apiKeyId: input.apiKeyId ?? null,
+    isTest: Boolean(input.testMode),
+    scheduledAt: due,
     sizeBytes: raw.byteLength,
-    sentAt: new Date(),
-    receivedAt: new Date(),
+    // A message that has not gone out has not been sent, whatever folder it
+    // is filed under. Anything counting sends reads this column.
+    sentAt: waiting ? null : now,
+    receivedAt: now,
   };
 
   if (input.draftId) {
@@ -250,33 +341,79 @@ export async function deliverMessage(input: DeliverInput) {
   }
 
   await recomputeThread(threadId);
-  await publish({ type: "mail:sent", orgId: input.orgId, mailboxId: box.id, threadId });
 
-  // Fired here rather than from the SES event stream, so it arrives whether
-  // or not a configuration set has been set up, and the moment SES accepts
-  // the message rather than a second or two later.
-  void dispatchWebhooks(
-    input.orgId,
-    "email.sent",
-    {
-      email: {
-        id: messageId,
-        thread_id: threadId,
-        mailbox_id: box.id,
-        mailbox: box.address,
-        ses_message_id: sesMessageId || null,
-        message_id: rfcMessageId,
-        from: box.address,
-        to: input.to,
-        cc: input.cc ?? [],
-        subject: input.subject,
-        status: "sent",
-        api_key_id: input.apiKeyId ?? null,
-        sent_at: new Date().toISOString(),
-      },
-    },
-    { mailboxId: box.id },
-  );
+  /* ---------------------------------------------------------------------- */
+  /* Say what happened                                                      */
+  /* ---------------------------------------------------------------------- */
 
-  return { threadId, messageId, sesMessageId, rfcMessageId };
+  const context: SentContext = {
+    orgId: input.orgId,
+    messageId,
+    threadId,
+    mailboxId: box.id,
+    mailboxAddress: box.address,
+    rfcMessageId,
+    to: input.to,
+    cc: input.cc ?? [],
+    subject: input.subject,
+    apiKeyId: input.apiKeyId ?? null,
+    isTest: Boolean(input.testMode),
+  };
+
+  if (queueAfterWrite) {
+    await enqueueSend({
+      orgId: input.orgId,
+      messageId,
+      mailboxId: box.id,
+      fromAddress: box.address,
+      recipients: envelope,
+      raw,
+      dueAt: queueAfterWrite.dueAt,
+      attempts: queueAfterWrite.attempts,
+      lastError: queuedReason,
+    });
+    // Nothing has gone out, so there is no email.sent to send. The browser is
+    // still told, because a scheduled message should appear in Sent at once.
+    await publish({
+      type: "mail:changed",
+      orgId: input.orgId,
+      mailboxId: box.id,
+      threadId,
+    });
+  } else {
+    await announceSent(context, sesMessageId, now);
+
+    if (simulated) {
+      // The timeline a real send would have grown from the SES event stream,
+      // written directly, so a test send reads the same in the interface.
+      await db.insert(messageEvent).values(
+        [
+          { type: "send" as const, at: now },
+          ...(simulated === "delivered" ? [{ type: "delivery" as const, at: now }] : []),
+          ...(simulated === "bounced" ? [{ type: "bounce" as const, at: now }] : []),
+          ...(simulated === "complained" ? [{ type: "complaint" as const, at: now }] : []),
+          ...(simulated === "delayed" ? [{ type: "delivery_delay" as const, at: now }] : []),
+        ].map((entry) => ({
+          id: newId("evt"),
+          messageId,
+          sesMessageId: null,
+          type: entry.type,
+          recipient: input.to[0]?.address ?? null,
+          detail: "Simulated by a test key",
+          occurredAt: entry.at,
+        })),
+      );
+      await announceSimulated(context, simulated);
+    }
+  }
+
+  return {
+    threadId,
+    messageId,
+    sesMessageId,
+    rfcMessageId,
+    status,
+    scheduledAt: due,
+    queuedReason,
+  };
 }

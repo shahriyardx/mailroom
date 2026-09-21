@@ -14,6 +14,8 @@ export const WEBHOOK_EVENTS = [
   "email.opened",
   "email.delayed",
   "email.rejected",
+  "email.failed",
+  "email.canceled",
   "thread.updated",
 ] as const;
 
@@ -33,5 +35,7 @@ export const WEBHOOK_EVENT_NOTES: Record<WebhookEvent, string> = {
   "email.opened": "The tracking image was loaded",
   "email.delayed": "SES is still trying",
   "email.rejected": "SES refused to send it",
+  "email.failed": "It could not be handed to SES, and no attempts are left",
+  "email.canceled": "A scheduled message was called off before it went out",
   "thread.updated": "A thread was moved, read, starred or labelled through the API",
 };

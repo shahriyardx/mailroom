@@ -134,6 +134,20 @@
       "when": 1789975690306,
       "tag": "0018_api_key_reach",
       "breakpoints": true
+    },
+    {
+      "idx": 19,
+      "version": "7",
+      "when": 1789975750306,
+      "tag": "0019_send_queue",
+      "breakpoints": true
+    },
+    {
+      "idx": 20,
+      "version": "7",
+      "when": 1789975810306,
+      "tag": "0020_message_send_state",
+      "breakpoints": true
     }
   ]
 }
