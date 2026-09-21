@@ -484,30 +484,35 @@ function NavPanel({
 /**
  * All or Unread, as two words under the inbox.
  *
- * This went through a pair of rows and then a segmented control, and both
- * were wrong the same way: given a shape and a fill, they read as navigation,
- * and the sidebar appeared to have grown a level it had not. It is a filter on
- * the folder already open, so it is written the way a caption is.
+ * This went through a pair of filled rows and then a segmented control, and
+ * both were wrong the same way: given a shape and a fill, they read as
+ * navigation, and the sidebar appeared to have grown a level it had not. It is
+ * a filter on the folder already open, so it is set as plain text — hung off
+ * the same kind of trunk the domains and their mailboxes already use.
  */
 function UnreadSwitch({ base, unreadOnly }: { base: string; unreadOnly: boolean }) {
   const link = (active: boolean) =>
     cn(
-      "transition-colors",
+      // The tick is the branch: a short rule out from the trunk to the word.
+      "relative block py-0.5 pl-4 transition-colors",
+      "before:absolute before:top-[0.85em] before:left-0 before:h-px before:w-2.5 before:bg-sidebar-border",
       active ? "font-semibold text-foreground" : "text-muted-foreground hover:text-foreground",
     );
 
   return (
-    <p className="mt-1 mb-0.5 flex items-center gap-1.5 pl-[30px] text-[12px]">
-      <Link href={base} className={link(!unreadOnly)}>
-        All
-      </Link>
-      <span className="text-border" aria-hidden>
-        ·
-      </span>
-      <Link href={`${base}?unread=1`} className={link(unreadOnly)}>
-        Unread
-      </Link>
-    </p>
+    <ul className="mt-0.5 mb-1 ml-[19px] border-sidebar-border border-l text-[12px]">
+      <li>
+        <Link href={base} className={link(!unreadOnly)}>
+          All
+        </Link>
+      </li>
+      {/* The trunk stops at the last branch rather than running past it. */}
+      <li className="relative before:absolute before:top-[0.85em] before:-left-px before:bottom-0 before:w-px before:bg-sidebar">
+        <Link href={`${base}?unread=1`} className={link(unreadOnly)}>
+          Unread
+        </Link>
+      </li>
+    </ul>
   );
 }
 
