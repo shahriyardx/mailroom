@@ -2,6 +2,7 @@
 
 import {
   Badge,
+  BlankSlate,
   Button,
   Field,
   Fieldset,
@@ -18,7 +19,7 @@ import type { Template } from "@/db/schema";
 import { TemplateError, renderTemplateParts, slugify, templateVariables } from "@/lib/template";
 import { useSubmit } from "@/lib/use-submit";
 import { createTemplateAction, deleteTemplateAction, updateTemplateAction } from "@/server/actions";
-import { Eye, PenLine, Plus, Trash2 } from "lucide-react";
+import { Eye, FileText, PenLine, Plus, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -110,12 +111,18 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
             ),
           )}
         </List>
-      ) : (
-        <Note>
-          No templates yet. One saved here can be sent with{" "}
-          <code className="font-mono text-[11.5px]">{'{ template: "welcome", data: {…} }'}</code>{" "}
-          instead of a body written into your code.
-        </Note>
+      ) : adding ? null : (
+        <BlankSlate
+          icon={<FileText />}
+          title="No templates yet"
+          hint="Write the subject and body once, then send it by name from your code."
+          action={
+            <Button variant="solid" pill onClick={() => setAdding(true)}>
+              <Plus />
+              New template
+            </Button>
+          }
+        />
       )}
 
       {adding ? (
@@ -131,14 +138,14 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
             }}
           />
         </Fieldset>
-      ) : (
+      ) : templates.length > 0 ? (
         <FieldsetActions>
           <Button variant="solid" pill onClick={() => setAdding(true)}>
             <Plus />
             New template
           </Button>
         </FieldsetActions>
-      )}
+      ) : null}
     </Panel>
   );
 }
@@ -173,8 +180,11 @@ function Editor({
 
   return (
     <div className="flex flex-col gap-5">
-      <div className="flex flex-wrap items-end gap-5">
-        <Field label="Name" htmlFor="template-name" className="w-56">
+      {/* A grid, not a wrapping row: one of these carries a hint and the
+          other does not, and aligning their bottoms put the two labels on
+          different lines. */}
+      <div className="grid gap-x-5 gap-y-4 sm:grid-cols-2">
+        <Field label="Name" htmlFor="template-name">
           <Input
             id="template-name"
             value={draft.name}
@@ -182,7 +192,7 @@ function Editor({
             placeholder="Welcome email"
           />
         </Field>
-        <Field label="Slug" htmlFor="template-slug" className="w-56" hint="What your code calls it">
+        <Field label="Slug" htmlFor="template-slug" hint="What your code calls it">
           <Input
             id="template-slug"
             value={slug}
