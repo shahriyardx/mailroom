@@ -1,8 +1,10 @@
 import "server-only";
 
 import { db } from "@/db";
-import { message } from "@/db/schema";
+import { message, messageEvent } from "@/db/schema";
 import type { EmailAddress } from "@/lib/mail";
+import { SIMULATED_EVENT, type SimulatedOutcome, simulatedOutcome } from "@/lib/test-mode";
+import { newId } from "@/lib/utils";
 import { eq } from "drizzle-orm";
 import { publish } from "./realtime";
 import { dispatchWebhooks } from "./webhooks";
@@ -126,6 +128,58 @@ export async function markCanceled(context: SentContext) {
 }
 
 /**
+ * A test send, from the row state through to the webhooks.
+ *
+ * Used by both the immediate path and the queue: a test message that was
+ * scheduled must not reach SES when its turn comes round, and the only thing
+ * that tells the worker so is the mark on the message it is carrying.
+ */
+export async function markSimulated(context: SentContext, at = new Date()) {
+  const outcome = simulatedOutcome(context.to[0]?.address ?? "");
+
+  await db
+    .update(message)
+    .set({
+      deliveryStatus: outcome,
+      sesMessageId: null,
+      deliveryError: null,
+      sentAt: at,
+      scheduledAt: null,
+    })
+    .where(eq(message.id, context.messageId));
+
+  await announceSent(context, "", at);
+  await recordSimulated(context, outcome, at);
+  return outcome;
+}
+
+/**
+ * The timeline a real send would have grown from the SES event stream,
+ * written directly, so a test send reads the same in the interface.
+ */
+export async function recordSimulated(
+  context: SentContext,
+  outcome: SimulatedOutcome,
+  at = new Date(),
+) {
+  const types: string[] = ["send", SIMULATED_EVENT[outcome]];
+
+  await db.insert(messageEvent).values(
+    types.map((type) => ({
+      id: newId("evt"),
+      messageId: context.messageId,
+      sesMessageId: null,
+      type: type as "send",
+      recipient: context.to[0]?.address ?? null,
+      detail: "Simulated by a test key",
+      occurredAt: at,
+    })),
+  );
+
+  await announceSimulated(context, outcome);
+}
+
+/**
  * The event a test send pretends happened next.
  *
  * A test key never reaches SES, so nothing will ever arrive from the event
@@ -133,10 +187,7 @@ export async function markCanceled(context: SentContext) {
  * thing test mode is for — pointing a webhook receiver at it and watching what
  * it does — would only ever produce `email.sent`.
  */
-export async function announceSimulated(
-  context: SentContext,
-  status: "delivered" | "bounced" | "complained" | "delayed",
-) {
+export async function announceSimulated(context: SentContext, status: SimulatedOutcome) {
   const event = (
     {
       delivered: "email.delivered",

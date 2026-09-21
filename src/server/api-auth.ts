@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { apiKey, mailbox, webhook } from "@/db/schema";
+import { apiKey, mailbox, message, webhook } from "@/db/schema";
 import { BodyError, fail, serverError } from "@/lib/api-http";
 import { bearerToken, hashApiKey } from "@/lib/api-key";
 import { type Scope, expandScopes, hasScope } from "@/lib/api-scopes";
@@ -22,6 +22,12 @@ export interface ApiCaller {
   scopes: Set<string>;
   rawScopes: string[];
   rateLimit: number;
+  /**
+   * A test key does everything a live one does up to the point of handing the
+   * message to SES, and stops there. What it writes is marked, and kept out of
+   * the lists and the counts a live key sees.
+   */
+  testMode: boolean;
 }
 
 /** Looks up a bearer key by hash. Revoked keys are treated as missing. */
@@ -60,6 +66,7 @@ export async function authenticateApiKey(request: Request): Promise<ApiCaller | 
     scopes: expandScopes(row.scopes),
     rawScopes: row.scopes,
     rateLimit: row.rateLimit ?? DEFAULT_RATE_LIMIT,
+    testMode: row.mode === "test",
   };
 }
 
@@ -303,4 +310,26 @@ export async function creatableDomainIdsFor(caller: ApiCaller): Promise<string[]
   // Naming addresses is a list of exactly those addresses; it does not carry
   // permission to invent more beside them.
   return caller.reach.domainIds;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Test mail, and keeping it out of the way                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Which side of the line a listing should show.
+ *
+ * A test key sees its own test mail and nothing else — anything else would
+ * make the sandbox a window onto real traffic. A live key sees real mail,
+ * unless it asks: `?test=true` for the test side, `?test=all` for both.
+ *
+ * Returns a condition to add to a query, or null for "no restriction".
+ */
+export function testFilter(caller: ApiCaller, url: URL) {
+  if (caller.testMode) return eq(message.isTest, true);
+
+  const asked = url.searchParams.get("test");
+  if (asked === "all") return null;
+  if (asked === "true" || asked === "1") return eq(message.isTest, true);
+  return eq(message.isTest, false);
 }

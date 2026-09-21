@@ -8,7 +8,6 @@ import {
   contact,
   mailbox,
   message,
-  messageEvent,
   suppression,
   thread,
 } from "@/db/schema";
@@ -24,12 +23,13 @@ import {
 import { type MimeAttachment, buildMime } from "@/lib/mime";
 import { getObject } from "@/lib/r2";
 import { sendRawEmail } from "@/lib/ses";
+import { simulatedOutcome } from "@/lib/test-mode";
 import { newId } from "@/lib/utils";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
 import { backoffMs, describeError, enqueueSend, isRetryableSendError } from "./outbox";
 import { publish } from "./realtime";
-import { type SentContext, announceSent, announceSimulated } from "./sent";
+import { type SentContext, announceSent, recordSimulated } from "./sent";
 
 export interface DeliverInput {
   orgId: string;
@@ -86,15 +86,6 @@ export interface DeliverResult {
   scheduledAt: Date | null;
   /** Why it is waiting rather than sent, when it is waiting because of SES. */
   queuedReason: string | null;
-}
-
-/** How a test send is made to look, chosen by who it is addressed to. */
-function simulatedOutcome(address: string): "delivered" | "bounced" | "complained" | "delayed" {
-  const local = address.split("@")[0]?.toLowerCase() ?? "";
-  if (local.startsWith("bounce")) return "bounced";
-  if (local.startsWith("complain")) return "complained";
-  if (local.startsWith("delay")) return "delayed";
-  return "delivered";
 }
 
 export class SendError extends Error {
@@ -383,28 +374,7 @@ export async function deliverMessage(input: DeliverInput): Promise<DeliverResult
   } else {
     await announceSent(context, sesMessageId, now);
 
-    if (simulated) {
-      // The timeline a real send would have grown from the SES event stream,
-      // written directly, so a test send reads the same in the interface.
-      await db.insert(messageEvent).values(
-        [
-          { type: "send" as const, at: now },
-          ...(simulated === "delivered" ? [{ type: "delivery" as const, at: now }] : []),
-          ...(simulated === "bounced" ? [{ type: "bounce" as const, at: now }] : []),
-          ...(simulated === "complained" ? [{ type: "complaint" as const, at: now }] : []),
-          ...(simulated === "delayed" ? [{ type: "delivery_delay" as const, at: now }] : []),
-        ].map((entry) => ({
-          id: newId("evt"),
-          messageId,
-          sesMessageId: null,
-          type: entry.type,
-          recipient: input.to[0]?.address ?? null,
-          detail: "Simulated by a test key",
-          occurredAt: entry.at,
-        })),
-      );
-      await announceSimulated(context, simulated);
-    }
+    if (simulated) await recordSimulated(context, simulated, now);
   }
 
   return {

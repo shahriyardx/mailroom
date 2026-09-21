@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  Badge,
   BlankSlate,
   Button,
   Checkbox,
@@ -98,6 +99,7 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
   const [chosen, setChosen] = useState<string[]>([WILDCARD]);
   const [fresh, setFresh] = useState<string | null>(null);
   const [editing, setEditing] = useState<ApiKey | null>(null);
+  const [testKey, setTestKey] = useState(false);
 
   function applyPreset(id: string) {
     setPreset(id);
@@ -143,6 +145,11 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
                 <div className="min-w-0 flex-1">
                   <p className="flex items-center gap-2 text-[13px] font-medium">
                     <span className="min-w-0 truncate">{item.name}</span>
+                    {item.mode === "test" && (
+                      <Badge size="sm" tone="warn" title="Never reaches SES">
+                        test
+                      </Badge>
+                    )}
                     {item.revokedAt && <StatusPill state="bad">Revoked</StatusPill>}
                   </p>
                   {/* The fragment and what the key may do read as one line:
@@ -240,6 +247,19 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
           }}
         />
 
+        <div className="mt-4 flex items-start gap-3 rounded-xl border border-border p-3">
+          <Switch id="key-test" checked={testKey} onCheckedChange={setTestKey} />
+          <label htmlFor="key-test" className="min-w-0 flex-1 cursor-pointer">
+            <span className="block text-[13px] font-medium">Test key</span>
+            <span className="block text-[12px] text-muted-foreground">
+              Runs every check and every webhook, and stops before SES. Nothing leaves the building,
+              nothing costs anything, and nothing counts towards your sending quota. A recipient of{" "}
+              <code className="font-mono">bounce@…</code> or{" "}
+              <code className="font-mono">complaint@…</code> is made to look like one.
+            </span>
+          </label>
+        </div>
+
         <FieldsetActions note="The key is shown once. Store it somewhere safe.">
           <Button
             variant="solid"
@@ -251,7 +271,13 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
             onClick={() =>
               submit(async () => {
                 try {
-                  const result = await createApiKeyAction(name.trim(), reach ?? undefined, chosen);
+                  const result = await createApiKeyAction(
+                    name.trim(),
+                    reach ?? undefined,
+                    chosen,
+                    null,
+                    testKey ? "test" : "live",
+                  );
                   setFresh(result.token);
                   setName("");
                   router.refresh();

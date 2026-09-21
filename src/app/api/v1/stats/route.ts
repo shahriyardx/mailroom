@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { mailbox, message, thread } from "@/db/schema";
 import { dateOf, fail, ok } from "@/lib/api-http";
-import { apiRoute, scopedMailboxIds } from "@/server/api-auth";
+import { apiRoute, scopedMailboxIds, testFilter } from "@/server/api-auth";
 import { and, gte, inArray, lte, sql } from "drizzle-orm";
 
 export const runtime = "nodejs";
@@ -38,10 +38,15 @@ export const GET = apiRoute("stats:read", async ({ caller, url }) => {
     return ok(emptyStats(since, until));
   }
 
+  // Test sends would otherwise show up as real traffic, which is the one
+  // thing a bounce rate must never be wrong about.
+  const test = testFilter(caller, url);
+
   const window = and(
     inArray(message.mailboxId, mailboxIds),
     gte(message.createdAt, since),
     lte(message.createdAt, until),
+    ...(test ? [test] : []),
   );
 
   const [[totals], series, [receiving], boxes] = await Promise.all([
@@ -97,6 +102,7 @@ export const GET = apiRoute("stats:read", async ({ caller, url }) => {
           sql`${message.mailboxId} = ${mailbox.id}`,
           gte(message.createdAt, since),
           lte(message.createdAt, until),
+          ...(test ? [test] : []),
         ),
       )
       .where(inArray(mailbox.id, mailboxIds))

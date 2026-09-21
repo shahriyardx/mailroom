@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { deliveryStatusEnum, mailbox, message } from "@/db/schema";
 import { dateOf, fail, limitOf, makeCursor, ok, page, readBody, splitCursor } from "@/lib/api-http";
-import { apiRoute, scopedMailboxIds } from "@/server/api-auth";
+import { apiRoute, scopedMailboxIds, testFilter } from "@/server/api-auth";
 import { emailSchema, sendOne } from "@/server/api-send";
 import { serializeMessage } from "@/server/api-serialize";
 import { idempotency } from "@/server/idempotency";
@@ -63,6 +63,9 @@ export const GET = apiRoute("emails:read", async ({ caller, url }) => {
   // Drafts are outbound but have not been sent, so they are not "emails" in
   // the sense this endpoint means.
   filters.push(eq(message.isDraft, false));
+
+  const test = testFilter(caller, url);
+  if (test) filters.push(test);
 
   // Only names the enum actually has: an unknown one would otherwise reach
   // Postgres as a cast of arbitrary text.

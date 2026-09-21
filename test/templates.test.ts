@@ -35,6 +35,7 @@ function caller() {
     scopes: new Set(["*"]),
     rawScopes: ["*"],
     rateLimit: 300,
+    testMode: false,
   };
 }
 

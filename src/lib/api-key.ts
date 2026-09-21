@@ -1,6 +1,19 @@
 import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 
-const PREFIX = "mk_live_";
+/**
+ * Live and test keys are told apart by sight, not by a flag somewhere.
+ *
+ * A test key that reached production config would otherwise look exactly like
+ * the real one, and the failure — mail that silently never arrives — is the
+ * kind nobody notices for a week.
+ */
+const PREFIXES = { live: "mk_live_", test: "mk_test_" } as const;
+
+export type KeyMode = keyof typeof PREFIXES;
+
+export function isKeyMode(value: string): value is KeyMode {
+  return value === "live" || value === "test";
+}
 
 export interface GeneratedKey {
   /** Shown to the user once, never stored. */
@@ -9,13 +22,14 @@ export interface GeneratedKey {
   prefix: string;
 }
 
-export function generateApiKey(): GeneratedKey {
+export function generateApiKey(mode: KeyMode = "live"): GeneratedKey {
   const secret = randomBytes(24).toString("base64url");
-  const token = `${PREFIX}${secret}`;
+  const start = PREFIXES[mode];
+  const token = `${start}${secret}`;
   return {
     token,
     hash: hashApiKey(token),
-    prefix: `${PREFIX}${secret.slice(0, 4)}…${secret.slice(-4)}`,
+    prefix: `${start}${secret.slice(0, 4)}…${secret.slice(-4)}`,
   };
 }
 

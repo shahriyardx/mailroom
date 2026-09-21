@@ -16,7 +16,7 @@ import {
   webhook,
   webhookDelivery,
 } from "@/db/schema";
-import { generateApiKey } from "@/lib/api-key";
+import { generateApiKey, isKeyMode } from "@/lib/api-key";
 import { WILDCARD, isScope } from "@/lib/api-scopes";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { parseSchedule } from "@/lib/schedule";
@@ -732,13 +732,15 @@ export async function createApiKeyAction(
   reach?: KeyReach,
   scopes?: string[],
   rateLimit?: number | null,
+  mode: "live" | "test" = "live",
 ) {
   const access = await requireAccess();
   assertCan(access, "apikey:manage");
 
   const limited = await cleanReach(access.orgId, reach);
 
-  const generated = generateApiKey();
+  const keyMode = isKeyMode(mode) ? mode : "live";
+  const generated = generateApiKey(keyMode);
   const id = newId("key");
 
   await db.insert(apiKey).values({
@@ -756,6 +758,7 @@ export async function createApiKeyAction(
     scopeMailboxIds: limited.mailboxIds,
     scopeDomainIds: limited.domainIds,
     scopes: cleanScopes(scopes),
+    mode: keyMode,
     rateLimit: rateLimit && rateLimit > 0 ? Math.floor(rateLimit) : null,
   });
 

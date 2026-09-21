@@ -46,6 +46,8 @@ export const GET = apiRoute(null, async ({ caller }) => {
     object: "api_key",
     id: caller.keyId,
     name: caller.keyName,
+    /** "live" or "test". A test key never hands anything to SES. */
+    mode: caller.testMode ? "test" : "live",
     scopes: caller.rawScopes,
     organization: company ? { id: company.id, name: company.name } : null,
     reach: {

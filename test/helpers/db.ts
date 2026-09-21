@@ -8,7 +8,13 @@
 import { execFileSync } from "node:child_process";
 import { newId } from "@/lib/utils";
 
-const ADMIN_URL = process.env.TEST_DATABASE_URL ?? "postgres://mail:mail@localhost:5433/postgres";
+const ADMIN_URL =
+  process.env.TEST_ADMIN_URL ??
+  process.env.TEST_DATABASE_URL ??
+  "postgres://mail:mail@localhost:5433/postgres";
+
+/** Migrated once by scripts/test.mjs, then copied rather than rebuilt. */
+const TEMPLATE = process.env.TEST_TEMPLATE_DB;
 
 function adminUrlFor(name: string) {
   const url = new URL(ADMIN_URL);
@@ -31,15 +37,20 @@ export function makeScratchDatabase(label: string): Scratch {
   const admin = ADMIN_URL;
 
   psql(admin, `DROP DATABASE IF EXISTS "${name}"`);
-  psql(admin, `CREATE DATABASE "${name}"`);
+
+  if (TEMPLATE) {
+    psql(admin, `CREATE DATABASE "${name}" TEMPLATE "${TEMPLATE}"`);
+  } else {
+    // Running a built test file directly, without the harness around it.
+    psql(admin, `CREATE DATABASE "${name}"`);
+    execFileSync("npx", ["drizzle-kit", "migrate"], {
+      env: { ...process.env, DATABASE_URL: adminUrlFor(name) },
+      stdio: "pipe",
+    });
+  }
 
   const url = adminUrlFor(name);
   process.env.DATABASE_URL = url;
-
-  execFileSync("npx", ["drizzle-kit", "migrate"], {
-    env: { ...process.env, DATABASE_URL: url },
-    stdio: "pipe",
-  });
 
   return {
     url,

@@ -7,7 +7,7 @@
  * `@/lib/ses` swapped for a fake, which is the one thing a test must not call
  * for real.
  */
-import { spawn } from "node:child_process";
+import { execFileSync, spawn } from "node:child_process";
 import { existsSync, mkdirSync, readdirSync, rmSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -97,8 +97,43 @@ const built = files.map((path) =>
   join(outdir, path.slice(join(root, "test").length + 1).replace(/\.ts$/, ".js")),
 );
 
-const child = spawn(process.execPath, ["--test", ...process.argv.slice(2), ...built], {
-  stdio: "inherit",
-  cwd: root,
+/*
+ * One migrated database, copied per test file.
+ *
+ * Running the migrations once per file meant spawning drizzle-kit three times
+ * and paying for it three times. Postgres will copy a database wholesale, so
+ * the migrations run once here and each file gets a copy in a few
+ * milliseconds.
+ */
+const ADMIN_URL = process.env.TEST_DATABASE_URL ?? "postgres://mail:mail@localhost:5433/postgres";
+const TEMPLATE = "mail_test_template";
+
+function psql(url, statement) {
+  execFileSync("psql", [url, "-v", "ON_ERROR_STOP=1", "-c", statement], { stdio: "pipe" });
+}
+
+function templateUrl(name) {
+  const url = new URL(ADMIN_URL);
+  url.pathname = `/${name}`;
+  return url.toString();
+}
+
+psql(ADMIN_URL, `DROP DATABASE IF EXISTS "${TEMPLATE}"`);
+psql(ADMIN_URL, `CREATE DATABASE "${TEMPLATE}"`);
+execFileSync("npx", ["drizzle-kit", "migrate"], {
+  env: { ...process.env, DATABASE_URL: templateUrl(TEMPLATE) },
+  stdio: "pipe",
 });
+
+// One file at a time. They each hold a database and a connection pool, and
+// running them together turned a slow migration into a flaky test.
+const child = spawn(
+  process.execPath,
+  ["--test", "--test-concurrency=1", ...process.argv.slice(2), ...built],
+  {
+    stdio: "inherit",
+    cwd: root,
+    env: { ...process.env, TEST_TEMPLATE_DB: TEMPLATE, TEST_ADMIN_URL: ADMIN_URL },
+  },
+);
 child.on("exit", (code) => process.exit(code ?? 1));

@@ -6,7 +6,7 @@ import { env } from "@/lib/env";
 import { sendRawEmail } from "@/lib/ses";
 import { newId } from "@/lib/utils";
 import { and, eq, sql } from "drizzle-orm";
-import { type SentContext, markFailed, markSent } from "./sent";
+import { type SentContext, markFailed, markSent, markSimulated } from "./sent";
 
 /* -------------------------------------------------------------------------- */
 /* Which failures are worth trying again                                      */
@@ -322,6 +322,21 @@ export async function runOutboxOnce(limit = 10): Promise<OutboxRun> {
 
   for (const job of jobs) {
     try {
+      const context = await contextFor(job);
+
+      // A test message that happened to be scheduled is still a test message.
+      // Nothing about the job says so — the mark is on the message — which is
+      // why this is read before anything is handed over.
+      if (context?.isTest) {
+        await db
+          .update(sendJob)
+          .set({ status: "sent", lockedAt: null, lastError: null, updatedAt: new Date() })
+          .where(eq(sendJob.id, job.id));
+        await markSimulated(context);
+        run.sent += 1;
+        continue;
+      }
+
       const result = await sendRawEmail({
         raw: Buffer.from(job.rawMime, "base64"),
         from: job.fromAddress,

@@ -144,6 +144,8 @@ export interface SentResult {
    */
   status: string;
   scheduled_at: string | null;
+  /** True when a test key wrote it, and SES never saw it. */
+  test: boolean;
 }
 
 /**
@@ -192,6 +194,7 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     references: input.references,
     apiKeyId: caller.keyId,
     scheduledAt,
+    testMode: caller.testMode,
   });
 
   return {
@@ -204,6 +207,7 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     subject: body.subject,
     status: result.status,
     scheduled_at: result.scheduledAt ? result.scheduledAt.toISOString() : null,
+    test: caller.testMode,
   };
 }
 

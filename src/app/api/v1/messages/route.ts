@@ -1,7 +1,7 @@
 import { db } from "@/db";
 import { folderEnum, mailbox, message } from "@/db/schema";
 import { boolOf, dateOf, fail, limitOf, makeCursor, page, splitCursor } from "@/lib/api-http";
-import { apiRoute, scopedMailboxIds } from "@/server/api-auth";
+import { apiRoute, scopedMailboxIds, testFilter } from "@/server/api-auth";
 import { serializeMessage } from "@/server/api-serialize";
 import { and, desc, eq, gte, ilike, inArray, lt, lte, or, sql } from "drizzle-orm";
 
@@ -28,6 +28,9 @@ export const GET = apiRoute("mail:read", async ({ caller, url }) => {
   const filters = [inArray(message.mailboxId, mailboxIds)];
 
   const direction = url.searchParams.get("direction");
+  const test = testFilter(caller, url);
+  if (test) filters.push(test);
+
   if (direction === "inbound") filters.push(eq(message.isOutbound, false));
   if (direction === "outbound") filters.push(eq(message.isOutbound, true));
 
