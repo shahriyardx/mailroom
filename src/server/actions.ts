@@ -31,12 +31,13 @@ import {
   readableMailboxIds,
 } from "@/server/grants";
 import { assertCan, can } from "@/server/permissions";
+import type { EventType } from "@aws-sdk/client-sesv2";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
 import { addDomain, importFromSes, refreshDomain, removeDomain, useOwnDkimKey } from "./domains";
-import { setUpEvents } from "./events";
+import { setEventTypes, setUpEvents } from "./events";
 import { type SubdomainReceiving, ensureSubdomainReceiving } from "./inbound";
 import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./inbound";
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
@@ -602,6 +603,22 @@ export async function setUpEventsAction() {
     return {
       ok: false as const,
       error: error instanceof Error ? error.message : "Could not set up delivery reporting",
+    };
+  }
+}
+
+/** Changes which events SES reports. The required ones are put back server-side. */
+export async function setEventTypesAction(types: string[]) {
+  const access = await requireAccess();
+  assertCan(access, "domain:manage");
+  try {
+    const status = await setEventTypes(types as EventType[]);
+    revalidatePath("/settings", "layout");
+    return { ok: true as const, status };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "Could not change delivery reporting",
     };
   }
 }

@@ -1,9 +1,10 @@
 "use client";
 
-import { Button, List, ListRow, Note, Panel, StatusPill } from "@/components/kit";
-import { setUpEventsAction } from "@/server/actions";
+import { Badge, Button, List, ListRow, Note, Panel, StatusPill, Switch } from "@/components/kit";
+import { EVENT_KINDS } from "@/lib/ses-events";
+import { setEventTypesAction, setUpEventsAction } from "@/server/actions";
 import type { EventsStatus } from "@/server/events";
-import { Check, Copy, Zap } from "lucide-react";
+import { Check, Copy, Eye, Zap } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -14,9 +15,6 @@ export function EventsPanel({ status }: { status: EventsStatus }) {
 
   const live =
     status.configurationSet && status.destination.present && status.subscription === "confirmed";
-  // A pipeline built before opens were asked for still reports everything
-  // else, so it is worth saying that running the button again adds them.
-  const missingOpens = live && !status.destination.opens;
 
   return (
     <Panel
@@ -33,79 +31,22 @@ export function EventsPanel({ status }: { status: EventsStatus }) {
           AWS could not be reached: {status.error}
         </p>
       ) : (
-        <List>
-          <ListRow>
-            <span className="min-w-0 flex-1 text-[13px]">Configuration set</span>
-            <span className="font-mono text-[12px] text-muted-foreground">{status.name}</span>
-            <StatusPill state={status.configurationSet ? "ok" : "pending"}>
-              {status.configurationSet ? "Present" : "Missing"}
-            </StatusPill>
-          </ListRow>
-          <ListRow>
-            <span className="min-w-0 flex-1 text-[13px]">Event destination</span>
-            <span className="text-[12px] text-muted-foreground">
-              {status.destination.eventTypes} event types
-            </span>
-            <StatusPill state={status.destination.present ? "ok" : "pending"}>
-              {status.destination.present ? "Enabled" : "Missing"}
-            </StatusPill>
-          </ListRow>
-          <ListRow>
-            <span className="min-w-0 flex-1 text-[13px]">Open tracking</span>
-            <span className="hidden text-[12px] text-muted-foreground sm:block">
-              An image SES adds to outgoing HTML
-            </span>
-            <StatusPill state={status.destination.opens ? "ok" : "pending"}>
-              {status.destination.opens ? "On" : "Off"}
-            </StatusPill>
-          </ListRow>
-          <ListRow>
-            <span className="min-w-0 flex-1 text-[13px]">Callback subscription</span>
-            <span className="hidden truncate font-mono text-[12px] text-muted-foreground sm:block">
-              {status.endpoint}
-            </span>
-            <StatusPill
-              state={
-                status.subscription === "confirmed"
-                  ? "ok"
-                  : status.subscription === "pending"
-                    ? "pending"
-                    : "bad"
-              }
-            >
-              {status.subscription === "confirmed"
-                ? "Confirmed"
-                : status.subscription === "pending"
-                  ? "Awaiting AWS"
-                  : "Missing"}
-            </StatusPill>
-          </ListRow>
-          {status.topicArn ? (
-            <ListRow>
-              <span className="min-w-0 shrink-0 text-[13px]">SNS topic</span>
-              {/* Printed because SES_SNS_TOPIC_ARN is the one setting nobody
-                  can work out for themselves: it contains the AWS account id,
-                  and it only exists once this pipeline has been built. */}
-              <span className="min-w-0 flex-1 overflow-hidden text-right text-[12px] text-muted-foreground">
-                <CopyArn value={status.topicArn} />
-              </span>
-            </ListRow>
-          ) : null}
-        </List>
+        <>
+          <Pipeline status={status} />
+          <Reported status={status} />
+        </>
       )}
 
-      <div className="mt-4 flex flex-wrap items-center gap-3">
+      <div className="mt-5 flex flex-wrap items-center gap-3">
         <Note className="mr-auto max-w-md">
           {live && status.topicArn
             ? "Optional: set SES_SNS_TOPIC_ARN to the topic above and redeploy, and this app will refuse events from any other topic."
-            : missingOpens
-              ? "Reporting works, but this pipeline was made before open tracking. Run it again to turn opens on."
-              : live
-                ? "Everything is in place. Running this again is harmless: each piece is only created when missing."
-                : "Creates the topic, allows SES to publish to it, adds the configuration set and its event destination, then subscribes this app. AWS confirms the subscription by calling back."}
+            : live
+              ? "Everything is in place. Running this again is harmless: each piece is only created when missing."
+              : "Creates the topic, allows SES to publish to it, adds the configuration set and its event destination, then subscribes this app. AWS confirms the subscription by calling back."}
         </Note>
         <Button
-          variant={live && !missingOpens ? "outline" : "solid"}
+          variant={live ? "outline" : "solid"}
           pill
           loading={pending}
           onClick={() =>
@@ -125,10 +66,144 @@ export function EventsPanel({ status }: { status: EventsStatus }) {
           }
         >
           {!pending && <Zap />}
-          {live ? "Run again" : "Set up delivery reporting"}
+          {live ? "Repair pipeline" : "Set up delivery reporting"}
         </Button>
       </div>
     </Panel>
+  );
+}
+
+/** The four pieces AWS has to have in place before anything is reported. */
+function Pipeline({ status }: { status: EventsStatus }) {
+  return (
+    <List>
+      <ListRow>
+        <span className="min-w-0 flex-1 text-[13px]">Configuration set</span>
+        <span className="font-mono text-[12px] text-muted-foreground">{status.name}</span>
+        <StatusPill state={status.configurationSet ? "ok" : "pending"}>
+          {status.configurationSet ? "Present" : "Missing"}
+        </StatusPill>
+      </ListRow>
+      <ListRow>
+        <span className="min-w-0 flex-1 text-[13px]">Event destination</span>
+        <span className="text-[12px] text-muted-foreground">
+          {status.destination.types.length} of {EVENT_KINDS.length} events
+        </span>
+        <StatusPill state={status.destination.present ? "ok" : "pending"}>
+          {status.destination.present ? "Enabled" : "Missing"}
+        </StatusPill>
+      </ListRow>
+      <ListRow>
+        <span className="min-w-0 flex-1 text-[13px]">Callback subscription</span>
+        <span className="hidden truncate font-mono text-[12px] text-muted-foreground sm:block">
+          {status.endpoint}
+        </span>
+        <StatusPill
+          state={
+            status.subscription === "confirmed"
+              ? "ok"
+              : status.subscription === "pending"
+                ? "pending"
+                : "bad"
+          }
+        >
+          {status.subscription === "confirmed"
+            ? "Confirmed"
+            : status.subscription === "pending"
+              ? "Awaiting AWS"
+              : "Missing"}
+        </StatusPill>
+      </ListRow>
+      {status.topicArn ? (
+        <ListRow>
+          <span className="min-w-0 shrink-0 text-[13px]">SNS topic</span>
+          {/* Printed because SES_SNS_TOPIC_ARN is the one setting nobody
+              can work out for themselves: it contains the AWS account id,
+              and it only exists once this pipeline has been built. */}
+          <span className="min-w-0 flex-1 overflow-hidden text-right text-[12px] text-muted-foreground">
+            <CopyArn value={status.topicArn} />
+          </span>
+        </ListRow>
+      ) : null}
+    </List>
+  );
+}
+
+/**
+ * Which events SES reports, one row each, switchable.
+ *
+ * A count was all this used to show, which said nothing about whether a
+ * tracking image was being added to outgoing mail — the one item here that
+ * a reader of the mail would notice, and the one worth being able to refuse.
+ */
+function Reported({ status }: { status: EventsStatus }) {
+  const router = useRouter();
+  const [saving, start] = useTransition();
+  const [types, setTypes] = useState<string[]>(status.destination.types);
+  const ready = status.destination.present;
+
+  // The server puts the required ones back regardless, so the switch shown
+  // for them would be a lie. They get a badge instead.
+  function toggle(type: string, on: boolean) {
+    const next = on ? [...types, type] : types.filter((item) => item !== type);
+    setTypes(next);
+    start(async () => {
+      const result = await setEventTypesAction(next);
+      if (!result.ok) {
+        setTypes(types);
+        toast.error(result.error);
+        return;
+      }
+      setTypes(result.status.destination.types);
+      toast.success(on ? "Now reporting this" : "No longer reporting this");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-5">
+      <div className="mb-1 flex items-center gap-2">
+        <p className="text-[12.5px] font-semibold">What SES reports</p>
+        {status.destination.opens && (
+          <Badge tone="warn">
+            <Eye />
+            Tracking image on
+          </Badge>
+        )}
+      </div>
+      <Note className="mb-2">
+        Five of these are switched off only by breaking something: the app reads them to decide what
+        happened to a message, and bounces and complaints are what fill the suppression list.
+      </Note>
+      <List>
+        {EVENT_KINDS.map((kind) => {
+          const on = types.includes(kind.type);
+          return (
+            <ListRow key={kind.type}>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px]">
+                  {kind.label}
+                  {kind.altersMessage && (
+                    <span className="ml-2 text-[11px] text-warn">changes the message</span>
+                  )}
+                </span>
+                <span className="block text-[12px] text-muted-foreground">{kind.hint}</span>
+              </span>
+              {kind.required ? (
+                <Badge tone="neutral">Required</Badge>
+              ) : (
+                <Switch
+                  checked={on}
+                  disabled={!ready || saving}
+                  aria-label={kind.label}
+                  onCheckedChange={(next) => toggle(kind.type, next)}
+                />
+              )}
+            </ListRow>
+          );
+        })}
+      </List>
+    </div>
   );
 }
 

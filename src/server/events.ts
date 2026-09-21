@@ -1,6 +1,7 @@
 import "server-only";
 
 import { env } from "@/lib/env";
+import { DEFAULT_EVENTS, KNOWN_EVENTS, REQUIRED_EVENTS } from "@/lib/ses-events";
 import {
   CreateConfigurationSetCommand,
   CreateConfigurationSetEventDestinationCommand,
@@ -18,21 +19,6 @@ import {
   SetTopicAttributesCommand,
   SubscribeCommand,
 } from "@aws-sdk/client-sns";
-
-/** Everything SES can tell us about a message after it leaves. */
-const EVENT_TYPES: EventType[] = [
-  "SEND",
-  "DELIVERY",
-  "BOUNCE",
-  "COMPLAINT",
-  "REJECT",
-  "DELIVERY_DELAY",
-  "RENDERING_FAILURE",
-  // Asking for OPEN is what makes SES add the tracking image to outgoing
-  // HTML. Clicks are left alone on purpose: tracking them means rewriting
-  // every link in the message.
-  "OPEN",
-];
 
 const DESTINATION = "sns-events";
 
@@ -53,7 +39,7 @@ export interface EventsStatus {
   name: string;
   endpoint: string;
   configurationSet: boolean;
-  destination: { present: boolean; eventTypes: number; opens: boolean };
+  destination: { present: boolean; types: EventType[]; opens: boolean };
   topicArn: string | null;
   subscription: "confirmed" | "pending" | "missing";
   /** Set when SES or SNS could not be reached at all. */
@@ -71,7 +57,7 @@ export async function eventsStatus(): Promise<EventsStatus> {
     name,
     endpoint,
     configurationSet: false,
-    destination: { present: false, eventTypes: 0, opens: false },
+    destination: { present: false, types: [], opens: false },
     topicArn: process.env.SES_SNS_TOPIC_ARN || null,
     subscription: "missing",
   };
@@ -86,13 +72,15 @@ export async function eventsStatus(): Promise<EventsStatus> {
       base.configurationSet = true;
       const destination = (found.EventDestinations ?? []).find((item) => item.Name === DESTINATION);
       if (destination) {
+        const types = (destination.MatchingEventTypes ?? []).filter((type) =>
+          KNOWN_EVENTS.has(type),
+        );
         base.destination = {
           present: destination.Enabled === true,
-          eventTypes: destination.MatchingEventTypes?.length ?? 0,
-          // A configuration set made before opens were asked for still
-          // reports everything else, so this is shown on its own rather
-          // than counted as "not set up".
-          opens: (destination.MatchingEventTypes ?? []).includes("OPEN"),
+          // Named rather than counted: "8 event types" tells nobody which
+          // eight, and opens cannot be argued with until they are listed.
+          types,
+          opens: types.includes("OPEN"),
         };
         base.topicArn = destination.SnsDestination?.TopicArn ?? base.topicArn;
       }
@@ -182,7 +170,7 @@ export async function setUpEvents(): Promise<EventsStatus> {
 
   const destination = {
     Enabled: true,
-    MatchingEventTypes: EVENT_TYPES,
+    MatchingEventTypes: DEFAULT_EVENTS,
     SnsDestination: { TopicArn: topicArn },
   };
 
@@ -217,6 +205,47 @@ export async function setUpEvents(): Promise<EventsStatus> {
       new SubscribeCommand({ TopicArn: topicArn, Protocol: "https", Endpoint: endpoint }),
     );
   }
+
+  return eventsStatus();
+}
+
+/**
+ * Changes which events SES reports, leaving the rest of the pipeline alone.
+ *
+ * The required ones are put back whatever the caller asks for: without
+ * bounces and complaints the suppression list stops growing and the app
+ * keeps mailing addresses that have already refused it. Everything else is
+ * the caller's to choose, including the two that alter outgoing HTML.
+ */
+export async function setEventTypes(types: EventType[]): Promise<EventsStatus> {
+  const name = env.aws.configurationSet || "mail-events";
+  const { ses } = clients();
+
+  const wanted = new Set<EventType>(REQUIRED_EVENTS);
+  for (const type of types) if (KNOWN_EVENTS.has(type)) wanted.add(type);
+
+  // The SNS destination has to be handed back unchanged; an update that
+  // omitted it would point the configuration set at nothing.
+  const existing = await ses.send(
+    new GetConfigurationSetEventDestinationsCommand({ ConfigurationSetName: name }),
+  );
+  const current = (existing.EventDestinations ?? []).find((item) => item.Name === DESTINATION);
+  const topicArn = current?.SnsDestination?.TopicArn;
+  if (!current || !topicArn) {
+    throw new Error("Delivery reporting is not set up yet. Set it up before changing it.");
+  }
+
+  await ses.send(
+    new UpdateConfigurationSetEventDestinationCommand({
+      ConfigurationSetName: name,
+      EventDestinationName: DESTINATION,
+      EventDestination: {
+        Enabled: true,
+        MatchingEventTypes: [...wanted],
+        SnsDestination: { TopicArn: topicArn },
+      },
+    }),
+  );
 
   return eventsStatus();
 }
