@@ -20,6 +20,7 @@ import {
   Tag,
   User,
   Users,
+  UsersRound,
   Webhook,
 } from "lucide-react";
 import Link from "next/link";
@@ -79,6 +80,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Account",
     items: [
       { href: "/settings/people", label: "People", icon: Users, needs: "member:manage" },
+      { href: "/settings/teams", label: "Teams", icon: UsersRound, needs: "member:manage" },
       { href: "/settings/access", label: "Access", icon: ShieldCheck, needs: "access:manage" },
       { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
       { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
