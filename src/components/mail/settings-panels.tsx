@@ -308,53 +308,56 @@ function MailboxRow({
           {domainReady ? "Ready" : "Domain pending"}
         </StatusPill>
 
-        {/* A row you may read but not change has nothing to act on. */}
-        {canManage ? (
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <IconButton label={`Actions for ${mailbox.address}`}>
-                <MoreHorizontal />
-              </IconButton>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-52">
-              <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
-                <PenLine /> {open ? "Hide signature" : "Edit signature"}
-              </DropdownMenuItem>
-              {/* Choosing the default and removing a mailbox are the
+        {/* A fixed slot, so the status beside it lands in the same place
+            whether or not there is a menu to show. */}
+        <span className="flex w-20 shrink-0 justify-end">
+          {canManage ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <IconButton label={`Actions for ${mailbox.address}`}>
+                  <MoreHorizontal />
+                </IconButton>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-52">
+                <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
+                  <PenLine /> {open ? "Hide signature" : "Edit signature"}
+                </DropdownMenuItem>
+                {/* Choosing the default and removing a mailbox are the
                   instance's business, not one grant holder's. */}
-              {administers && !mailbox.isDefault && (
-                <DropdownMenuItem
-                  onSelect={() =>
-                    start(async () => {
-                      await updateMailboxAction(mailbox.id, { isDefault: true });
-                      toast.success("Default mailbox changed");
-                      router.refresh();
-                    })
-                  }
-                >
-                  <Star /> Make default
-                </DropdownMenuItem>
-              )}
-              {administers && <DropdownMenuSeparator />}
-              {administers && (
-                <DropdownMenuItem
-                  destructive
-                  onSelect={() =>
-                    start(async () => {
-                      await deleteMailboxAction(mailbox.id);
-                      toast.success("Mailbox removed");
-                      router.refresh();
-                    })
-                  }
-                >
-                  <Trash2 /> Delete mailbox
-                </DropdownMenuItem>
-              )}
-            </DropdownMenuContent>
-          </DropdownMenu>
-        ) : (
-          <span className="text-[12px] text-muted-foreground">Read only</span>
-        )}
+                {administers && !mailbox.isDefault && (
+                  <DropdownMenuItem
+                    onSelect={() =>
+                      start(async () => {
+                        await updateMailboxAction(mailbox.id, { isDefault: true });
+                        toast.success("Default mailbox changed");
+                        router.refresh();
+                      })
+                    }
+                  >
+                    <Star /> Make default
+                  </DropdownMenuItem>
+                )}
+                {administers && <DropdownMenuSeparator />}
+                {administers && (
+                  <DropdownMenuItem
+                    destructive
+                    onSelect={() =>
+                      start(async () => {
+                        await deleteMailboxAction(mailbox.id);
+                        toast.success("Mailbox removed");
+                        router.refresh();
+                      })
+                    }
+                  >
+                    <Trash2 /> Delete mailbox
+                  </DropdownMenuItem>
+                )}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <span className="text-[12px] text-muted-foreground">Read only</span>
+          )}
+        </span>
       </ListRow>
 
       {open && canManage && (
