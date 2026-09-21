@@ -1,14 +1,14 @@
 import { DomainPanel, type DomainRow } from "@/components/mail/domain-panel";
 import { EventsPanel } from "@/components/mail/events-panel";
 import { getAccountStatus } from "@/lib/ses";
-import { requireAccess } from "@/server/access";
 import { ensureDomainsSynced, recordsForDomain } from "@/server/domains";
 import { eventsStatus } from "@/server/events";
+import { requireCapability } from "@/server/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function DomainsSettingsPage() {
-  const access = await requireAccess();
+  const access = await requireCapability("domain:manage");
 
   // Domains auto-import on first visit, and refresh when the cached status is stale.
   const sync = await ensureDomainsSynced(access.orgId);

@@ -4,6 +4,11 @@ import {
   Avatar,
   Badge,
   Button,
+  DropdownMenu,
+  DropdownMenuCheckboxItem,
+  DropdownMenuContent,
+  DropdownMenuLabel,
+  DropdownMenuTrigger,
   Field,
   Fieldset,
   FieldsetActions,
@@ -33,7 +38,7 @@ import {
   setMemberRoleAction,
   setTeamMembershipAction,
 } from "@/server/team";
-import { Copy, Plus, RotateCw, Trash2, UserPlus } from "lucide-react";
+import { ChevronDown, Plus, RotateCw, Trash2, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -105,11 +110,55 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                 </span>
               </span>
 
-              {person.teams.map((entry) => (
-                <Badge key={entry.id} size="sm" tone={entry.isRoot ? "accent" : "neutral"}>
-                  {entry.name}
-                </Badge>
-              ))}
+              {canManage ? (
+                <DropdownMenu>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex max-w-48 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                    >
+                      <span className="truncate">
+                        {person.teams.length === 0
+                          ? "No team"
+                          : person.teams.map((entry) => entry.name).join(", ")}
+                      </span>
+                      <ChevronDown className="size-3.5 shrink-0" />
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="end" className="w-52">
+                    <DropdownMenuLabel>Teams</DropdownMenuLabel>
+                    {teams.map((entry) => {
+                      const inTeam = person.teams.some((t) => t.id === entry.id);
+                      return (
+                        <DropdownMenuCheckboxItem
+                          key={entry.id}
+                          checked={inTeam}
+                          // Several teams can be set without the menu closing
+                          // between each one.
+                          onSelect={(event) => event.preventDefault()}
+                          onCheckedChange={() =>
+                            run(
+                              () => setTeamMembershipAction(entry.id, person.userId, !inTeam),
+                              "Teams updated",
+                            )
+                          }
+                        >
+                          <span className="truncate">{entry.name}</span>
+                          {entry.isRoot && (
+                            <span className="ml-auto text-[11px] text-muted-foreground">all</span>
+                          )}
+                        </DropdownMenuCheckboxItem>
+                      );
+                    })}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ) : (
+                person.teams.map((entry) => (
+                  <Badge key={entry.id} size="sm" tone={entry.isRoot ? "accent" : "neutral"}>
+                    {entry.name}
+                  </Badge>
+                ))
+              )}
 
               {/* An owner's role is editable only by another owner, and
                   nobody edits their own: that is how an instance ends up with
@@ -324,7 +373,7 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                 placeholder="Support"
               />
             </Field>
-            <FieldsetActions note="Which domains and mailboxes a team reaches is set per team, next to the mailbox itself.">
+            <FieldsetActions note="Put people in a team from the list above. What a team reaches is set under Access.">
               <Button
                 variant="solid"
                 pill
@@ -345,55 +394,6 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
           </Fieldset>
         )}
       </Panel>
-
-      {canManage && teams.length > 1 && (
-        <Panel title="Who is in which team" description="Tick to put someone in a team.">
-          <div className="overflow-x-auto">
-            <table className="w-full min-w-max text-left text-[12.5px]">
-              <thead>
-                <tr className="text-[11.5px] text-muted-foreground">
-                  <th className="py-1 pr-4 font-medium">Person</th>
-                  {teams.map((entry) => (
-                    <th key={entry.id} className="py-1 pr-4 font-medium">
-                      {entry.name}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {people.map((person) => (
-                  <tr key={person.memberId} className="border-t border-border">
-                    <td className="py-2 pr-4">{person.name}</td>
-                    {teams.map((entry) => {
-                      const inTeam = person.teams.some((t) => t.id === entry.id);
-                      return (
-                        <td key={entry.id} className="py-2 pr-4">
-                          <input
-                            type="checkbox"
-                            checked={inTeam}
-                            aria-label={`${person.name} in ${entry.name}`}
-                            onChange={() =>
-                              run(
-                                () => setTeamMembershipAction(entry.id, person.userId, !inTeam),
-                                "Teams updated",
-                              )
-                            }
-                          />
-                        </td>
-                      );
-                    })}
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-          <Note className="mt-3">
-            Access granted to a team reaches everyone in it. Phase two adds per-domain and
-            per-mailbox grants; today the root team reaches everything and other teams reach
-            nothing.
-          </Note>
-        </Panel>
-      )}
     </>
   );
 }

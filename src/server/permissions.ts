@@ -1,6 +1,7 @@
 import "server-only";
 
-import type { Access, Role } from "./access";
+import { notFound } from "next/navigation";
+import { type Access, type Role, requireAccess } from "./access";
 
 /**
  * What a person may do. Roles cover the instance; grants (phase two) cover
@@ -66,3 +67,17 @@ const REFUSALS: Record<Capability, string> = {
   "mail:read": "You do not have access to this mailbox.",
   "mail:send": "You cannot send as this mailbox.",
 };
+
+/**
+ * For a page rather than an action. Hiding a link in the sidebar decides what
+ * is easy to reach, not what is reachable: a page has to refuse on its own or
+ * typing its address is enough to read it.
+ *
+ * Answers "not found" rather than "not allowed", so the existence of a screen
+ * is not itself something a member learns.
+ */
+export async function requireCapability(capability: Capability): Promise<Access> {
+  const access = await requireAccess();
+  if (!can(access, capability)) notFound();
+  return access;
+}

@@ -149,7 +149,12 @@ export async function saveDraftAction(raw: z.input<typeof draftSchema>) {
 
 export async function deleteDraftAction(draftId: string) {
   const access = await requireAccess();
-  const mailboxIds = await resolveScope(access.orgId, { kind: "all" });
+  // Bounded by what this person may read, not by the whole company.
+  const mailboxIds = await resolveScope(
+    access.orgId,
+    { kind: "all" },
+    await readableMailboxIds(access),
+  );
   const [row] = await db
     .select({ threadId: message.threadId })
     .from(message)

@@ -1,12 +1,12 @@
 import { OverviewPanel } from "@/components/mail/overview-panel";
 import { getAccountStatus } from "@/lib/ses";
-import { requireAccess } from "@/server/access";
 import { OVERVIEW_WINDOW_DAYS, overview } from "@/server/analytics";
+import { requireCapability } from "@/server/permissions";
 
 export const dynamic = "force-dynamic";
 
 export default async function OverviewSettingsPage() {
-  const access = await requireAccess();
+  const access = await requireCapability("mailbox:manage");
   const [data, account] = await Promise.all([
     overview(access.orgId),
     // SES is a network call that can fail; the rest of the page does not need it.

@@ -37,6 +37,7 @@ export interface PersonRow {
 
 export async function listPeople() {
   const access = await requireAccess();
+  assertCan(access, "member:manage");
 
   const members = await db
     .select({
