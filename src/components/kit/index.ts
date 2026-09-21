@@ -50,6 +50,7 @@ export { Input, Textarea } from "./input";
 export { Logo, MailroomMark, Wordmark } from "./logo";
 export { BlankSlate, Fieldset, FieldsetActions, List, ListEmpty, ListRow, Note } from "./list";
 export { Popover, PopoverAnchor, PopoverClose, PopoverContent, PopoverTrigger } from "./popover";
+export { ProgressBar } from "./progress-bar";
 export { ScrollArea, ScrollBar } from "./scroll-area";
 export {
   Select,

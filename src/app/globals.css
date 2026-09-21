@@ -331,3 +331,105 @@
     box-shadow: var(--shadow-float);
   }
 }
+
+/* ==========================================================================
+   Navigation progress
+
+   The thin line across the top while a page is being fetched. BProgress
+   supplies the behaviour; the appearance is ours, so `disableStyle` is set on
+   the provider and nothing is injected at runtime.
+
+   It is the accent, because it states what is happening — the same reason
+   unread and the primary action are. Two pixels, no glow, no spinner: the
+   default look is a 2013 loading bar, and this app does not shout.
+   ========================================================================== */
+
+.bprogress {
+  width: 0;
+  height: 0;
+  pointer-events: none;
+  z-index: 100;
+}
+
+.bprogress .bar {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  width: 100%;
+  height: 2px;
+  background: var(--primary);
+}
+
+/* The default peg is a blurred comet tail. A soft fade off the leading edge
+   says the same thing without the decoration. */
+.bprogress .peg {
+  display: block;
+  position: absolute;
+  right: 0;
+  width: 72px;
+  height: 100%;
+  background: linear-gradient(90deg, transparent, var(--primary));
+  opacity: 0.85;
+}
+
+/* Used only if the bar is ever put in indeterminate mode. */
+.bprogress .indeterminate {
+  position: fixed;
+  top: 0;
+  left: 0;
+  z-index: 100;
+  width: 100%;
+  height: 2px;
+  overflow: hidden;
+}
+
+.bprogress .indeterminate .inc,
+.bprogress .indeterminate .dec {
+  position: absolute;
+  top: 0;
+  height: 100%;
+  background: var(--primary);
+}
+
+.bprogress .indeterminate .inc {
+  animation: bprogress-indeterminate-increase 2s infinite;
+}
+
+.bprogress .indeterminate .dec {
+  animation: bprogress-indeterminate-decrease 2s 0.5s infinite;
+}
+
+@keyframes bprogress-indeterminate-increase {
+  from {
+    left: -5%;
+    width: 5%;
+  }
+  to {
+    left: 130%;
+    width: 100%;
+  }
+}
+
+@keyframes bprogress-indeterminate-decrease {
+  from {
+    left: -80%;
+    width: 80%;
+  }
+  to {
+    left: 110%;
+    width: 10%;
+  }
+}
+
+/* Somebody who has asked for less movement gets the line, not the crawl. */
+@media (prefers-reduced-motion: reduce) {
+  .bprogress .peg {
+    display: none;
+  }
+
+  .bprogress .indeterminate .inc,
+  .bprogress .indeterminate .dec {
+    animation: none;
+  }
+}
