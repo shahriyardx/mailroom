@@ -359,12 +359,12 @@ export function ThreadList({
         {(prevCursor || nextCursor) && (
           <li className="flex items-center gap-2 px-4 pt-3">
             {prevCursor && (
-              <Button variant="subtle" size="sm" block pill asChild>
+              <Button variant="subtle" size="sm" pill asChild className="flex-1">
                 <Link href={pageHref(prevCursor, "newer")}>Newer</Link>
               </Button>
             )}
             {nextCursor && (
-              <Button variant="subtle" size="sm" block pill asChild>
+              <Button variant="subtle" size="sm" pill asChild className="flex-1">
                 <Link href={pageHref(nextCursor, "older")}>Older</Link>
               </Button>
             )}

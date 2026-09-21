@@ -88,13 +88,29 @@ export async function listThreads(options: ListOptions): Promise<{
 
   const backwards = options.direction === "newer";
 
+  /**
+   * Unread mail sits above read mail, each half newest first — the way Gmail
+   * orders an inbox, and for the same reason: what has not been read yet is
+   * the reason somebody opened the list.
+   *
+   * The cursor has to carry the unread flag as well as the date. A keyset
+   * cursor is only a position if it sorts the way the query does, and a cursor
+   * that knew only the date would step straight from the unread half into the
+   * middle of the read one.
+   */
+  const unread = sql<boolean>`(${thread.unreadCount} > 0)`;
+
   if (options.cursor) {
-    const [stamp, id] = options.cursor.split("|");
-    const at = new Date(Number(stamp));
+    const [flag, stamp, id] = options.cursor.split("|");
+    const at = new Date(Number(stamp)).toISOString();
+    const wasUnread = flag === "1";
+
+    // Postgres compares row values left to right, which is exactly the
+    // ordering below — so one comparison stands in for three nested ones.
     filters.push(
       backwards
-        ? or(gt(thread.lastMessageAt, at), and(eq(thread.lastMessageAt, at), gt(thread.id, id!)))!
-        : or(lt(thread.lastMessageAt, at), and(eq(thread.lastMessageAt, at), lt(thread.id, id!)))!,
+        ? sql`(${unread}, ${thread.lastMessageAt}, ${thread.id}) > (${wasUnread}, ${at}::timestamptz, ${id})`
+        : sql`(${unread}, ${thread.lastMessageAt}, ${thread.id}) < (${wasUnread}, ${at}::timestamptz, ${id})`,
     );
   }
 
@@ -120,6 +136,7 @@ export async function listThreads(options: ListOptions): Promise<{
     // Reading backwards walks away from the cursor, so the rows arrive
     // oldest-first and are turned around below to be displayed.
     .orderBy(
+      backwards ? sql`${unread} asc` : sql`${unread} desc`,
       backwards ? asc(thread.lastMessageAt) : desc(thread.lastMessageAt),
       backwards ? asc(thread.id) : desc(thread.id),
     )
@@ -129,7 +146,8 @@ export async function listThreads(options: ListOptions): Promise<{
   const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
   const items = backwards ? [...page].reverse() : page;
 
-  const key = (row: (typeof items)[number]) => `${row.lastMessageAt.getTime()}|${row.id}`;
+  const key = (row: (typeof items)[number]) =>
+    `${row.unreadCount > 0 ? 1 : 0}|${row.lastMessageAt.getTime()}|${row.id}`;
   const first = items.at(0);
   const last = items.at(-1);
 

@@ -22,7 +22,9 @@ before(async () => {
   const { db } = await import("@/db");
   const { thread } = await import("@/db/schema");
 
-  // Newest first when read back: thread 0 is the oldest.
+  // Newest first when read back: thread 0 is the oldest. Every seventh is
+  // left unread, scattered through the range rather than bunched at one end,
+  // so sorting them to the top actually has to move them past something.
   await db.insert(thread).values(
     Array.from({ length: TOTAL }, (_, index) => ({
       id: `thr_${String(index).padStart(4, "0")}`,
@@ -30,6 +32,7 @@ before(async () => {
       subject: `Thread ${index}`,
       folders: ["inbox" as const],
       messageCount: 1,
+      unreadCount: index % 7 === 0 ? 1 : 0,
       lastMessageAt: new Date(Date.UTC(2026, 0, 1) + index * 60_000),
     })),
   );
@@ -54,11 +57,42 @@ async function page(cursor?: string, direction: "older" | "newer" = "older") {
 
 const subjects = (rows: { subject: string }[]) => rows.map((row) => row.subject);
 
+const UNREAD = Math.ceil(TOTAL / 7);
+
+describe("ordering", () => {
+  it("puts every unread thread above every read one", async () => {
+    const all = [...(await page()).items, ...(await page((await page()).nextCursor!)).items];
+    const lastUnread = all.findLastIndex((row) => row.unreadCount > 0);
+    const firstRead = all.findIndex((row) => row.unreadCount === 0);
+    assert.ok(lastUnread < firstRead, "the two halves do not interleave");
+    assert.equal(
+      all.slice(0, UNREAD).every((row) => row.unreadCount > 0),
+      true,
+    );
+  });
+
+  it("sorts each half newest first", async () => {
+    const { items } = await page();
+    const unread = items.filter((row) => row.unreadCount > 0);
+    const read = items.filter((row) => row.unreadCount === 0);
+
+    for (const half of [unread, read]) {
+      for (let i = 1; i < half.length; i += 1) {
+        assert.ok(
+          half[i - 1]!.lastMessageAt >= half[i]!.lastMessageAt,
+          `${half[i - 1]!.subject} should not come before ${half[i]!.subject}`,
+        );
+      }
+    }
+    assert.equal(unread[0]!.subject, "Thread 119", "the newest unread leads");
+  });
+});
+
 describe("paging a mailbox", () => {
   it("starts at the newest and offers no way back", async () => {
     const first = await page();
     assert.equal(first.items.length, 50);
-    assert.equal(first.items[0]!.subject, "Thread 119", "newest first");
+    assert.equal(first.items[0]!.subject, "Thread 119", "newest unread first");
     assert.equal(first.prevCursor, null, "nothing is newer than the first page");
     assert.ok(first.nextCursor, "there is more to read");
   });
@@ -74,8 +108,23 @@ describe("paging a mailbox", () => {
 
     const seen = [...subjects(one.items), ...subjects(two.items), ...subjects(three.items)];
     assert.equal(new Set(seen).size, TOTAL, "every thread, once");
-    assert.equal(seen[0], "Thread 119");
-    assert.equal(seen.at(-1), "Thread 0");
+    assert.equal(seen[0], "Thread 119", "the newest unread leads");
+    assert.equal(seen.at(-1), "Thread 1", "and the oldest read closes it out");
+  });
+
+  it("crosses from the unread half into the read one without losing a row", async () => {
+    // The boundary is the whole point of putting the flag in the cursor: a
+    // cursor that knew only the date would land in the middle of the read half.
+    const collected: string[] = [];
+    let cursor: string | null = null;
+    do {
+      const step = await page(cursor ?? undefined);
+      collected.push(...subjects(step.items));
+      cursor = step.nextCursor;
+    } while (cursor);
+
+    assert.equal(collected.length, TOTAL);
+    assert.equal(new Set(collected).size, TOTAL);
   });
 
   it("comes back to exactly the page it left", async () => {
