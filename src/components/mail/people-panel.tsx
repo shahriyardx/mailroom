@@ -111,7 +111,10 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                 </Badge>
               ))}
 
-              {canManage && person.role !== "owner" ? (
+              {/* An owner's role is only editable by another owner. Without
+                  this the last change to owner was one way, with no control
+                  left to undo it. */}
+              {canManage && (person.role !== "owner" || me.role === "owner") ? (
                 <Select
                   value={person.role}
                   onValueChange={(value) =>
