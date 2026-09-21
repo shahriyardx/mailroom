@@ -22,11 +22,11 @@ export default async function MailboxesSettingsPage() {
     listDomainsForUser(access.orgId),
   ]);
 
-  // Only the mailboxes this person can act on, so the screen never offers a
-  // change that would be refused.
+  // Every mailbox this person can read. Seeing that an address exists is
+  // part of reading its mail; what they may do with it is decided per row.
   const mailboxes = administers
     ? allMailboxes
-    : allMailboxes.filter((box) => own?.manageable.includes(box.id));
+    : allMailboxes.filter((box) => own?.readable.includes(box.id));
 
   // Every domain is still passed, because an existing mailbox is judged
   // against its own domain whether or not this person may add to it.
@@ -41,6 +41,7 @@ export default async function MailboxesSettingsPage() {
       domains={allDomains}
       creatable={creatable}
       administers={administers}
+      manageable={administers ? undefined : (own?.manageable ?? [])}
     />
   );
 }

@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/db";
 import { accessGrant, mailbox } from "@/db/schema";
+import { newId } from "@/lib/utils";
 import { and, eq, inArray, or } from "drizzle-orm";
 import type { Access } from "./access";
 
@@ -145,10 +146,45 @@ export async function mailboxAdministration(access: Access) {
   ]);
 
   return {
+    readable: [...rights.entries()].filter(([, r]) => r.read).map(([id]) => id),
     manageable: [...rights.entries()].filter(([, r]) => r.manage).map(([id]) => id),
     creatable,
     get any() {
-      return this.manageable.length > 0 || this.creatable === "all" || this.creatable.length > 0;
+      return (
+        this.readable.length > 0 ||
+        this.manageable.length > 0 ||
+        this.creatable === "all" ||
+        this.creatable.length > 0
+      );
     },
   };
+}
+
+/**
+ * Gives whoever made a mailbox the run of it.
+ *
+ * Someone adding a mailbox under a domain grant would otherwise be left
+ * unable to set its signature unless that same grant happened to say manage,
+ * which makes for the odd position of creating something you cannot
+ * configure. Administrators need no grant, so they get none.
+ */
+export async function grantCreatorAccess(
+  orgId: string,
+  memberId: string,
+  mailboxId: string,
+) {
+  await db
+    .insert(accessGrant)
+    .values({
+      id: newId("grant"),
+      organizationId: orgId,
+      subjectType: "member",
+      subjectId: memberId,
+      resourceType: "mailbox",
+      resourceId: mailboxId,
+      canRead: true,
+      canSend: true,
+      canManage: true,
+    })
+    .onConflictDoNothing();
 }

@@ -21,6 +21,7 @@ import {
   assertCanManage,
   assertCanSendAs,
   creatableDomainIds,
+  grantCreatorAccess,
   readableMailboxIds,
 } from "@/server/grants";
 import { assertCan, can } from "@/server/permissions";
@@ -336,6 +337,12 @@ export async function createMailboxAction(raw: z.input<typeof mailboxSchema>) {
   }
 
   revalidatePath("/mail", "layout");
+
+  // Whoever made it can run it, so adding a mailbox does not leave you
+  // unable to configure the thing you just added.
+  if (!can(access, "mailbox:manage")) {
+    await grantCreatorAccess(access.orgId, access.memberId, id);
+  }
 
   // A subdomain of a zone that already receives needs three MX records and
   // nothing else. Do it here so a mailbox on one simply works. A failure is

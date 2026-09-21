@@ -49,6 +49,7 @@ export function MailboxPanel({
   domains,
   creatable,
   administers,
+  manageable,
 }: {
   mailboxes: Mailbox[];
   /** Every domain, so an existing mailbox can be judged against its own. */
@@ -57,6 +58,8 @@ export function MailboxPanel({
   creatable?: Domain[];
   /** False for someone acting on a grant rather than administering. */
   administers?: boolean;
+  /** Which of these mailboxes may be changed. Undefined means all of them. */
+  manageable?: string[];
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -116,6 +119,7 @@ export function MailboxPanel({
             key={box.id}
             mailbox={box}
             administers={administers ?? true}
+            canManage={manageable ? manageable.includes(box.id) : true}
             domainReady={domains.some(
               (item) =>
                 item.name === box.domain && item.sendingEnabled && item.status === "verified",
@@ -219,10 +223,13 @@ function MailboxRow({
   mailbox,
   domainReady,
   administers,
+  canManage,
 }: {
   mailbox: Mailbox;
   domainReady: boolean;
   administers: boolean;
+  /** False when this row may be seen but not changed. */
+  canManage: boolean;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -252,51 +259,56 @@ function MailboxRow({
           {domainReady ? "Ready" : "Domain pending"}
         </StatusPill>
 
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <IconButton label={`Actions for ${mailbox.address}`}>
-              <MoreHorizontal />
-            </IconButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end" className="w-52">
-            <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
-              <PenLine /> {open ? "Hide signature" : "Edit signature"}
-            </DropdownMenuItem>
-            {/* Choosing the default and removing a mailbox are the
-                instance's business, not one grant holder's. */}
-            {administers && !mailbox.isDefault && (
-              <DropdownMenuItem
-                onSelect={() =>
-                  start(async () => {
-                    await updateMailboxAction(mailbox.id, { isDefault: true });
-                    toast.success("Default mailbox changed");
-                    router.refresh();
-                  })
-                }
-              >
-                <Star /> Make default
+        {/* A row you may read but not change has nothing to act on. */}
+        {canManage ? (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <IconButton label={`Actions for ${mailbox.address}`}>
+                <MoreHorizontal />
+              </IconButton>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-52">
+              <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
+                <PenLine /> {open ? "Hide signature" : "Edit signature"}
               </DropdownMenuItem>
-            )}
-            {administers && <DropdownMenuSeparator />}
-            {administers && (
-              <DropdownMenuItem
-                destructive
-                onSelect={() =>
-                  start(async () => {
-                    await deleteMailboxAction(mailbox.id);
-                    toast.success("Mailbox removed");
-                    router.refresh();
-                  })
-                }
-              >
-                <Trash2 /> Delete mailbox
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
+              {/* Choosing the default and removing a mailbox are the
+                  instance's business, not one grant holder's. */}
+              {administers && !mailbox.isDefault && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    start(async () => {
+                      await updateMailboxAction(mailbox.id, { isDefault: true });
+                      toast.success("Default mailbox changed");
+                      router.refresh();
+                    })
+                  }
+                >
+                  <Star /> Make default
+                </DropdownMenuItem>
+              )}
+              {administers && <DropdownMenuSeparator />}
+              {administers && (
+                <DropdownMenuItem
+                  destructive
+                  onSelect={() =>
+                    start(async () => {
+                      await deleteMailboxAction(mailbox.id);
+                      toast.success("Mailbox removed");
+                      router.refresh();
+                    })
+                  }
+                >
+                  <Trash2 /> Delete mailbox
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        ) : (
+          <span className="text-[12px] text-muted-foreground">Read only</span>
+        )}
       </ListRow>
 
-      {open && (
+      {open && canManage && (
         <div className="border-t border-border py-3.5">
           <Field
             label="Signature"
