@@ -459,6 +459,18 @@ export const message = pgTable(
     dmarc: text("dmarc"),
     spamScore: integer("spam_score"),
 
+    /**
+     * Who handed the message over, as against who it says it is from.
+     *
+     * `mailedBy` is the envelope sender's domain and `signedBy` the domain
+     * that signed it with DKIM. A From header costs nothing to forge; these
+     * two do not, which is why a details panel is worth showing at all.
+     * `tls` records how the last hop reached us — "TLS1.3", or "none".
+     */
+    mailedBy: text("mailed_by"),
+    signedBy: text("signed_by"),
+    tls: text("tls"),
+
     /** Outbound tracking: the id SES returns for a sent message. */
     sesMessageId: text("ses_message_id"),
     deliveryStatus: deliveryStatusEnum("delivery_status"),

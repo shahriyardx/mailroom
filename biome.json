@@ -6,7 +6,17 @@
     "useIgnoreFile": true
   },
   "files": {
-    "ignore": ["node_modules", ".next", "drizzle/**", "worker/.wrangler", "packages/*/dist", "docs/.vitepress/dist", "docs/.vitepress/cache"]
+    "ignore": [
+      "node_modules",
+      ".next",
+      ".test-build",
+      "drizzle/**",
+      "src/generated/**",
+      "worker/.wrangler",
+      "packages/*/dist",
+      "docs/.vitepress/dist",
+      "docs/.vitepress/cache"
+    ]
   },
   "formatter": {
     "enabled": true,

@@ -1,6 +1,16 @@
 "use client";
 
-import { Avatar, Badge, Button, Hint, IconButton, Separator } from "@/components/kit";
+import {
+  Avatar,
+  Badge,
+  Button,
+  Hint,
+  IconButton,
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+  Separator,
+} from "@/components/kit";
 import type { Attachment, Label as LabelRow, Mailbox, Message } from "@/db/schema";
 import { formatAddress, forwardSubject, quoteForReply, replySubject } from "@/lib/mail";
 import { cn, formatBytes } from "@/lib/utils";
@@ -18,6 +28,7 @@ import {
   Eye,
   FileText,
   Forward,
+  Lock,
   Reply,
   ReplyAll,
   ShieldAlert,
@@ -28,7 +39,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { useComposer } from "./composer-provider";
 import { EmailFrame } from "./email-frame";
@@ -74,6 +85,15 @@ export function ThreadView({ thread, backHref, labels }: Props) {
       await action();
       if (thenBack) router.push(backHref);
       router.refresh();
+    });
+  }
+
+  function toggle(id: string) {
+    setOpenIds((current) => {
+      const next = new Set(current);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
     });
   }
 
@@ -215,22 +235,22 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                   first ? "-mx-4" : "mt-3 rounded-2xl bg-muted/55",
                 )}
               >
-                <button
-                  type="button"
-                  onClick={() =>
-                    setOpenIds((current) => {
-                      const next = new Set(current);
-                      if (next.has(item.id)) next.delete(item.id);
-                      else next.add(item.id);
-                      return next;
-                    })
-                  }
-                  className="flex w-full items-start gap-3 text-left"
-                >
-                  <Avatar size="lg" name={item.fromName} address={item.fromAddress} />
+                <div className="flex w-full items-start gap-3">
+                  <button
+                    type="button"
+                    onClick={() => toggle(item.id)}
+                    aria-label={open ? "Collapse message" : "Expand message"}
+                    className="shrink-0"
+                  >
+                    <Avatar size="lg" name={item.fromName} address={item.fromAddress} />
+                  </button>
 
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-baseline gap-2">
+                  <div className="min-w-0 flex-1">
+                    <button
+                      type="button"
+                      onClick={() => toggle(item.id)}
+                      className="flex w-full items-baseline gap-2 text-left"
+                    >
                       <span className="truncate text-[14px] font-semibold">
                         {item.fromName || item.fromAddress}
                       </span>
@@ -250,9 +270,9 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                           hour12: false,
                         })}
                       </span>
-                    </span>
+                    </button>
 
-                    <span className="mt-1 flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
+                    <div className="mt-1 flex min-w-0 items-center gap-1 text-[12px] text-muted-foreground">
                       <span className="shrink-0">To:</span>
                       <span className="truncate text-foreground/75">
                         {item.to.map((entry) => entry.name || entry.address).join(", ") || "—"}
@@ -262,21 +282,20 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                           · cc {item.cc.map((entry) => entry.address).join(", ")}
                         </span>
                       )}
-                      <ChevronDown
-                        className={cn(
-                          "size-3.5 shrink-0 transition-transform duration-150",
-                          open && "rotate-180",
-                        )}
-                      />
-                    </span>
+                      <MessageDetails message={item} subject={thread.subject} />
+                    </div>
 
                     {!open && (
-                      <span className="mt-1.5 block truncate text-[12.5px] text-muted-foreground">
+                      <button
+                        type="button"
+                        onClick={() => toggle(item.id)}
+                        className="mt-1.5 block w-full truncate text-left text-[12.5px] text-muted-foreground"
+                      >
                         {item.snippet}
-                      </span>
+                      </button>
                     )}
-                  </span>
-                </button>
+                  </div>
+                </div>
 
                 {open && (
                   <div className="mt-4">
@@ -474,6 +493,115 @@ function OpenBadge({ message }: { message: Message }) {
       <Eye className="size-3" />
       {message.openCount > 1 ? `Opened ${message.openCount}×` : "Opened"}
     </Badge>
+  );
+}
+
+/**
+ * The full header, the way a mail client has always offered it: who really
+ * sent this, who signed it, and whether it crossed the network in the clear.
+ *
+ * A From header costs nothing to forge, so on its own it proves nothing. The
+ * envelope sender and the DKIM signing domain are the two lines that a
+ * pretender cannot write for themselves, which is the reason this panel is
+ * worth opening at all.
+ */
+function MessageDetails({ message, subject }: { message: Message; subject: string }) {
+  const rows: { label: string; value: React.ReactNode }[] = [];
+
+  rows.push({
+    label: "from",
+    value: (
+      <>
+        {message.fromName && <span className="font-semibold">{message.fromName} </span>}
+        <span className={message.fromName ? "text-muted-foreground" : undefined}>
+          {message.fromName ? `<${message.fromAddress}>` : message.fromAddress}
+        </span>
+      </>
+    ),
+  });
+
+  const list = (people: { name: string | null; address: string }[]) =>
+    people
+      .map((entry) => (entry.name ? `${entry.name} <${entry.address}>` : entry.address))
+      .join(", ");
+
+  if (message.to.length > 0) rows.push({ label: "to", value: list(message.to) });
+  if (message.cc.length > 0) rows.push({ label: "cc", value: list(message.cc) });
+  if (message.bcc.length > 0) rows.push({ label: "bcc", value: list(message.bcc) });
+  if (message.replyTo && message.replyTo !== message.fromAddress) {
+    rows.push({ label: "reply-to", value: message.replyTo });
+  }
+
+  rows.push({
+    label: "date",
+    value: new Date(message.sentAt ?? message.receivedAt).toLocaleString("en-GB", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }),
+  });
+  rows.push({ label: "subject", value: subject || "(no subject)" });
+
+  if (message.mailedBy) rows.push({ label: "mailed-by", value: message.mailedBy });
+  if (message.signedBy) rows.push({ label: "signed by", value: message.signedBy });
+
+  if (message.tls) {
+    const clear = message.tls === "none";
+    rows.push({
+      label: "security",
+      value: (
+        <span className={cn("flex items-center gap-1.5", clear && "text-destructive")}>
+          {clear ? <ShieldAlert className="size-3.5" /> : <Lock className="size-3.5" />}
+          {clear ? "No encryption" : `Standard encryption (${message.tls})`}
+        </span>
+      ),
+    });
+  }
+
+  const checks = [
+    ["SPF", message.spf],
+    ["DKIM", message.dkim],
+    ["DMARC", message.dmarc],
+  ] as const;
+  const known = checks.filter(([, value]) => value);
+  if (known.length > 0) {
+    rows.push({
+      label: "authentication",
+      value: known.map(([name, value]) => `${name} ${value}`).join(" · "),
+    });
+  }
+
+  // Outbound mail has no envelope or signature of its own to report, but the
+  // id SES gave it is what every delivery question is eventually asked with.
+  if (message.sesMessageId) rows.push({ label: "ses id", value: message.sesMessageId });
+  if (message.rfcMessageId) rows.push({ label: "message id", value: message.rfcMessageId });
+  if (message.sizeBytes > 0) rows.push({ label: "size", value: formatBytes(message.sizeBytes) });
+
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          aria-label="Message details"
+          className="shrink-0 rounded p-0.5 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground data-[state=open]:bg-accent data-[state=open]:text-foreground"
+        >
+          <ChevronDown className="size-3.5" />
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="start" className="w-[min(30rem,calc(100vw-2rem))] p-4">
+        <dl className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-3 gap-y-1.5 text-[12.5px]">
+          {rows.map((row) => (
+            <Fragment key={row.label}>
+              <dt className="text-right text-muted-foreground">{row.label}:</dt>
+              <dd className="min-w-0 break-words">{row.value}</dd>
+            </Fragment>
+          ))}
+        </dl>
+      </PopoverContent>
+    </Popover>
   );
 }
 

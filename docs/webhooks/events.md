@@ -64,6 +64,9 @@ and without bouncing a real message.
       "dkim": "pass",
       "dmarc": "pass",
       "spam_score": 0,
+      "mailed_by": "us-west-2-amazonses.npmjs.com",
+      "signed_by": "npmjs.com",
+      "tls": "TLS1.3",
       "received_at": "2026-09-21T09:58:01.000Z"
     }
   }

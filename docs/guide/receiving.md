@@ -59,6 +59,9 @@ Inbound mail carries the authentication results Cloudflare saw:
 | `dkim` | Was the signature valid |
 | `dmarc` | What the domain's own policy says about the two above |
 | `spam_score` | Cloudflare's score, when it gave one |
+| `mailed_by` | The envelope sender's domain — who actually handed it over |
+| `signed_by` | The domain in the DKIM signature, preferring the one that matches `From` |
+| `tls` | How the last hop reached you: `TLS1.3`, or `none` for a plaintext hop |
 
 Mailroom does not filter on these. It records them so you can, in a filter
 rule or in your own code.

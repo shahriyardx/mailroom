@@ -45,6 +45,10 @@ export interface InboundPayload {
   rawKey?: string | null;
   auth?: { spf?: string | null; dkim?: string | null; dmarc?: string | null };
   spamScore?: number | null;
+  /** Envelope sender domain, DKIM signing domain, and the last hop's TLS. */
+  mailedBy?: string | null;
+  signedBy?: string | null;
+  tls?: string | null;
 }
 
 /**
@@ -248,6 +252,9 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
       dkim: payload.auth?.dkim ?? null,
       dmarc: payload.auth?.dmarc ?? null,
       spamScore: payload.spamScore ?? null,
+      mailedBy: payload.mailedBy ?? null,
+      signedBy: payload.signedBy ?? null,
+      tls: payload.tls ?? null,
       sizeBytes: payload.sizeBytes ?? 0,
       rawKey: payload.rawKey ?? null,
       receivedAt,
@@ -320,6 +327,9 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
           dkim: payload.auth?.dkim ?? null,
           dmarc: payload.auth?.dmarc ?? null,
           spam_score: payload.spamScore ?? null,
+          mailed_by: payload.mailedBy ?? null,
+          signed_by: payload.signedBy ?? null,
+          tls: payload.tls ?? null,
           received_at: receivedAt.toISOString(),
         },
       },
