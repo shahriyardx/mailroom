@@ -139,6 +139,12 @@ export const member = pgTable(
       .references(() => user.id, { onDelete: "cascade" }),
     /** owner, admin or member. Owner is the account that created the instance. */
     role: text("role").notNull().default("member"),
+    /**
+     * The address this person writes from unless they say otherwise. Their
+     * own choice, since one default for the whole company only made sense
+     * when one person owned all of it.
+     */
+    defaultMailboxId: text("default_mailbox_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [

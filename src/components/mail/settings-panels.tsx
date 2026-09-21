@@ -38,6 +38,7 @@ import {
   deleteLabelAction,
   deleteMailboxAction,
   deleteRuleAction,
+  setMyDefaultMailboxAction,
   updateMailboxAction,
 } from "@/server/actions";
 import { ChevronDown, MoreHorizontal, PenLine, Plus, Star, Trash2, X } from "lucide-react";
@@ -51,6 +52,8 @@ export function MailboxPanel({
   creatable,
   administers,
   manageable,
+  sendableIds,
+  myDefaultId,
 }: {
   mailboxes: Mailbox[];
   /** Every domain, so an existing mailbox can be judged against its own. */
@@ -61,6 +64,9 @@ export function MailboxPanel({
   administers?: boolean;
   /** Which of these mailboxes may be changed. Undefined means all of them. */
   manageable?: string[];
+  /** Which this person may send as, and which they currently write from. */
+  sendableIds?: string[];
+  myDefaultId?: string | null;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -168,6 +174,8 @@ export function MailboxPanel({
                     mailbox={box}
                     administers={administers ?? true}
                     canManage={manageable ? manageable.includes(box.id) : true}
+                    canSend={sendableIds ? sendableIds.includes(box.id) : true}
+                    isMyDefault={myDefaultId === box.id}
                     domainReady={ready}
                   />
                 ))}
@@ -273,12 +281,18 @@ function MailboxRow({
   domainReady,
   administers,
   canManage,
+  canSend,
+  isMyDefault,
 }: {
   mailbox: Mailbox;
   domainReady: boolean;
   administers: boolean;
   /** False when this row may be seen but not changed. */
   canManage: boolean;
+  /** Whether this person may write from it at all. */
+  canSend: boolean;
+  /** Whether this is the address they write from by default. */
+  isMyDefault: boolean;
 }) {
   const router = useRouter();
   const [, start] = useTransition();
@@ -298,7 +312,16 @@ function MailboxRow({
           <p className="truncate text-[12px] text-muted-foreground">{mailbox.displayName}</p>
         </div>
 
-        {mailbox.isDefault && <Badge size="sm">Default</Badge>}
+        {isMyDefault && (
+          <Badge size="sm" tone="accent" title="You write from this address by default">
+            Yours
+          </Badge>
+        )}
+        {mailbox.isDefault && (
+          <Badge size="sm" title="What someone writes from before choosing their own">
+            Instance default
+          </Badge>
+        )}
         {mailbox.isCatchAll && (
           <Badge size="sm" tone="outline">
             Catch-all
@@ -324,6 +347,19 @@ function MailboxRow({
               <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
                 <PenLine /> {open ? "Hide signature" : "Edit signature"}
               </DropdownMenuItem>
+              {canSend && !isMyDefault && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    start(async () => {
+                      await setMyDefaultMailboxAction(mailbox.id);
+                      toast.success(`You now write from ${mailbox.address}`);
+                      router.refresh();
+                    })
+                  }
+                >
+                  <Star /> Write from this by default
+                </DropdownMenuItem>
+              )}
               {/* Choosing the default and removing a mailbox are the
                   instance's business, not one grant holder's. */}
               {administers && !mailbox.isDefault && (
@@ -336,7 +372,7 @@ function MailboxRow({
                     })
                   }
                 >
-                  <Star /> Make default
+                  <Star /> Make the instance default
                 </DropdownMenuItem>
               )}
               {administers && <DropdownMenuSeparator />}

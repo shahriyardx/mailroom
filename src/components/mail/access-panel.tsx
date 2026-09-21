@@ -141,54 +141,14 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
               </span>
             </span>
 
-            {/* Rights change in place. Needing to delete a grant and make it
-                again to add sending was the long way round. */}
-            <span className="flex shrink-0 items-center gap-1">
-              <Right
-                label="Read"
-                on
-                locked
-                title="Every grant can read; remove the grant to stop that"
-              />
-              <Right
-                label="Send as"
-                on={grant.canSend}
-                busy={busy}
-                onClick={() =>
-                  write(
-                    { ...grant, canSend: !grant.canSend },
-                    grant.canSend ? "Sending removed" : "Sending allowed",
-                  )
-                }
-              />
-              <Right
-                label="Manage"
-                title="Change the mailbox itself: its name, colour and signature. Not delete it."
-                on={grant.canManage}
-                busy={busy}
-                onClick={() =>
-                  write(
-                    { ...grant, canManage: !grant.canManage },
-                    grant.canManage ? "Managing removed" : "Managing allowed",
-                  )
-                }
-              />
-              {grant.resourceType === "domain" && (
-                <Right
-                  label="Add mailboxes"
-                  on={grant.canCreateMailbox}
-                  busy={busy}
-                  onClick={() =>
-                    write(
-                      { ...grant, canCreateMailbox: !grant.canCreateMailbox },
-                      grant.canCreateMailbox
-                        ? "They can no longer add mailboxes"
-                        : "They can add mailboxes on this domain",
-                    )
-                  }
-                />
-              )}
-            </span>
+            {/* One control rather than a row of them: the sentence above
+                already says what is allowed, so this only has to change it. */}
+            <RightsMenu
+              busy={busy}
+              forDomain={grant.resourceType === "domain"}
+              value={grant}
+              onChange={(next) => write({ ...grant, ...next }, "Access changed")}
+            />
 
             <IconButton
               variant="danger"
@@ -322,19 +282,16 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
           </Field>
         </div>
 
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Right label="Read" on locked title="Every grant can read" />
-          <Right label="Send as" on={canSend} onClick={() => setCanSend(!canSend)} />
-          <Right label="Manage" on={canManage} onClick={() => setCanManage(!canManage)} />
-          {/* A mailbox grant says nothing about its domain, so this only
-              applies when a whole domain is being granted. */}
-          {resourceType === "domain" && (
-            <Right
-              label="Add mailboxes"
-              on={canCreateMailbox}
-              onClick={() => setCanCreateMailbox(!canCreateMailbox)}
-            />
-          )}
+        <div className="mt-4">
+          <RightsMenu
+            forDomain={resourceType === "domain"}
+            value={{ canSend, canManage, canCreateMailbox }}
+            onChange={(next) => {
+              setCanSend(next.canSend);
+              setCanManage(next.canManage);
+              setCanCreateMailbox(next.canCreateMailbox);
+            }}
+          />
         </div>
 
         <FieldsetActions
@@ -413,38 +370,83 @@ function describe(grant: GrantRow) {
   return `${who} can ${list} ${what}${adding}.`;
 }
 
-/** One right on a grant. Reading is shown but cannot be switched off. */
-function Right({
-  label,
-  on,
-  locked,
+interface Rights {
+  canSend: boolean;
+  canManage: boolean;
+  canCreateMailbox: boolean;
+}
+
+/**
+ * The rights on a grant, as one control. Reading is shown but cannot be
+ * switched off: a grant that allows nothing is no grant, and the bin says
+ * that better.
+ */
+function RightsMenu({
+  value,
+  onChange,
+  forDomain,
   busy,
-  title,
-  onClick,
 }: {
-  label: string;
-  on: boolean;
-  locked?: boolean;
+  value: Rights;
+  onChange: (next: Rights) => void;
+  /** Adding mailboxes only means something on a whole domain. */
+  forDomain: boolean;
   busy?: boolean;
-  title?: string;
-  onClick?: () => void;
 }) {
+  const extra =
+    (value.canSend ? 1 : 0) +
+    (value.canManage ? 1 : 0) +
+    (forDomain && value.canCreateMailbox ? 1 : 0);
+
+  // "Read, +2" rather than the whole list: the sentence above already spells
+  // it out, and a fixed label keeps every row the same width.
+  const summary = extra === 0 ? "Read" : `Read, +${extra}`;
+
   return (
-    <button
-      type="button"
-      disabled={locked || busy}
-      title={title ?? (on ? `Remove ${label.toLowerCase()}` : `Allow ${label.toLowerCase()}`)}
-      aria-pressed={on}
-      onClick={onClick}
-      className={cn(
-        "rounded-full px-2.5 py-1 text-[11.5px] font-medium transition-colors",
-        on ? "bg-primary-soft text-primary-soft-foreground" : "bg-muted text-muted-foreground",
-        locked && "opacity-60",
-        !locked && "hover:bg-accent hover:text-foreground",
-        !locked && on && "hover:bg-primary-soft/70 hover:text-primary-soft-foreground",
-      )}
-    >
-      {label}
-    </button>
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          disabled={busy}
+          className="flex w-24 shrink-0 items-center justify-between gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:opacity-50"
+        >
+          <span className="truncate">{summary}</span>
+          <ChevronDown className="size-3.5 shrink-0" />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-56">
+        <DropdownMenuLabel>They may</DropdownMenuLabel>
+
+        <DropdownMenuCheckboxItem checked disabled onSelect={(e) => e.preventDefault()}>
+          Read
+        </DropdownMenuCheckboxItem>
+
+        <DropdownMenuCheckboxItem
+          checked={value.canSend}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(next) => onChange({ ...value, canSend: next === true })}
+        >
+          Send as
+        </DropdownMenuCheckboxItem>
+
+        <DropdownMenuCheckboxItem
+          checked={value.canManage}
+          onSelect={(event) => event.preventDefault()}
+          onCheckedChange={(next) => onChange({ ...value, canManage: next === true })}
+        >
+          Change its settings
+        </DropdownMenuCheckboxItem>
+
+        {forDomain && (
+          <DropdownMenuCheckboxItem
+            checked={value.canCreateMailbox}
+            onSelect={(event) => event.preventDefault()}
+            onCheckedChange={(next) => onChange({ ...value, canCreateMailbox: next === true })}
+          >
+            Add mailboxes to it
+          </DropdownMenuCheckboxItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
   );
 }

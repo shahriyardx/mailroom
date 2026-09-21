@@ -8,6 +8,7 @@ import {
   filterRule,
   label,
   mailbox,
+  member,
   message,
   suppression,
   thread,
@@ -406,6 +407,24 @@ export async function updateMailboxAction(
  * administer the instance. A grant that says manage lets someone change a
  * mailbox, not remove one.
  */
+/**
+ * Sets the address this person writes from by default. Their own choice, so
+ * it needs nothing but the right to send as it.
+ */
+export async function setMyDefaultMailboxAction(mailboxId: string | null) {
+  const access = await requireAccess();
+  if (mailboxId) await assertCanSendAs(access, mailboxId);
+
+  await db
+    .update(member)
+    .set({ defaultMailboxId: mailboxId })
+    .where(eq(member.id, access.memberId));
+
+  revalidatePath("/mail", "layout");
+  revalidatePath("/settings/mailboxes");
+  return { ok: true as const };
+}
+
 export async function deleteMailboxAction(mailboxId: string) {
   const access = await requireAccess();
   assertCan(access, "mailbox:manage");

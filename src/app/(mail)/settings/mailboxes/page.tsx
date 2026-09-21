@@ -1,9 +1,12 @@
 import { MailboxPanel } from "@/components/mail/settings-panels";
+import { db } from "@/db";
+import { member } from "@/db/schema";
 import { requireAccess } from "@/server/access";
 import { listDomainsForUser } from "@/server/domains";
-import { mailboxAdministration } from "@/server/grants";
+import { mailboxAdministration, sendableMailboxIds } from "@/server/grants";
 import { listMailboxes } from "@/server/mailboxes";
 import { can } from "@/server/permissions";
+import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -17,9 +20,11 @@ export default async function MailboxesSettingsPage() {
   const own = administers ? null : await mailboxAdministration(access);
   if (!administers && !own?.any) notFound();
 
-  const [allMailboxes, allDomains] = await Promise.all([
+  const [allMailboxes, allDomains, sendable, membership] = await Promise.all([
     listMailboxes(access.orgId),
     listDomainsForUser(access.orgId),
+    sendableMailboxIds(access),
+    db.select().from(member).where(eq(member.id, access.memberId)),
   ]);
 
   // Every mailbox this person can read. Seeing that an address exists is
@@ -42,6 +47,8 @@ export default async function MailboxesSettingsPage() {
       creatable={creatable}
       administers={administers}
       manageable={administers ? undefined : (own?.manageable ?? [])}
+      sendableIds={sendable}
+      myDefaultId={membership[0]?.defaultMailboxId ?? null}
     />
   );
 }

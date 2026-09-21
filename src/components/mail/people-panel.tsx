@@ -115,12 +115,14 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                   <DropdownMenuTrigger asChild>
                     <button
                       type="button"
-                      className="flex max-w-48 shrink-0 items-center gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      className="flex w-28 shrink-0 items-center justify-between gap-1.5 rounded-full bg-muted px-2.5 py-1 text-[12px] text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                     >
                       <span className="truncate">
                         {person.teams.length === 0
                           ? "No team"
-                          : person.teams.map((entry) => entry.name).join(", ")}
+                          : person.teams.length === 1
+                            ? person.teams[0].name
+                            : `${person.teams[0].name}, +${person.teams.length - 1}`}
                       </span>
                       <ChevronDown className="size-3.5 shrink-0" />
                     </button>

@@ -24,9 +24,12 @@ export function useComposer() {
 
 export function ComposerProvider({
   mailboxes,
+  defaultMailboxId,
   children,
 }: {
   mailboxes: Mailbox[];
+  /** What a new message starts as: this person's choice, else the instance's. */
+  defaultMailboxId?: string | null;
   children: React.ReactNode;
 }) {
   const [draft, setDraft] = useState<ComposerDraft | null>(null);
@@ -52,7 +55,14 @@ export function ComposerProvider({
   return (
     <Context.Provider value={api}>
       {children}
-      {draft && <Composer draft={draft} mailboxes={mailboxes} onClose={close} />}
+      {draft && (
+        <Composer
+          draft={draft}
+          mailboxes={mailboxes}
+          defaultMailboxId={defaultMailboxId}
+          onClose={close}
+        />
+      )}
     </Context.Provider>
   );
 }

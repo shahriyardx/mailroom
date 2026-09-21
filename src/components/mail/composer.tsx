@@ -42,15 +42,16 @@ interface StagedFile {
 interface Props {
   draft: ComposerDraft;
   mailboxes: Mailbox[];
+  defaultMailboxId?: string | null;
   onClose: () => void;
 }
 
-export function Composer({ draft, mailboxes, onClose }: Props) {
+export function Composer({ draft, mailboxes, defaultMailboxId, onClose }: Props) {
   const router = useRouter();
   const fileInput = useRef<HTMLInputElement>(null);
 
   const [mailboxId, setMailboxId] = useState(
-    draft.mailboxId ?? mailboxes.find((box) => box.isDefault)?.id ?? mailboxes[0]?.id ?? "",
+    draft.mailboxId ?? defaultMailboxId ?? mailboxes[0]?.id ?? "",
   );
   const [to, setTo] = useState(draft.to ?? "");
   const [cc, setCc] = useState(draft.cc ?? "");

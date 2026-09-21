@@ -92,6 +92,13 @@
       "when": 1789973474704,
       "tag": "0012_grant_create_mailbox",
       "breakpoints": true
+    },
+    {
+      "idx": 13,
+      "version": "7",
+      "when": 1789975195965,
+      "tag": "0013_member_default_mailbox",
+      "breakpoints": true
     }
   ]
 }
