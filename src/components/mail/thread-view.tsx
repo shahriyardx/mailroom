@@ -294,56 +294,55 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                         {item.snippet}
                       </button>
                     )}
+                    {open && (
+                      <div className="mt-4">
+                        {!item.isOutbound && <AuthBadges message={item} />}
+                        {item.isOutbound && item.deliveryError && (
+                          <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-[12px] text-destructive">
+                            {item.deliveryError}
+                          </p>
+                        )}
+                        <EmailFrame
+                          html={item.htmlBody}
+                          text={item.textBody}
+                          inlineImages={Object.fromEntries(
+                            item.attachments
+                              .filter((file) => file.isInline && file.contentId)
+                              .map((file) => [file.contentId!, `/api/attachments/${file.id}`]),
+                          )}
+                        />
+
+                        {item.attachments.filter((file) => !file.isInline).length > 0 && (
+                          <ul className="mt-4 flex flex-wrap gap-2">
+                            {item.attachments
+                              .filter((file) => !file.isInline)
+                              .map((file) => (
+                                <li key={file.id}>
+                                  <a
+                                    href={`/api/attachments/${file.id}`}
+                                    className="flex items-center gap-3 rounded-xl bg-muted px-3 py-2.5 transition-colors hover:bg-accent"
+                                  >
+                                    <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-card text-muted-foreground shadow-raise">
+                                      <FileText className="size-4" />
+                                    </span>
+                                    <span className="min-w-0">
+                                      <span className="block max-w-56 truncate text-[12.5px] font-medium">
+                                        {file.filename}
+                                      </span>
+                                      <span className="block text-[11.5px] text-muted-foreground">
+                                        {formatBytes(file.sizeBytes)} &middot;{" "}
+                                        <span className="text-primary">Download</span>
+                                      </span>
+                                    </span>
+                                  </a>
+                                </li>
+                              ))}
+                          </ul>
+                        )}
+                      </div>
+                    )}
                   </div>
                 </div>
-
-                {open && (
-                  <div className="mt-4">
-                    {!item.isOutbound && <AuthBadges message={item} />}
-                    {item.isOutbound && item.deliveryError && (
-                      <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-[12px] text-destructive">
-                        {item.deliveryError}
-                      </p>
-                    )}
-                    <EmailFrame
-                      html={item.htmlBody}
-                      text={item.textBody}
-                      inlineImages={Object.fromEntries(
-                        item.attachments
-                          .filter((file) => file.isInline && file.contentId)
-                          .map((file) => [file.contentId!, `/api/attachments/${file.id}`]),
-                      )}
-                    />
-
-                    {item.attachments.filter((file) => !file.isInline).length > 0 && (
-                      <ul className="mt-4 flex flex-wrap gap-2">
-                        {item.attachments
-                          .filter((file) => !file.isInline)
-                          .map((file) => (
-                            <li key={file.id}>
-                              <a
-                                href={`/api/attachments/${file.id}`}
-                                className="flex items-center gap-3 rounded-xl bg-muted px-3 py-2.5 transition-colors hover:bg-accent"
-                              >
-                                <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-card text-muted-foreground shadow-raise">
-                                  <FileText className="size-4" />
-                                </span>
-                                <span className="min-w-0">
-                                  <span className="block max-w-56 truncate text-[12.5px] font-medium">
-                                    {file.filename}
-                                  </span>
-                                  <span className="block text-[11.5px] text-muted-foreground">
-                                    {formatBytes(file.sizeBytes)} &middot;{" "}
-                                    <span className="text-primary">Download</span>
-                                  </span>
-                                </span>
-                              </a>
-                            </li>
-                          ))}
-                      </ul>
-                    )}
-                  </div>
-                )}
               </li>
             );
           })}
