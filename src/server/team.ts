@@ -233,6 +233,28 @@ export async function createTeamAction(name: string) {
   return { ok: true as const, id };
 }
 
+/**
+ * Renames a team. The root team may be renamed like any other: its reach
+ * comes from the isRoot flag, not from being called "Root".
+ */
+export async function renameTeamAction(teamId: string, name: string) {
+  const access = await requireAccess();
+  assertCan(access, "team:manage");
+
+  const trimmed = name.trim();
+  if (!trimmed) return { ok: false as const, error: "Give the team a name" };
+
+  const [target] = await db
+    .select()
+    .from(team)
+    .where(and(eq(team.id, teamId), eq(team.organizationId, access.orgId)));
+  if (!target) return { ok: false as const, error: "No such team" };
+
+  await db.update(team).set({ name: trimmed }).where(eq(team.id, teamId));
+  revalidatePath("/settings/people");
+  return { ok: true as const };
+}
+
 export async function deleteTeamAction(teamId: string) {
   const access = await requireAccess();
   assertCan(access, "team:manage");

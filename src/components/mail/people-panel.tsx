@@ -36,12 +36,13 @@ import {
   deleteTeamAction,
   inviteMemberAction,
   removeMemberAction,
+  renameTeamAction,
   resendInvitationAction,
   setMemberRoleAction,
   setTeamMembershipAction,
   setTeamRoleAction,
 } from "@/server/team";
-import { ChevronDown, Plus, RotateCw, Trash2, UserPlus, X } from "lucide-react";
+import { ChevronDown, PenLine, Plus, RotateCw, Trash2, UserPlus, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -82,6 +83,9 @@ export function PeoplePanel({
   const [role, setRole] = useState<Role>("member");
   const [teamId, setTeamId] = useState<string>(teams.find((t) => !t.isRoot)?.id ?? "");
   const [teamName, setTeamName] = useState("");
+  // Which team is being renamed, and what it is being renamed to.
+  const [editing, setEditing] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
   const [fromId, setFromId] = useState<string>(
     () => (senders.find((box) => box.isDefault) ?? senders[0])?.id ?? "",
   );
@@ -363,50 +367,109 @@ export function PeoplePanel({
             const shut = !opened.includes(entry.id);
             const mayChange = mayChangeTeam(entry.id);
 
+            const renaming = editing === entry.id;
+
+            function saveName() {
+              submit(async () => {
+                const result = await renameTeamAction(entry.id, draft);
+                if (!result.ok) {
+                  toast.error(result.error);
+                  return;
+                }
+                setEditing(null);
+                toast.success("Team renamed");
+                router.refresh();
+              });
+            }
+
             return (
               <div key={entry.id}>
                 <div className="flex items-center gap-3 py-3">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      setOpened((current) =>
-                        shut ? [...current, entry.id] : current.filter((id) => id !== entry.id),
-                      )
-                    }
-                    className="-ml-1 flex min-w-0 flex-1 items-start gap-2.5 text-left"
-                  >
-                    <ChevronDown
-                      className={cn(
-                        "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
-                        shut && "-rotate-90",
-                      )}
-                    />
-                    <span className="min-w-0">
-                      <span className="block truncate text-[13px] font-medium">{entry.name}</span>
-                      <span className="block truncate text-[12px] text-muted-foreground">
-                        {inTeam.length === 0
-                          ? "Nobody yet"
-                          : `${inTeam.length} ${inTeam.length === 1 ? "person" : "people"}`}
+                  {renaming ? (
+                    <div className="flex min-w-0 flex-1 items-center gap-2">
+                      <Input
+                        value={draft}
+                        autoFocus
+                        className="h-8 max-w-56"
+                        onChange={(event) => setDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter") saveName();
+                          if (event.key === "Escape") setEditing(null);
+                        }}
+                      />
+                      <Button
+                        variant="solid"
+                        size="sm"
+                        pill
+                        loading={sending}
+                        disabled={!draft.trim() || sending}
+                        onClick={saveName}
+                      >
+                        Save
+                      </Button>
+                      <Button variant="ghost" size="sm" pill onClick={() => setEditing(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setOpened((current) =>
+                          shut ? [...current, entry.id] : current.filter((id) => id !== entry.id),
+                        )
+                      }
+                      className="-ml-1 flex min-w-0 flex-1 items-start gap-2.5 text-left"
+                    >
+                      <ChevronDown
+                        className={cn(
+                          "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
+                          shut && "-rotate-90",
+                        )}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate text-[13px] font-medium">{entry.name}</span>
+                        <span className="block truncate text-[12px] text-muted-foreground">
+                          {inTeam.length === 0
+                            ? "Nobody yet"
+                            : `${inTeam.length} ${inTeam.length === 1 ? "person" : "people"}`}
+                        </span>
                       </span>
-                    </span>
-                  </button>
+                    </button>
+                  )}
 
-                  {entry.isRoot && (
+                  {entry.isRoot && !renaming && (
                     <Badge size="sm" tone="accent">
                       Reaches everything
                     </Badge>
                   )}
 
-                  <IconButton
-                    variant="danger"
-                    disabled={entry.isRoot || !canManage}
-                    label={
-                      entry.isRoot ? "The root team cannot be deleted" : `Delete ${entry.name}`
-                    }
-                    onClick={() => run(() => deleteTeamAction(entry.id), "Team deleted")}
-                  >
-                    <Trash2 />
-                  </IconButton>
+                  {/* The root team can be renamed like any other: its reach
+                      comes from what it is, not from what it is called. */}
+                  {!renaming && canManage && (
+                    <IconButton
+                      label={`Rename ${entry.name}`}
+                      onClick={() => {
+                        setDraft(entry.name);
+                        setEditing(entry.id);
+                      }}
+                    >
+                      <PenLine />
+                    </IconButton>
+                  )}
+
+                  {!renaming && (
+                    <IconButton
+                      variant="danger"
+                      disabled={entry.isRoot || !canManage}
+                      label={
+                        entry.isRoot ? "The root team cannot be deleted" : `Delete ${entry.name}`
+                      }
+                      onClick={() => run(() => deleteTeamAction(entry.id), "Team deleted")}
+                    >
+                      <Trash2 />
+                    </IconButton>
+                  )}
                 </div>
 
                 {!shut && (
