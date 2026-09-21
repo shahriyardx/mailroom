@@ -1,0 +1,23 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "mailroom-docs",
+  "compatibility_date": "2026-09-21",
+
+  // Static only: there is no Worker script, just the built site. Cloudflare
+  // serves it from the edge and never spends a request on compute.
+  "assets": {
+    "directory": ".vitepress/dist",
+    // VitePress is built with cleanUrls, so /guide/domains is the file
+    // guide/domains.html. auto-trailing-slash resolves that and redirects the
+    // .html form to the clean one.
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page"
+  },
+
+  "routes": [
+    {
+      "pattern": "mailroom-docs.shahriyar.dev",
+      "custom_domain": true
+    }
+  ]
+}

@@ -4,6 +4,7 @@ packages:
   - "."
   - "worker"
   - "packages/*"
+  - "docs"
 
 allowBuilds:
   "@biomejs/biome": true
