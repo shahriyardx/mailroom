@@ -52,8 +52,10 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
   // The root team is not offered: it reaches everything already.
   const subjects =
     subjectType === "team"
-      ? teams.filter((entry) => !entry.isRoot).map((e) => ({ id: e.id, label: e.name }))
-      : members.map((e) => ({ id: e.id, label: e.name }));
+      ? teams
+          .filter((entry) => !entry.isRoot)
+          .map((e) => ({ id: e.id, label: e.name, hint: undefined as string | undefined }))
+      : members.map((e) => ({ id: e.id, label: e.name, hint: e.email }));
 
   const resources =
     resourceType === "domain"
@@ -120,6 +122,11 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
             <span className="min-w-0 flex-1">
               <span className="flex items-center gap-1.5 truncate text-[13px] font-medium">
                 {grant.subjectName}
+                {grant.subjectEmail && (
+                  <span className="truncate font-mono text-[11.5px] font-normal text-muted-foreground">
+                    {grant.subjectEmail}
+                  </span>
+                )}
                 {grant.resourceType === "domain" && (
                   <Globe className="size-3 shrink-0 text-muted-foreground" />
                 )}
@@ -229,7 +236,14 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
                 <SelectContent>
                   {subjects.map((entry) => (
                     <SelectItem key={entry.id} value={entry.id}>
-                      {entry.label}
+                      <span className="flex min-w-0 flex-col">
+                        <span className="truncate">{entry.label}</span>
+                        {entry.hint && (
+                          <span className="truncate font-mono text-[11px] text-muted-foreground">
+                            {entry.hint}
+                          </span>
+                        )}
+                      </span>
                     </SelectItem>
                   ))}
                   {subjects.length === 0 && (

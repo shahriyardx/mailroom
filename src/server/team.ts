@@ -279,6 +279,8 @@ export interface GrantRow {
   subjectType: "team" | "member";
   subjectId: string;
   subjectName: string;
+  /** Set for a person, so two similar names can be told apart. */
+  subjectEmail?: string;
   resourceType: "domain" | "mailbox";
   resourceId: string;
   resourceName: string;
@@ -319,11 +321,17 @@ export async function listGrants() {
     return mailboxes.find((entry) => entry.id === row.resourceId)?.address ?? "a deleted mailbox";
   };
 
+  const emailOf = (row: (typeof rows)[number]) =>
+    row.subjectType === "member"
+      ? members.find((entry) => entry.id === row.subjectId)?.email
+      : undefined;
+
   const grants: GrantRow[] = rows.map((row) => ({
     id: row.id,
     subjectType: row.subjectType as "team" | "member",
     subjectId: row.subjectId,
     subjectName: nameOf(row),
+    subjectEmail: emailOf(row),
     resourceType: row.resourceType as "domain" | "mailbox",
     resourceId: row.resourceId,
     resourceName: resourceOf(row),
