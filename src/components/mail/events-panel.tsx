@@ -1,7 +1,8 @@
 "use client";
 
 import { Badge, Button, List, ListRow, Note, Panel, StatusPill, Switch } from "@/components/kit";
-import { EVENT_KINDS } from "@/lib/ses-events";
+import { EVENT_KINDS, OPTIONAL_KINDS, REQUIRED_SUMMARY } from "@/lib/ses-events";
+import { cn } from "@/lib/utils";
 import { setEventTypesAction, setUpEventsAction } from "@/server/actions";
 import type { EventsStatus } from "@/server/events";
 import { Check, Copy, Eye, Zap } from "lucide-react";
@@ -130,11 +131,14 @@ function Pipeline({ status }: { status: EventsStatus }) {
 }
 
 /**
- * Which events SES reports, one row each, switchable.
+ * Which events SES reports.
  *
  * A count was all this used to show, which said nothing about whether a
- * tracking image was being added to outgoing mail — the one item here that
- * a reader of the mail would notice, and the one worth being able to refuse.
+ * tracking image was being added to outgoing mail — the one item here a
+ * reader of the mail would notice, and the one worth being able to refuse.
+ *
+ * One line per event, hint beside the label rather than under it: ten
+ * two-line rows made a panel longer than the screen out of five switches.
  */
 function Reported({ status }: { status: EventsStatus }) {
   const router = useRouter();
@@ -142,8 +146,6 @@ function Reported({ status }: { status: EventsStatus }) {
   const [types, setTypes] = useState<string[]>(status.destination.types);
   const ready = status.destination.present;
 
-  // The server puts the required ones back regardless, so the switch shown
-  // for them would be a lie. They get a badge instead.
   function toggle(type: string, on: boolean) {
     const next = on ? [...types, type] : types.filter((item) => item !== type);
     setTypes(next);
@@ -165,43 +167,46 @@ function Reported({ status }: { status: EventsStatus }) {
       <div className="mb-1 flex items-center gap-2">
         <p className="text-[12.5px] font-semibold">What SES reports</p>
         {status.destination.opens && (
-          <Badge tone="warn">
+          <Badge size="sm" tone="warn">
             <Eye />
             Tracking image on
           </Badge>
         )}
       </div>
-      <Note className="mb-2">
-        Five of these are switched off only by breaking something: the app reads them to decide what
-        happened to a message, and bounces and complaints are what fill the suppression list.
-      </Note>
       <List>
-        {EVENT_KINDS.map((kind) => {
-          const on = types.includes(kind.type);
-          return (
-            <ListRow key={kind.type}>
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px]">
-                  {kind.label}
-                  {kind.altersMessage && (
-                    <span className="ml-2 text-[11px] text-warn">changes the message</span>
-                  )}
-                </span>
-                <span className="block text-[12px] text-muted-foreground">{kind.hint}</span>
+        {/* The required five share a row: the app reads them to decide what
+            happened to a message, and without bounces and complaints the
+            suppression list stops growing. Nothing to decide, so no switch. */}
+        <ListRow className="py-2.5">
+          <span className="min-w-0 flex-1 truncate text-[13px]">
+            Delivery outcomes
+            <span className="ml-2 text-[12px] text-muted-foreground">{REQUIRED_SUMMARY}</span>
+          </span>
+          <Badge size="sm" tone="neutral">
+            Always on
+          </Badge>
+        </ListRow>
+        {OPTIONAL_KINDS.map((kind) => (
+          <ListRow key={kind.type} className="py-2.5">
+            <span className="min-w-0 flex-1 truncate text-[13px]">
+              {kind.label}
+              <span
+                className={cn(
+                  "ml-2 text-[12px]",
+                  kind.altersMessage ? "text-warn" : "text-muted-foreground",
+                )}
+              >
+                {kind.hint}
               </span>
-              {kind.required ? (
-                <Badge tone="neutral">Required</Badge>
-              ) : (
-                <Switch
-                  checked={on}
-                  disabled={!ready || saving}
-                  aria-label={kind.label}
-                  onCheckedChange={(next) => toggle(kind.type, next)}
-                />
-              )}
-            </ListRow>
-          );
-        })}
+            </span>
+            <Switch
+              checked={types.includes(kind.type)}
+              disabled={!ready || saving}
+              aria-label={kind.label}
+              onCheckedChange={(next) => toggle(kind.type, next)}
+            />
+          </ListRow>
+        ))}
       </List>
     </div>
   );

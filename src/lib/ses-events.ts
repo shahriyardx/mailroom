@@ -23,46 +23,58 @@ export const EVENT_KINDS: EventKind[] = [
   {
     type: "DELIVERY",
     label: "Delivered",
-    hint: "The receiving server accepted it",
+    hint: "the receiving server accepted it",
     required: true,
   },
   {
     type: "BOUNCE",
     label: "Bounced",
-    hint: "Refused for good. Adds the address to the suppression list",
+    hint: "refused for good",
     required: true,
   },
   {
     type: "COMPLAINT",
     label: "Marked as spam",
-    hint: "Adds the address to the suppression list",
+    hint: "reported as spam",
     required: true,
   },
-  { type: "REJECT", label: "Rejected", hint: "SES refused to send it at all", required: true },
-  { type: "DELIVERY_DELAY", label: "Delayed", hint: "Still being retried. Not a failure yet" },
+  { type: "REJECT", label: "Rejected", hint: "SES refused to send it", required: true },
+  { type: "DELIVERY_DELAY", label: "Delayed", hint: "still being retried, not a failure yet" },
   {
     type: "RENDERING_FAILURE",
     label: "Render failure",
-    hint: "A template placeholder had no value",
+    hint: "a placeholder had no value",
   },
   {
     type: "OPEN",
     label: "Opens",
-    hint: "SES adds an invisible tracking image to every HTML message",
+    hint: "adds an invisible image to every HTML message",
     altersMessage: true,
   },
   {
     type: "CLICK",
     label: "Clicks",
-    hint: "SES rewrites every link to route the reader through AWS first",
+    hint: "rewrites every link to go through AWS first",
     altersMessage: true,
   },
   {
     type: "SUBSCRIPTION",
     label: "Unsubscribes",
-    hint: "Someone used the unsubscribe link SES manages",
+    hint: "someone used the SES unsubscribe link",
   },
 ];
+
+/**
+ * The five required ones share a row: five near-identical lines saying
+ * "Required" is a wall of text that cannot be acted on, and the panel is
+ * long enough without it.
+ */
+export const REQUIRED_SUMMARY = EVENT_KINDS.filter((kind) => kind.required)
+  .map((kind) => kind.label.toLowerCase())
+  .join(", ");
+
+/** The ones a reader can actually switch. */
+export const OPTIONAL_KINDS = EVENT_KINDS.filter((kind) => !kind.required);
 
 export const KNOWN_EVENTS = new Set<EventType>(EVENT_KINDS.map((kind) => kind.type));
 
