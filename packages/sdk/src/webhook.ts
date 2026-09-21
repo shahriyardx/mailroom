@@ -89,6 +89,8 @@ export type MailroomWebhookEvent =
       /** What SES said, when it said anything. */
       detail: string | null;
       occurred_at: string;
+      /** Present and true when a test key produced this rather than SES. */
+      simulated?: true;
     }> & {
       type:
         | "email.delivered"
@@ -98,6 +100,10 @@ export type MailroomWebhookEvent =
         | "email.delayed"
         | "email.rejected";
     })
+  | (WebhookEventEnvelope<{ email: SentEmailSummary; error: string }> & {
+      type: "email.failed";
+    })
+  | (WebhookEventEnvelope<{ email: SentEmailSummary }> & { type: "email.canceled" })
   | (WebhookEventEnvelope<{ thread: Thread }> & { type: "thread.updated" })
   | (WebhookEventEnvelope<{ message: string }> & { type: "webhook.test" });
 

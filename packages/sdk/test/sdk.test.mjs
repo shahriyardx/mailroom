@@ -246,3 +246,106 @@ test("the payload may be bytes as well as a string", async () => {
   const bytes = new TextEncoder().encode(payload);
   assert.equal(await verifyWebhook({ secret, payload: bytes, signature }), true);
 });
+
+/* -------------------------------------------------------------------------- */
+/* Scheduling, templates and test keys                                        */
+/* -------------------------------------------------------------------------- */
+
+test("a scheduled send passes the time through untouched", async () => {
+  const { mail, calls } = client({
+    status: 202,
+    body: { id: "msg_1", status: "scheduled", scheduled_at: "2026-10-01T09:00:00.000Z" },
+  });
+
+  const sent = await mail.emails.send({
+    from: "me@m.test",
+    to: "a@b.c",
+    subject: "Later",
+    scheduled_at: "in 30 minutes",
+  });
+
+  assert.equal(sent.status, "scheduled");
+  assert.equal(JSON.parse(calls[0].init.body).scheduled_at, "in 30 minutes");
+});
+
+test("cancel posts to the message's cancel path", async () => {
+  const { mail, calls } = client({ body: { id: "msg_1", status: "canceled" } });
+  const result = await mail.emails.cancel("msg_1");
+
+  assert.equal(result.status, "canceled");
+  assert.equal(calls[0].init.method, "POST");
+  assert.match(calls[0].url, /\/emails\/msg_1\/cancel$/);
+});
+
+test("reschedule sends a Date as an ISO string", async () => {
+  const { mail, calls } = client({ body: { id: "msg_1" } });
+  const at = new Date("2026-10-01T09:00:00.000Z");
+  await mail.emails.reschedule("msg_1", at);
+
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.equal(JSON.parse(calls[0].init.body).scheduled_at, "2026-10-01T09:00:00.000Z");
+});
+
+test("sending a template passes the name and the data", async () => {
+  const { mail, calls } = client({ status: 202, body: { id: "msg_1", status: "sent" } });
+
+  await mail.emails.send({
+    from: "me@m.test",
+    to: "a@b.c",
+    template: "welcome",
+    data: { name: "Ada" },
+  });
+
+  const body = JSON.parse(calls[0].init.body);
+  assert.equal(body.template, "welcome");
+  assert.deepEqual(body.data, { name: "Ada" });
+});
+
+test("templates can be listed, read, changed and removed", async () => {
+  const { mail, calls } = client([
+    { body: { object: "list", data: [{ id: "tpl_1", slug: "welcome" }], has_more: false } },
+    { body: { object: "template", id: "tpl_1", slug: "welcome" } },
+    { body: { object: "template", id: "tpl_1", subject: "New" } },
+    { body: { object: "template", id: "tpl_1", deleted: true } },
+  ]);
+
+  await mail.templates.list();
+  await mail.templates.get("welcome");
+  await mail.templates.update("welcome", { subject: "New" });
+  await mail.templates.delete("welcome");
+
+  assert.deepEqual(
+    calls.map((call) => call.init.method),
+    ["GET", "GET", "PATCH", "DELETE"],
+  );
+  assert.match(calls[1].url, /\/templates\/welcome$/);
+});
+
+test("listing can ask for the test side, or for both", async () => {
+  const { mail, calls } = client({ body: { object: "list", data: [], has_more: false } });
+  await mail.emails.list({ test: "all" });
+  assert.match(calls[0].url, /[?&]test=all/);
+});
+
+test("a simulated delivery reads as the real event, and says it was simulated", async () => {
+  const secret = "whsec_test";
+  const payload = JSON.stringify({
+    id: "evt_1",
+    type: "email.delivered",
+    created_at: "2026-09-21T00:00:00.000Z",
+    data: {
+      email: { id: "msg_1", status: "delivered", test: true },
+      recipients: ["a@b.c"],
+      detail: "Simulated by a test key",
+      occurred_at: "2026-09-21T00:00:00.000Z",
+      simulated: true,
+    },
+  });
+
+  const signature = await signWebhookPayload(secret, payload);
+  const event = await constructWebhookEvent({ secret, payload, signature });
+
+  assert.equal(event.type, "email.delivered");
+  assert.equal(event.data.simulated, true);
+  assert.deepEqual(event.data.recipients, ["a@b.c"]);
+});

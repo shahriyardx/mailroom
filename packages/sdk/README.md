@@ -18,6 +18,9 @@ Send mail, read your inbox, file conversations, manage domains and mailboxes, an
 - [Quick start](#quick-start)
 - [Configuring the client](#configuring-the-client)
 - [Sending mail](#sending-mail)
+- [Sending later](#sending-later)
+- [Templates](#templates)
+- [Test keys](#test-keys)
 - [Reading mail](#reading-mail)
 - [Mailboxes and domains](#mailboxes-and-domains)
 - [Labels, contacts and blocked addresses](#labels-contacts-and-blocked-addresses)
@@ -153,6 +156,116 @@ console.log(detail.status, detail.events, detail.attachments);
 ```
 
 `emails.get()` also takes an SES message id, which is what a bounce report or a webhook hands you.
+
+### When SES cannot take it
+
+A send that SES refuses for a reason that will still be true in an hour — an unverified identity, a bad address, a suspended account — throws. Anything else, from throttling to a dropped socket, is held in a queue and retried with a widening gap between attempts, and `sent.status` says so:
+
+```ts
+const sent = await mail.emails.send({ … });
+
+if (sent.status === "queued") {
+  // Accepted, not yet handed over. It will keep trying.
+}
+```
+
+You do not have to do anything about it. The message is in Sent, marked `queued`, and goes out on its own; `email.sent` fires when it does, and `email.failed` if the attempts run out.
+
+## Sending later
+
+```ts
+const sent = await mail.emails.send({
+  from: "reminders@example.com",
+  to: "customer@example.net",
+  subject: "Your appointment tomorrow",
+  text: "See you at 10.",
+  scheduled_at: "in 2 hours",
+});
+
+console.log(sent.status);        // "scheduled"
+console.log(sent.scheduled_at);  // "2026-09-21T16:00:00.000Z"
+```
+
+`scheduled_at` takes a `Date`, an ISO 8601 timestamp, a Unix time in seconds or milliseconds, or a short relative form: `"in 30 minutes"`, `"in 2 hours"`, `"in 1 day"`. A time that has already passed sends now. At most 30 days ahead.
+
+While it waits you can move it or call it off:
+
+```ts
+await mail.emails.reschedule(sent.id, new Date("2026-10-01T09:00:00Z"));
+await mail.emails.cancel(sent.id);
+```
+
+Both throw `ConflictError` once the message has been picked up for sending — at that point it is on its way, and saying otherwise would be a lie you would go on to build on. The same two work on a message that is `queued` because SES was busy.
+
+## Templates
+
+Save the wording once, send it by name. Changing a receipt then needs no deploy of whatever service sends it.
+
+```ts
+await mail.templates.create({
+  name: "Receipt",
+  subject: "Your receipt, {{ name }}",
+  html: "<p>Hello {{ name }}, you paid {{ amount }}.</p>",
+});
+
+await mail.emails.send({
+  from: "receipts@example.com",
+  to: "customer@example.net",
+  template: "receipt",
+  data: { name: "Ada", amount: "£10" },
+});
+```
+
+The template language is deliberately not one:
+
+| | |
+| --- | --- |
+| `{{ name }}` | the value, with HTML escaped |
+| `{{{ body }}}` | the value as it is, for markup you meant |
+| `{{ user.name }}` | a path into a nested object |
+
+That is all of it — no loops, no conditionals, no function calls. A template that needs logic has quietly become code, and code belongs in your service where it can be reviewed and tested.
+
+Two things worth knowing. A value you did not send is a `ValidationError` naming what is missing, not an empty string: `"Hi ,"` arriving at a customer is worse than an error, and an empty string cannot be told later from a value that really was empty. And `{{ }}` escapes what it inserts, so a name from a signup form cannot write tags into mail sent under your domain — use `{{{ }}}` only for markup you produced yourself.
+
+`subject` given alongside a template wins, so a one-off variation needs no second template. `template_id` works wherever `template` does, and `templates.get()` takes either.
+
+```ts
+const template = await mail.templates.get("receipt");
+console.log(template.variables); // ["name", "amount"]
+```
+
+## Test keys
+
+A key made in test mode runs every check a live one runs — the mailbox, the blocked list, the template, building the MIME, the webhooks — and stops one step short of handing anything to SES. Nothing leaves the building, nothing costs anything, and nothing counts against your sending quota.
+
+Test keys read `mk_test_…` rather than `mk_live_…`, so one that reached production config is visible rather than silent.
+
+```ts
+const me = await mail.me();
+if (me.mode === "test") console.log("nothing sent from here will arrive");
+```
+
+Since nothing reaches SES, no event will ever arrive to say what became of the message. The recipient decides instead:
+
+| Recipient | What the message is made to look like |
+| --- | --- |
+| `bounce@…`, `bounced@…` | bounced |
+| `complaint@…`, `complained@…` | marked as spam |
+| `delay@…` | still being tried |
+| anything else | delivered |
+
+Your webhook endpoint hears `email.sent` and then the matching event, in the same shape SES would have produced, with `simulated: true` added. That is the point: a receiver you test against this needs no special case.
+
+Test and live mail are kept apart. A test key sees only its own test mail. A live key sees real mail unless it asks:
+
+```ts
+await mail.emails.list();                // real mail
+await mail.emails.list({ test: true });  // test mail
+await mail.emails.list({ test: "all" }); // both
+```
+
+Statistics follow the same rule — a bounce rate must never count a bounce somebody asked for.
 
 ## Reading mail
 
@@ -313,6 +426,8 @@ for await (const delivery of mail.webhooks.listAllDeliveries({ succeeded: false 
 | `email.opened` | The tracking image was loaded |
 | `email.delayed` | SES is still trying |
 | `email.rejected` | SES refused to send it |
+| `email.failed` | It could not be handed to SES, and no attempts are left |
+| `email.canceled` | A scheduled message was called off before it went out |
 | `thread.updated` | A thread was moved, read, starred or labelled through the API |
 
 Delivery is retried four times over about forty seconds. A `4xx` other than 408 and 429 is taken as a final no. After 20 failures in a row the endpoint is switched off, and turning it back on clears the count.
@@ -569,6 +684,8 @@ The key, the base URL, the timeout, the retries and the error mapping all still 
 | `mail.emails.sendBatch()` | `POST /emails/batch` | `emails:send` |
 | `mail.emails.list()` / `listAll()` | `GET /emails` | `emails:read` |
 | `mail.emails.get()` | `GET /emails/:id` | `emails:read` |
+| `mail.emails.cancel()` | `POST /emails/:id/cancel` | `emails:send` |
+| `mail.emails.reschedule()` | `PATCH /emails/:id` | `emails:send` |
 | `mail.threads.list()` / `listAll()` | `GET /threads` | `mail:read` |
 | `mail.threads.get()` | `GET /threads/:id` | `mail:read` |
 | `mail.threads.update()` | `PATCH /threads/:id` | `mail:write` |
@@ -595,6 +712,11 @@ The key, the base URL, the timeout, the retries and the error mapping all still 
 | `mail.labels.update()` | `PATCH /labels/:id` | `labels:write` |
 | `mail.labels.delete()` | `DELETE /labels/:id` | `labels:write` |
 | `mail.contacts.list()` / `listAll()` | `GET /contacts` | `contacts:read` |
+| `mail.templates.list()` / `listAll()` | `GET /templates` | `templates:read` |
+| `mail.templates.get()` | `GET /templates/:id` | `templates:read` |
+| `mail.templates.create()` | `POST /templates` | `templates:write` |
+| `mail.templates.update()` | `PATCH /templates/:id` | `templates:write` |
+| `mail.templates.delete()` | `DELETE /templates/:id` | `templates:write` |
 | `mail.suppressions.list()` / `listAll()` | `GET /suppressions` | `suppressions:read` |
 | `mail.suppressions.create()` | `POST /suppressions` | `suppressions:write` |
 | `mail.suppressions.delete()` | `DELETE /suppressions/:id` | `suppressions:write` |

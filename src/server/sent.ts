@@ -197,15 +197,17 @@ export async function announceSimulated(context: SentContext, status: SimulatedO
     } as const
   )[status];
 
+  // The same shape the SES event stream produces, plus `simulated`. A
+  // receiver written against the real event must not have to special-case
+  // this one, or testing against it proves nothing.
   void dispatchWebhooks(
     context.orgId,
     event,
     {
-      email: emailPayload(context, {
-        status,
-        sesMessageId: `test-${context.messageId}`,
-        at: new Date(),
-      }),
+      email: emailPayload(context, { status, sesMessageId: null, at: new Date() }),
+      recipients: context.to.map((entry) => entry.address),
+      detail: "Simulated by a test key",
+      occurred_at: new Date().toISOString(),
       simulated: true,
     },
     { mailboxId: context.mailboxId },

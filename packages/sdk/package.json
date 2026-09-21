@@ -1,6 +1,6 @@
 {
   "name": "@shahriyardx/mailroom",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Node and TypeScript SDK for Mailroom \u2014 send, read and organise mail on your own Mailroom instance.",
   "license": "MIT",
   "author": "shahriyardx",

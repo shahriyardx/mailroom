@@ -16,7 +16,8 @@ export type DeliveryStatus =
   | "complained"
   | "rejected"
   | "delayed"
-  | "failed";
+  | "failed"
+  | "canceled";
 
 export type DomainStatus = "pending" | "verified" | "failed" | "temporary_failure" | "not_started";
 
@@ -45,6 +46,8 @@ export type Scope =
   | "labels:read"
   | "labels:write"
   | "contacts:read"
+  | "templates:read"
+  | "templates:write"
   | "suppressions:read"
   | "suppressions:write"
   | "webhooks:read"
@@ -61,6 +64,8 @@ export type WebhookEventName =
   | "email.opened"
   | "email.delayed"
   | "email.rejected"
+  | "email.failed"
+  | "email.canceled"
   | "thread.updated";
 
 export interface EmailAddress {
@@ -145,6 +150,10 @@ export interface Message {
   opened_at: string | null;
   open_count: number;
   api_key_id: string | null;
+  /** Set while a message is waiting for its time; cleared once it goes out. */
+  scheduled_at: string | null;
+  /** True when a test key wrote it, and SES never saw it. */
+  test: boolean;
   sent_at: string | null;
   received_at: string;
   created_at: string;
@@ -324,6 +333,19 @@ export interface SendEmailInput {
   html?: string;
   text?: string;
   headers?: Record<string, string>;
+  /**
+   * A saved template to send instead of a body written here, by slug or by
+   * id, with `data` filling its holes. A `subject` given alongside it wins.
+   */
+  template?: string;
+  template_id?: string;
+  data?: Record<string, unknown>;
+  /**
+   * Hold the message until this time. An ISO 8601 timestamp, a Unix time, a
+   * Date, or a relative form such as `"in 30 minutes"`. A time already past
+   * sends now.
+   */
+  scheduled_at?: string | number | Date;
   /** Add this message to an existing thread. */
   thread_id?: string;
   in_reply_to?: string;
@@ -341,6 +363,46 @@ export interface SentEmail {
   from: string;
   to: string[];
   subject: string;
+  /**
+   * `"sent"` reached SES. `"scheduled"` is waiting for its time and
+   * `"queued"` is waiting for SES to be able to take it — both are still to
+   * come, and both can be cancelled.
+   */
+  status: "sent" | "scheduled" | "queued" | DeliveryStatus;
+  scheduled_at: string | null;
+  /** True when a test key sent it, and SES never saw it. */
+  test: boolean;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Templates                                                                  */
+/* -------------------------------------------------------------------------- */
+
+export interface Template {
+  object: "template";
+  id: string;
+  /** What a person calls it. */
+  name: string;
+  /** What your code calls it: stable, lowercase, unique in the account. */
+  slug: string;
+  description: string | null;
+  subject: string;
+  html: string | null;
+  text: string | null;
+  /** Every name this template asks for, so you know what `data` must carry. */
+  variables: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface TemplateInput {
+  name: string;
+  /** Derived from the name when left out. */
+  slug?: string;
+  description?: string;
+  subject?: string;
+  html?: string;
+  text?: string;
 }
 
 export type BatchResult =
@@ -362,6 +424,8 @@ export interface ApiKeyInfo {
   object: "api_key";
   id: string;
   name: string;
+  /** A test key runs every check and never hands anything to SES. */
+  mode: "live" | "test";
   scopes: string[];
   organization: { id: string; name: string } | null;
   reach: {

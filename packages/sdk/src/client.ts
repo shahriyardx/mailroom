@@ -8,6 +8,7 @@ import { Mailboxes } from "./resources/mailboxes.js";
 import { Messages } from "./resources/messages.js";
 import { StatsResource } from "./resources/stats.js";
 import { Suppressions } from "./resources/suppressions.js";
+import { Templates } from "./resources/templates.js";
 import { Threads } from "./resources/threads.js";
 import { Webhooks } from "./resources/webhooks.js";
 import type { ApiKeyInfo } from "./types.js";
@@ -56,6 +57,8 @@ export class Mailroom {
   readonly contacts: Contacts;
   /** Addresses that will not be sent to again. */
   readonly suppressions: Suppressions;
+  /** Saved subjects and bodies, sent by name. */
+  readonly templates: Templates;
   /** Where events are sent, and what happened when they were. */
   readonly webhooks: Webhooks;
   /** How much was sent and received, and how it landed. */
@@ -72,6 +75,7 @@ export class Mailroom {
     this.labels = new Labels(this.http);
     this.contacts = new Contacts(this.http);
     this.suppressions = new Suppressions(this.http);
+    this.templates = new Templates(this.http);
     this.webhooks = new Webhooks(this.http);
     this.stats = new StatsResource(this.http);
   }
