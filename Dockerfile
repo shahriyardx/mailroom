@@ -5,12 +5,17 @@ FROM node:22-alpine AS deps
 RUN corepack enable
 WORKDIR /app
 
-# The worker is a workspace member, so its manifest has to be present for the
-# lockfile to resolve.
+# Manifests only, and every workspace member's: --frozen-lockfile checks the
+# lockfile against all of them, so one missing manifest fails the install.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY worker/package.json ./worker/
-# Both packages: the build bundles the worker, so its dependencies are needed.
-RUN pnpm install --frozen-lockfile
+COPY packages/sdk/package.json ./packages/sdk/
+COPY docs/package.json ./docs/
+
+# Only the app and the worker are installed. The build bundles the worker, so
+# its dependencies are needed; the docs site and the SDK are built and
+# published separately and would add VitePress and wrangler for nothing.
+RUN pnpm install --frozen-lockfile --filter mail --filter mail-inbound-worker
 
 # ---- build -----------------------------------------------------------------
 FROM node:22-alpine AS builder
@@ -19,7 +24,16 @@ WORKDIR /app
 
 COPY --from=deps /app/node_modules ./node_modules
 COPY --from=deps /app/worker/node_modules ./worker/node_modules
-COPY . .
+# Named rather than `COPY . .`: the repository also holds a docs site and an
+# SDK that this image has no use for, and an explicit list cannot quietly
+# start carrying the next thing added beside them.
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+COPY next.config.ts postcss.config.mjs tsconfig.json next-env.d.ts ./
+COPY src ./src
+COPY public ./public
+COPY drizzle ./drizzle
+COPY scripts ./scripts
+COPY worker ./worker
 
 # Public build-time values. Anything secret is supplied at run time instead.
 ARG NEXT_PUBLIC_APP_URL
