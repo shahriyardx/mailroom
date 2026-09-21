@@ -6,8 +6,9 @@ import { db } from "@/db";
 import { label } from "@/db/schema";
 import { FOLDER_LABELS, parseRoute, scopeHref, supportsUnreadFilter } from "@/lib/scope";
 import { requireAccess } from "@/server/access";
-import { readableMailboxIds } from "@/server/grants";
+import { creatableDomainIds, readableMailboxIds } from "@/server/grants";
 import { listMailboxesFor } from "@/server/mailboxes";
+import { can } from "@/server/permissions";
 import { getThreadDetail, listThreads } from "@/server/threads";
 import { eq } from "drizzle-orm";
 import { Inbox } from "lucide-react";
@@ -36,7 +37,15 @@ export default async function MailPage({ params, searchParams }: PageProps) {
     db.query.label.findMany({ where: eq(label.organizationId, access.orgId) }),
   ]);
 
-  if (mailboxes.length === 0) return <NoMailboxes />;
+  if (mailboxes.length === 0) {
+    // Someone with no access at all should not be sent to a screen they are
+    // not allowed to open. Whether they may add one is a different question
+    // from whether they can read one: a domain grant lets you create an
+    // address without yet having a mailbox of your own.
+    const creatable = await creatableDomainIds(access);
+    const mayAdd = can(access, "mailbox:manage") || creatable === "all" || creatable.length > 0;
+    return <NoMailboxes mayAdd={mayAdd} />;
+  }
 
   const scopeLabel =
     scope.kind === "all"
@@ -110,20 +119,25 @@ export default async function MailPage({ params, searchParams }: PageProps) {
   );
 }
 
-function NoMailboxes() {
+function NoMailboxes({ mayAdd }: { mayAdd: boolean }) {
   return (
     <div className="flex h-dvh flex-col items-center justify-center gap-4 bg-background p-10 text-center">
       <Inbox className="size-8 text-muted-foreground/50" />
       <div>
-        <h1 className="text-[15px] font-semibold">No mailboxes yet</h1>
+        <h1 className="text-[15px] font-semibold">
+          {mayAdd ? "No mailboxes yet" : "No mail to read yet"}
+        </h1>
         <p className="mx-auto mt-1.5 max-w-sm text-[12.5px] text-muted-foreground">
-          Add an address for each verified SES domain. There is no limit, and they all route through
-          one Cloudflare worker.
+          {mayAdd
+            ? "Add an address for each verified SES domain. There is no limit, and they all route through one Cloudflare worker."
+            : "You are signed in, but no mailbox has been shared with you. Ask an administrator to give you one, and it will appear here."}
         </p>
       </div>
-      <Button variant="solid" size="sm" pill asChild>
-        <Link href="/settings/mailboxes">Add a mailbox</Link>
-      </Button>
+      {mayAdd && (
+        <Button variant="solid" size="sm" pill asChild>
+          <Link href="/settings/mailboxes">Add a mailbox</Link>
+        </Button>
+      )}
     </div>
   );
 }
