@@ -179,15 +179,20 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                 </span>
               )}
 
-              {canManage && person.role !== "owner" && person.userId !== me.userId && (
-                <IconButton
-                  variant="danger"
-                  label={`Remove ${person.email}`}
-                  onClick={() => run(() => removeMemberAction(person.memberId), "Removed")}
-                >
-                  <Trash2 />
-                </IconButton>
-              )}
+              {/* The slot is always here. Without it a row that cannot be
+                  removed is narrower, and its columns sit off to the right of
+                  every other row. */}
+              <span className="flex w-8 shrink-0 justify-end">
+                {canManage && person.role !== "owner" && person.userId !== me.userId && (
+                  <IconButton
+                    variant="danger"
+                    label={`Remove ${person.email}`}
+                    onClick={() => run(() => removeMemberAction(person.memberId), "Removed")}
+                  >
+                    <Trash2 />
+                  </IconButton>
+                )}
+              </span>
             </ListRow>
           ))}
         </List>
@@ -338,11 +343,11 @@ export function PeoplePanel({ people, pending, teams, me, canManage, leadsTeamId
                         shut ? [...current, entry.id] : current.filter((id) => id !== entry.id),
                       )
                     }
-                    className="-ml-1 flex min-w-0 flex-1 items-center gap-2.5 text-left"
+                    className="-ml-1 flex min-w-0 flex-1 items-start gap-2.5 text-left"
                   >
                     <ChevronDown
                       className={cn(
-                        "size-4 shrink-0 text-muted-foreground transition-transform",
+                        "mt-0.5 size-4 shrink-0 text-muted-foreground transition-transform",
                         shut && "-rotate-90",
                       )}
                     />
