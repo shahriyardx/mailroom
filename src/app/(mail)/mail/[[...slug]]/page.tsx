@@ -20,6 +20,7 @@ interface PageProps {
     t?: string;
     q?: string;
     cursor?: string;
+    dir?: string;
     label?: string;
     unread?: string;
   }>;
@@ -46,7 +47,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
     mailboxes.length === 0 &&
     (can(access, "mailbox:manage") || creatable === "all" || creatable.length > 0);
 
-  const [{ items, nextCursor }, detail] = await Promise.all([
+  const [{ items, nextCursor, prevCursor }, detail] = await Promise.all([
     listThreads({
       orgId: access.orgId,
       scope,
@@ -54,6 +55,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       query: query.q,
       labelId: query.label,
       cursor: query.cursor,
+      direction: query.dir === "newer" ? "newer" : "older",
       unreadOnly: query.unread === "1" && supportsUnreadFilter(folder),
       allowed,
     }),
@@ -86,6 +88,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           baseHref={base}
           listQuery={suffix}
           nextCursor={nextCursor}
+          prevCursor={prevCursor}
           showMailbox={scope.kind !== "mailbox"}
           labels={labels}
         />

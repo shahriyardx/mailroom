@@ -81,6 +81,7 @@ interface Props {
   /** Query string already on the list URL (search, label, unread), no leading "?". */
   listQuery: string;
   nextCursor: string | null;
+  prevCursor: string | null;
   showMailbox: boolean;
   labels: LabelRow[];
 }
@@ -92,6 +93,7 @@ export function ThreadList({
   baseHref,
   listQuery,
   nextCursor,
+  prevCursor,
   showMailbox,
   labels,
 }: Props) {
@@ -102,6 +104,13 @@ export function ThreadList({
 
   const hrefFor = (threadId: string) =>
     `${baseHref}?${listQuery ? `${listQuery}&` : ""}t=${threadId}`;
+
+  const pageHref = (cursor: string, direction: "older" | "newer") => {
+    const params = new URLSearchParams(listQuery);
+    params.set("cursor", cursor);
+    if (direction === "newer") params.set("dir", "newer");
+    return `${baseHref}?${params.toString()}`;
+  };
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: clear the selection when the view changes
   useEffect(() => setSelected(new Set()), [folder, items.length]);
@@ -345,15 +354,20 @@ export function ThreadList({
           );
         })}
 
-        {nextCursor && (
-          <li className="px-4 pt-3">
-            <Button variant="subtle" size="sm" block pill asChild>
-              <Link
-                href={`${baseHref}?${listQuery ? `${listQuery}&` : ""}cursor=${encodeURIComponent(nextCursor)}`}
-              >
-                Load older
-              </Link>
-            </Button>
+        {/* Paging used to go one way, so a reader who pressed it twice had no
+            route back but the browser's own. */}
+        {(prevCursor || nextCursor) && (
+          <li className="flex items-center gap-2 px-4 pt-3">
+            {prevCursor && (
+              <Button variant="subtle" size="sm" block pill asChild>
+                <Link href={pageHref(prevCursor, "newer")}>Newer</Link>
+              </Button>
+            )}
+            {nextCursor && (
+              <Button variant="subtle" size="sm" block pill asChild>
+                <Link href={pageHref(nextCursor, "older")}>Older</Link>
+              </Button>
+            )}
           </li>
         )}
       </ul>

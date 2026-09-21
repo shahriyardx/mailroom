@@ -2,7 +2,7 @@ import "server-only";
 import { db } from "@/db";
 import { attachment, mailbox, message, thread, threadLabel } from "@/db/schema";
 import { type Scope, type ViewFolder, isRealFolder } from "@/lib/scope";
-import { and, arrayContains, desc, eq, inArray, lt, or, sql } from "drizzle-orm";
+import { and, arrayContains, asc, desc, eq, gt, inArray, lt, or, sql } from "drizzle-orm";
 import { resolveScope } from "./mailboxes";
 
 export const PAGE_SIZE = 50;
@@ -32,15 +32,22 @@ interface ListOptions {
   query?: string;
   labelId?: string;
   cursor?: string;
+  /**
+   * Which side of the cursor to read. Paging forward is the common case; the
+   * same cursor read backwards is what makes the list a two-way door rather
+   * than somewhere a reader can only go deeper into.
+   */
+  direction?: "older" | "newer";
   unreadOnly?: boolean;
 }
 
 export async function listThreads(options: ListOptions): Promise<{
   items: ThreadListItem[];
   nextCursor: string | null;
+  prevCursor: string | null;
 }> {
   const mailboxIds = await resolveScope(options.orgId, options.scope, options.allowed);
-  if (mailboxIds.length === 0) return { items: [], nextCursor: null };
+  if (mailboxIds.length === 0) return { items: [], nextCursor: null, prevCursor: null };
 
   const filters = [inArray(thread.mailboxId, mailboxIds)];
 
@@ -79,13 +86,15 @@ export async function listThreads(options: ListOptions): Promise<{
     );
   }
 
+  const backwards = options.direction === "newer";
+
   if (options.cursor) {
     const [stamp, id] = options.cursor.split("|");
+    const at = new Date(Number(stamp));
     filters.push(
-      or(
-        lt(thread.lastMessageAt, new Date(Number(stamp))),
-        and(eq(thread.lastMessageAt, new Date(Number(stamp))), lt(thread.id, id!)),
-      )!,
+      backwards
+        ? or(gt(thread.lastMessageAt, at), and(eq(thread.lastMessageAt, at), gt(thread.id, id!)))!
+        : or(lt(thread.lastMessageAt, at), and(eq(thread.lastMessageAt, at), lt(thread.id, id!)))!,
     );
   }
 
@@ -108,16 +117,36 @@ export async function listThreads(options: ListOptions): Promise<{
     .from(thread)
     .innerJoin(mailbox, eq(mailbox.id, thread.mailboxId))
     .where(and(...filters))
-    .orderBy(desc(thread.lastMessageAt), desc(thread.id))
+    // Reading backwards walks away from the cursor, so the rows arrive
+    // oldest-first and are turned around below to be displayed.
+    .orderBy(
+      backwards ? asc(thread.lastMessageAt) : desc(thread.lastMessageAt),
+      backwards ? asc(thread.id) : desc(thread.id),
+    )
     .limit(PAGE_SIZE + 1);
 
   const hasMore = rows.length > PAGE_SIZE;
-  const items = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
+  const items = backwards ? [...page].reverse() : page;
+
+  const key = (row: (typeof items)[number]) => `${row.lastMessageAt.getTime()}|${row.id}`;
+  const first = items.at(0);
   const last = items.at(-1);
 
   return {
     items,
-    nextCursor: hasMore && last ? `${last.lastMessageAt.getTime()}|${last.id}` : null,
+    /**
+     * Reading backwards, older rows exist by definition — the reader just came
+     * from them. Reading forwards, newer ones exist whenever a cursor was used.
+     */
+    nextCursor: backwards ? (last ? key(last) : null) : hasMore && last ? key(last) : null,
+    prevCursor: backwards
+      ? hasMore && first
+        ? key(first)
+        : null
+      : options.cursor && first
+        ? key(first)
+        : null,
   };
 }
 
