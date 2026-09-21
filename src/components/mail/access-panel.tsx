@@ -163,6 +163,7 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
               />
               <Right
                 label="Manage"
+                title="Change the mailbox itself: its name, colour and signature. Not delete it."
                 on={grant.canManage}
                 busy={busy}
                 onClick={() =>
@@ -397,7 +398,7 @@ function describe(grant: GrantRow) {
 
   const doing = ["read"];
   if (grant.canSend) doing.push("send as");
-  if (grant.canManage) doing.push("change");
+  if (grant.canManage) doing.push("change the settings of");
 
   const list =
     doing.length === 1

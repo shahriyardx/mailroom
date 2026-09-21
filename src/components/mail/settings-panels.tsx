@@ -48,12 +48,15 @@ export function MailboxPanel({
   mailboxes,
   domains,
   creatable,
+  administers,
 }: {
   mailboxes: Mailbox[];
   /** Every domain, so an existing mailbox can be judged against its own. */
   domains: Domain[];
   /** The domains this person may add a mailbox to. Empty hides the form. */
   creatable?: Domain[];
+  /** False for someone acting on a grant rather than administering. */
+  administers?: boolean;
 }) {
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -112,6 +115,7 @@ export function MailboxPanel({
           <MailboxRow
             key={box.id}
             mailbox={box}
+            administers={administers ?? true}
             domainReady={domains.some(
               (item) =>
                 item.name === box.domain && item.sendingEnabled && item.status === "verified",
@@ -211,7 +215,15 @@ export function MailboxPanel({
   );
 }
 
-function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: boolean }) {
+function MailboxRow({
+  mailbox,
+  domainReady,
+  administers,
+}: {
+  mailbox: Mailbox;
+  domainReady: boolean;
+  administers: boolean;
+}) {
   const router = useRouter();
   const [, start] = useTransition();
   const [signature, setSignature] = useState(mailbox.signature ?? "");
@@ -250,7 +262,9 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
             <DropdownMenuItem onSelect={() => setOpen((value) => !value)}>
               <PenLine /> {open ? "Hide signature" : "Edit signature"}
             </DropdownMenuItem>
-            {!mailbox.isDefault && (
+            {/* Choosing the default and removing a mailbox are the
+                instance's business, not one grant holder's. */}
+            {administers && !mailbox.isDefault && (
               <DropdownMenuItem
                 onSelect={() =>
                   start(async () => {
@@ -263,19 +277,21 @@ function MailboxRow({ mailbox, domainReady }: { mailbox: Mailbox; domainReady: b
                 <Star /> Make default
               </DropdownMenuItem>
             )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              destructive
-              onSelect={() =>
-                start(async () => {
-                  await deleteMailboxAction(mailbox.id);
-                  toast.success("Mailbox removed");
-                  router.refresh();
-                })
-              }
-            >
-              <Trash2 /> Delete mailbox
-            </DropdownMenuItem>
+            {administers && <DropdownMenuSeparator />}
+            {administers && (
+              <DropdownMenuItem
+                destructive
+                onSelect={() =>
+                  start(async () => {
+                    await deleteMailboxAction(mailbox.id);
+                    toast.success("Mailbox removed");
+                    router.refresh();
+                  })
+                }
+              >
+                <Trash2 /> Delete mailbox
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </ListRow>

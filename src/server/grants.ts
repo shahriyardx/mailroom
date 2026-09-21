@@ -117,6 +117,14 @@ export async function assertCanSendAs(access: Access, mailboxId: string) {
   }
 }
 
+/** Throws unless the person may change this mailbox. */
+export async function assertCanManage(access: Access, mailboxId: string) {
+  const rights = await mailboxRights(access);
+  if (!rights.get(mailboxId)?.manage) {
+    throw new Error("You cannot change that mailbox");
+  }
+}
+
 /** Throws unless the person may read this mailbox. */
 export async function assertCanRead(access: Access, mailboxId: string) {
   const rights = await mailboxRights(access);

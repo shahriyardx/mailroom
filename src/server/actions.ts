@@ -17,7 +17,12 @@ import { generateApiKey } from "@/lib/api-key";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { newId } from "@/lib/utils";
 import { requireAccess } from "@/server/access";
-import { assertCanSendAs, creatableDomainIds, readableMailboxIds } from "@/server/grants";
+import {
+  assertCanManage,
+  assertCanSendAs,
+  creatableDomainIds,
+  readableMailboxIds,
+} from "@/server/grants";
 import { assertCan, can } from "@/server/permissions";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -356,11 +361,16 @@ export async function updateMailboxAction(
   patch: Partial<z.input<typeof mailboxSchema>>,
 ) {
   const access = await requireAccess();
-  assertCan(access, "mailbox:manage");
   const owns = await db.query.mailbox.findFirst({
     where: and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, access.orgId)),
   });
   if (!owns) return;
+
+  // An administrator manages every mailbox; anyone else needs a grant that
+  // says manage on this one.
+  if (!can(access, "mailbox:manage")) {
+    await assertCanManage(access, mailboxId);
+  }
 
   await db
     .update(mailbox)
@@ -384,6 +394,11 @@ export async function updateMailboxAction(
   revalidatePath("/settings");
 }
 
+/**
+ * Deleting a mailbox takes its mail with it, so it stays with the people who
+ * administer the instance. A grant that says manage lets someone change a
+ * mailbox, not remove one.
+ */
 export async function deleteMailboxAction(mailboxId: string) {
   const access = await requireAccess();
   assertCan(access, "mailbox:manage");

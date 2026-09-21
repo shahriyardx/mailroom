@@ -35,5 +35,12 @@ export default async function MailboxesSettingsPage() {
       ? allDomains
       : allDomains.filter((domain) => own?.creatable.includes(domain.id));
 
-  return <MailboxPanel mailboxes={mailboxes} domains={allDomains} creatable={creatable} />;
+  return (
+    <MailboxPanel
+      mailboxes={mailboxes}
+      domains={allDomains}
+      creatable={creatable}
+      administers={administers}
+    />
+  );
 }
