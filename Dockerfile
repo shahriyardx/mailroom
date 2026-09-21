@@ -28,7 +28,10 @@ COPY --from=deps /app/worker/node_modules ./worker/node_modules
 # SDK that this image has no use for, and an explicit list cannot quietly
 # start carrying the next thing added beside them.
 COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
-COPY next.config.ts postcss.config.mjs tsconfig.json next-env.d.ts ./
+# next-env.d.ts is deliberately absent: it is generated, it is in .gitignore,
+# and so it is not in the clone this image is built from. `next build` writes
+# it before it type-checks anything, so copying it in was never needed.
+COPY next.config.ts postcss.config.mjs tsconfig.json ./
 COPY src ./src
 COPY public ./public
 COPY drizzle ./drizzle
