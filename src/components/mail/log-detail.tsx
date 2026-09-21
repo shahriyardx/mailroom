@@ -93,7 +93,34 @@ const LABEL: Record<string, string> = {
   subscription: "Unsubscribed",
 };
 
-const BAD = new Set(["bounce", "complaint", "reject", "rendering_failure"]);
+/**
+ * What each event means, said in colour.
+ *
+ * This used to be a two-way split — a failure, or everything else — which
+ * painted "Delivered" the same grey as "Sent". Arriving is the outcome the
+ * whole screen is read for; it should be the one thing that looks settled.
+ */
+const TONE: Record<string, "ok" | "warn" | "danger" | "info" | "neutral"> = {
+  send: "neutral",
+  delivery: "ok",
+  open: "info",
+  click: "info",
+  delivery_delay: "warn",
+  subscription: "warn",
+  bounce: "danger",
+  complaint: "danger",
+  reject: "danger",
+  rendering_failure: "danger",
+};
+
+/** The icon's disc, matched to the same tone as its badge. */
+const DISC: Record<string, string> = {
+  ok: "bg-ok-soft text-ok",
+  warn: "bg-warn-soft text-warn",
+  danger: "bg-danger-soft text-destructive",
+  info: "bg-info-soft text-info",
+  neutral: "bg-muted text-muted-foreground",
+};
 
 export function LogDetail(props: DetailProps) {
   const first = props.to[0]?.address ?? props.fromAddress;
@@ -268,20 +295,34 @@ function Timeline({
         <ol className="flex min-w-max items-start gap-0">
           {steps.map((event, index) => {
             const Icon = ICON[event.type] ?? Clock;
-            const bad = BAD.has(event.type);
+            const tone = TONE[event.type] ?? "neutral";
             return (
               <li key={event.id} className="flex items-start">
-                {index > 0 && <span aria-hidden className="mt-5 h-px w-12 bg-border sm:w-20" />}
+                {index > 0 && (
+                  <span
+                    aria-hidden
+                    // Coloured by the step it leads into, so the line into a
+                    // bounce does not look like the line into a delivery.
+                    className={cn(
+                      "mt-5 h-px w-12 sm:w-20",
+                      tone === "danger"
+                        ? "bg-destructive/40"
+                        : tone === "ok"
+                          ? "bg-ok/40"
+                          : "bg-border",
+                    )}
+                  />
+                )}
                 <div className="flex w-28 flex-col items-center gap-1.5 text-center sm:w-32">
                   <span
                     className={cn(
                       "grid size-9 place-items-center rounded-xl [&_svg]:size-4",
-                      bad ? "bg-danger-soft text-destructive" : "bg-muted text-foreground",
+                      DISC[tone],
                     )}
                   >
                     <Icon />
                   </span>
-                  <Badge size="sm" tone={bad ? "danger" : "neutral"}>
+                  <Badge size="sm" tone={tone}>
                     {LABEL[event.type] ?? event.type}
                   </Badge>
                   <span className="text-[11px] text-muted-foreground tabular-nums">
