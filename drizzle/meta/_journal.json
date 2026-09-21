@@ -71,6 +71,13 @@
       "when": 1789971553483,
       "tag": "0009_access_grants",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1789972108627,
+      "tag": "0010_invitation_tokens",
+      "breakpoints": true
     }
   ]
 }

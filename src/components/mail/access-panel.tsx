@@ -198,18 +198,26 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
         </div>
 
         <div className="mt-4 flex flex-wrap items-center gap-5">
-          <label className="flex items-center gap-2 text-[13px] text-muted-foreground">
-            <Checkbox checked disabled />
-            Read
-          </label>
-          <label className="flex items-center gap-2 text-[13px]">
-            <Checkbox checked={canSend} onCheckedChange={(v) => setCanSend(v === true)} />
-            Send as
-          </label>
-          <label className="flex items-center gap-2 text-[13px]">
-            <Checkbox checked={canManage} onCheckedChange={(v) => setCanManage(v === true)} />
-            Manage the mailbox
-          </label>
+          <span className="flex items-center gap-2 text-[13px] text-muted-foreground">
+            <Checkbox checked disabled id="grant-read" />
+            <label htmlFor="grant-read">Read</label>
+          </span>
+          <span className="flex items-center gap-2 text-[13px]">
+            <Checkbox
+              id="grant-send"
+              checked={canSend}
+              onCheckedChange={(value) => setCanSend(value === true)}
+            />
+            <label htmlFor="grant-send">Send as</label>
+          </span>
+          <span className="flex items-center gap-2 text-[13px]">
+            <Checkbox
+              id="grant-manage"
+              checked={canManage}
+              onCheckedChange={(value) => setCanManage(value === true)}
+            />
+            <label htmlFor="grant-manage">Manage the mailbox</label>
+          </span>
         </div>
 
         <FieldsetActions note="Reading always comes with a grant: sending or managing something you cannot see would mean nothing.">

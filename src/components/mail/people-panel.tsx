@@ -29,10 +29,11 @@ import {
   deleteTeamAction,
   inviteMemberAction,
   removeMemberAction,
+  resendInvitationAction,
   setMemberRoleAction,
   setTeamMembershipAction,
 } from "@/server/team";
-import { Plus, Trash2, UserPlus } from "lucide-react";
+import { Copy, Plus, RotateCw, Trash2, UserPlus } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -158,6 +159,29 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                   <Badge size="sm">{entry.role ?? "member"}</Badge>
                   {canManage && (
                     <IconButton
+                      label={`Send ${entry.email} a new link`}
+                      onClick={() =>
+                        start(async () => {
+                          const result = await resendInvitationAction(entry.id);
+                          if (!result.ok) {
+                            toast.error(result.error);
+                            return;
+                          }
+                          await navigator.clipboard.writeText(result.link).catch(() => {});
+                          toast.success(result.sent ? "Invitation sent again" : "New link copied", {
+                            description: result.sent
+                              ? `Emailed to ${entry.email}. The link is on your clipboard too.`
+                              : `It could not be emailed: ${result.reason}`,
+                          });
+                          router.refresh();
+                        })
+                      }
+                    >
+                      <RotateCw />
+                    </IconButton>
+                  )}
+                  {canManage && (
+                    <IconButton
                       variant="danger"
                       label={`Cancel the invitation for ${entry.email}`}
                       onClick={() =>
@@ -215,18 +239,28 @@ export function PeoplePanel({ people, pending, teams, me, canManage }: Props) {
                 </Select>
               </Field>
             </div>
-            <FieldsetActions note="They sign in with GitHub using this address. Nobody can sign in without an invitation.">
+            <FieldsetActions note="They get an email with a link, choose a password, and they are in. GitHub works too if that account uses the same address.">
               <Button
                 variant="solid"
                 pill
                 loading={busy}
                 disabled={!email.trim()}
                 onClick={() =>
-                  run(async () => {
+                  start(async () => {
                     const result = await inviteMemberAction(email, role, teamId || null);
-                    if (result.ok) setEmail("");
-                    return result;
-                  }, "Invitation sent")
+                    if (!result.ok) {
+                      toast.error(result.error);
+                      return;
+                    }
+                    setEmail("");
+                    await navigator.clipboard.writeText(result.link).catch(() => {});
+                    toast.success(result.sent ? "Invitation sent" : "Invitation created", {
+                      description: result.sent
+                        ? `Emailed to ${result.email}. The link is on your clipboard too.`
+                        : `It could not be emailed: ${result.reason}. The link is on your clipboard.`,
+                    });
+                    router.refresh();
+                  })
                 }
               >
                 {!busy && <UserPlus />}

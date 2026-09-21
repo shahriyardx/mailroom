@@ -1,8 +1,9 @@
 "use client";
 
-import { Wordmark } from "@/components/kit";
+import { Button, Field, Input, Wordmark } from "@/components/kit";
 import { authClient } from "@/lib/auth-client";
 import { ArrowRight, Github, Loader2, Lock } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 interface Props {
@@ -19,8 +20,24 @@ const CAPABILITIES = [
 ] as const;
 
 export function AuthForm({ registrationOpen, initialError }: Props) {
+  const router = useRouter();
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(initialError ?? null);
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+
+  async function signInWithPassword() {
+    setPending(true);
+    setError(null);
+    const result = await authClient.signIn.email({ email, password });
+    if (result?.error) {
+      setError(result.error.message ?? "That email and password do not match");
+      setPending(false);
+      return;
+    }
+    router.push("/mail/all/inbox");
+    router.refresh();
+  }
 
   async function signInWithGithub() {
     setPending(true);
@@ -63,11 +80,54 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
           <p className="mt-3 max-w-[22rem] text-[13px] text-muted-foreground">
             {registrationOpen
               ? "Nobody owns this instance yet. The first GitHub account to sign in claims it, and the door closes behind you."
-              : "This instance already has an owner. Only that GitHub account can sign in."}
+              : "Sign in with the password you chose when you accepted your invitation, or with GitHub if that is the account you were invited on."}
           </p>
         </header>
 
-        <div className="rounded-2xl border border-border bg-card p-2 shadow-raise">
+        <div className="space-y-4 rounded-2xl border border-border bg-card p-4 shadow-raise">
+          {/* People who were invited set a password; the owner uses GitHub. */}
+          <div className="space-y-3">
+            <Field label="Email" htmlFor="signin-email">
+              <Input
+                id="signin-email"
+                type="email"
+                mono
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="you@company.com"
+              />
+            </Field>
+            <Field label="Password" htmlFor="signin-password">
+              <Input
+                id="signin-password"
+                type="password"
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter" && email && password) void signInWithPassword();
+                }}
+                placeholder="••••••••••"
+              />
+            </Field>
+            <Button
+              variant="solid"
+              size="lg"
+              pill
+              block
+              loading={pending}
+              disabled={!email.trim() || !password}
+              onClick={signInWithPassword}
+            >
+              Sign in
+            </Button>
+          </div>
+
+          <div className="flex items-center gap-3">
+            <span className="h-px flex-1 bg-border" />
+            <span className="text-[11.5px] text-muted-foreground">or</span>
+            <span className="h-px flex-1 bg-border" />
+          </div>
+
           <button
             type="button"
             onClick={signInWithGithub}
@@ -86,7 +146,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
           </button>
 
           {error && (
-            <p className="mx-1 mt-2 mb-1 flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12px] text-destructive">
+            <p className="flex items-start gap-2 rounded-xl bg-danger-soft px-3 py-2.5 text-[12px] text-destructive">
               <Lock className="mt-px size-3.5 shrink-0" />
               {error}
             </p>
@@ -103,7 +163,7 @@ export function AuthForm({ registrationOpen, initialError }: Props) {
         </ul>
 
         <p className="mt-6 text-center text-[11.5px] text-muted-foreground">
-          No passwords. GitHub is the only way in.
+          Accounts are created by invitation only.
         </p>
       </div>
     </main>

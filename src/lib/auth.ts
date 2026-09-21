@@ -4,7 +4,7 @@ import { drizzleAdapter } from "better-auth/adapters/drizzle";
 import { APIError } from "better-auth/api";
 import { nextCookies } from "better-auth/next-js";
 import { organization } from "better-auth/plugins";
-import { and, count, eq } from "drizzle-orm";
+import { count, eq } from "drizzle-orm";
 
 /**
  * One company runs one instance. The first person to sign in creates it and
@@ -16,18 +16,29 @@ async function isFirstUser() {
   return (row?.total ?? 0) === 0;
 }
 
-async function hasInvitation(email: string) {
+/**
+ * Whether an account may be created for this address, and on what evidence.
+ *
+ * Two things can vouch for someone. Opening the invitation link proves they
+ * received the message: that moves the invitation to "accepting", and only
+ * then may a password account be made. Signing in with GitHub proves the
+ * address a different way, because the provider has verified it — so a
+ * pending invitation is enough there.
+ *
+ * The distinction matters. A password sign-up asserts nothing about the
+ * address it claims, so allowing one merely because that address had been
+ * invited would let anyone who learned of an invitation take the seat.
+ */
+async function invitationAllows(email: string, emailIsProven: boolean) {
   const [row] = await db
-    .select({ id: schema.invitation.id })
+    .select({ status: schema.invitation.status })
     .from(schema.invitation)
-    .where(
-      and(
-        eq(schema.invitation.email, email.toLowerCase()),
-        eq(schema.invitation.status, "pending"),
-      ),
-    )
+    .where(eq(schema.invitation.email, email.toLowerCase()))
     .limit(1);
-  return Boolean(row);
+
+  if (!row) return false;
+  if (row.status === "accepting") return true;
+  return emailIsProven && row.status === "pending";
 }
 
 export const auth = betterAuth({
@@ -46,7 +57,18 @@ export const auth = betterAuth({
     },
   }),
 
-  // GitHub is the only way in. There is no password to leak or reset.
+  /**
+   * The owner signs in with GitHub. People who are invited set a password
+   * instead, because a company's staff should not each need a GitHub account
+   * to read their own mail. Sign-up is closed either way: an account only
+   * comes into being through an invitation link.
+   */
+  emailAndPassword: {
+    enabled: true,
+    minPasswordLength: 10,
+    autoSignIn: true,
+  },
+
   socialProviders: {
     github: {
       clientId: process.env.GITHUB_CLIENT_ID ?? "",
@@ -68,7 +90,10 @@ export const auth = betterAuth({
       create: {
         before: async (user) => {
           if (await isFirstUser()) return { data: user };
-          if (await hasInvitation(user.email)) return { data: user };
+          // A provider that verified the address sets this; the password form
+          // cannot.
+          const proven = (user as { emailVerified?: boolean }).emailVerified === true;
+          if (await invitationAllows(user.email, proven)) return { data: user };
           throw new APIError("FORBIDDEN", {
             message: "This instance is private. Ask an administrator to invite your email address.",
           });

@@ -7,6 +7,7 @@ import {
   invitation,
   mailbox as mailboxTable,
   member,
+  organization,
   team,
   teamMember,
   user,
@@ -15,9 +16,14 @@ import { newId } from "@/lib/utils";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { type Role, requireAccess } from "./access";
+import {
+  freshExpiry,
+  inviteLink,
+  makeInviteToken,
+  newInvitationId,
+  sendInvitationEmail,
+} from "./invitations";
 import { assertCan } from "./permissions";
-
-const INVITE_DAYS = 14;
 
 export interface PersonRow {
   memberId: string;
@@ -89,19 +95,39 @@ export async function inviteMemberAction(email: string, role: Role, teamId: stri
     .limit(1);
   if (existing) return { ok: false as const, error: "That person is already here" };
 
+  const token = makeInviteToken();
   await db.insert(invitation).values({
-    id: newId("inv"),
+    id: newInvitationId(),
     organizationId: access.orgId,
     email: address,
     role,
     teamId,
     status: "pending",
-    expiresAt: new Date(Date.now() + INVITE_DAYS * 24 * 60 * 60 * 1000),
+    tokenHash: token.hash,
+    expiresAt: freshExpiry(),
     inviterId: access.userId,
   });
 
+  const [company] = await db.select().from(organization).where(eq(organization.id, access.orgId));
+
+  const delivery = await sendInvitationEmail({
+    orgId: access.orgId,
+    email: address,
+    secret: token.secret,
+    inviterName: access.name || access.email,
+    companyName: company?.name ?? "Mailroom",
+  });
+
   revalidatePath("/settings/people");
-  return { ok: true as const, email: address };
+  // The link comes back either way, so an invitation is never stuck behind a
+  // mail problem: it can be handed over directly.
+  return {
+    ok: true as const,
+    email: address,
+    link: inviteLink(token.secret),
+    sent: delivery.sent,
+    reason: delivery.sent ? undefined : delivery.reason,
+  };
 }
 
 export async function cancelInvitationAction(invitationId: string) {
@@ -376,4 +402,42 @@ export async function removeGrantAction(grantId: string) {
     .where(and(eq(accessGrant.id, grantId), eq(accessGrant.organizationId, access.orgId)));
   revalidatePath("/settings/access");
   revalidatePath("/mail", "layout");
+}
+
+/** Issues a new link for an invitation that was never opened. */
+export async function resendInvitationAction(invitationId: string) {
+  const access = await requireAccess();
+  assertCan(access, "member:manage");
+
+  const [row] = await db
+    .select()
+    .from(invitation)
+    .where(and(eq(invitation.id, invitationId), eq(invitation.organizationId, access.orgId)));
+  if (!row) return { ok: false as const, error: "No such invitation" };
+  if (row.status === "accepted") return { ok: false as const, error: "That person already joined" };
+
+  // A fresh secret, so a link that leaked earlier stops working.
+  const token = makeInviteToken();
+  await db
+    .update(invitation)
+    .set({ tokenHash: token.hash, status: "pending", expiresAt: freshExpiry() })
+    .where(eq(invitation.id, row.id));
+
+  const [company] = await db.select().from(organization).where(eq(organization.id, access.orgId));
+
+  const delivery = await sendInvitationEmail({
+    orgId: access.orgId,
+    email: row.email,
+    secret: token.secret,
+    inviterName: access.name || access.email,
+    companyName: company?.name ?? "Mailroom",
+  });
+
+  revalidatePath("/settings/people");
+  return {
+    ok: true as const,
+    link: inviteLink(token.secret),
+    sent: delivery.sent,
+    reason: delivery.sent ? undefined : delivery.reason,
+  };
 }

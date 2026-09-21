@@ -157,7 +157,18 @@ export const invitation = pgTable(
     email: text("email").notNull(),
     role: text("role"),
     teamId: text("team_id"),
+    /**
+     * pending    invited, link not opened
+     * accepting  the link was opened and an account is being made for it
+     * accepted   they are in
+     *
+     * Only the holder of the link can move an invitation to "accepting", and
+     * only an invitation in that state may create an account. Knowing that an
+     * address was invited is therefore not enough to claim the seat.
+     */
     status: text("status").notNull().default("pending"),
+    /** sha256 of the link's secret. The secret itself is never stored. */
+    tokenHash: text("token_hash"),
     expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
     inviterId: text("inviter_id")
       .notNull()
