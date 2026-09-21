@@ -5,6 +5,7 @@ import type { Attachment, Label as LabelRow, Mailbox, Message } from "@/db/schem
 import { formatAddress, forwardSubject, quoteForReply, replySubject } from "@/lib/mail";
 import { cn, formatBytes } from "@/lib/utils";
 import {
+  cancelScheduledAction,
   deleteThreadsAction,
   moveThreadsAction,
   setReadAction,
@@ -28,6 +29,7 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
+import { toast } from "sonner";
 import { useComposer } from "./composer-provider";
 import { EmailFrame } from "./email-frame";
 import { LabelMenu } from "./label-menu";
@@ -209,6 +211,8 @@ export function ThreadView({ thread, backHref, labels }: Props) {
                         {item.fromAddress}
                       </span>
                       {item.isOutbound && <DeliveryBadge message={item} />}
+                      {item.isOutbound && <TestBadge message={item} />}
+                      {item.isOutbound && <CancelSend message={item} />}
                       {item.isOutbound && <OpenBadge message={item} />}
                       <span className="ml-auto shrink-0 text-[11.5px] text-muted-foreground">
                         {new Date(item.sentAt ?? item.receivedAt).toLocaleString("en-GB", {
@@ -345,18 +349,95 @@ function DeliveryBadge({ message }: { message: Message }) {
     complained: "danger",
     rejected: "danger",
     failed: "danger",
+    canceled: "neutral",
   } as const;
+
+  // "queued" is technically true of a scheduled message, and useless: what
+  // somebody wants to know is when it is going out.
+  const label =
+    message.deliveryStatus === "queued" && message.scheduledAt
+      ? `sends ${whenSent(message.scheduledAt)}`
+      : message.deliveryStatus;
 
   return (
     <Badge
       size="sm"
       tone={tone[message.deliveryStatus as keyof typeof tone] ?? "neutral"}
-      title={message.deliveryError ?? `SES reported: ${message.deliveryStatus}`}
+      title={
+        message.deliveryError ??
+        (message.scheduledAt
+          ? `Scheduled for ${message.scheduledAt.toLocaleString()}`
+          : `SES reported: ${message.deliveryStatus}`)
+      }
       className="shrink-0"
     >
-      {message.deliveryStatus}
+      {label}
     </Badge>
   );
+}
+
+/** A test send never left the building, and should not be read as one that did. */
+function TestBadge({ message }: { message: Message }) {
+  if (!message.isTest) return null;
+  return (
+    <Badge size="sm" tone="warn" title="Sent by a test key. SES never saw it." className="shrink-0">
+      test
+    </Badge>
+  );
+}
+
+/**
+ * The way out of a send you have thought better of.
+ *
+ * Only while the queue still holds it. Once a worker has the job the message
+ * is on its way, and the action says so rather than pretending.
+ */
+function CancelSend({ message }: { message: Message }) {
+  const router = useRouter();
+  const [pending, start] = useTransition();
+
+  if (message.deliveryStatus !== "queued") return null;
+
+  return (
+    <button
+      type="button"
+      disabled={pending}
+      className="shrink-0 text-[11.5px] text-muted-foreground underline-offset-2 transition-colors hover:text-destructive hover:underline disabled:opacity-50"
+      onClick={() =>
+        start(async () => {
+          try {
+            await cancelScheduledAction(message.id);
+            router.refresh();
+          } catch (error) {
+            toast.error(error instanceof Error ? error.message : "Could not cancel it");
+          }
+        })
+      }
+    >
+      {pending ? "Cancelling…" : "Cancel"}
+    </button>
+  );
+}
+
+/** "in 20 minutes", "tomorrow 09:00" — whichever reads better at that distance. */
+function whenSent(at: Date) {
+  const minutes = Math.round((at.getTime() - Date.now()) / 60_000);
+  if (minutes <= 0) return "any moment";
+  if (minutes < 60) return `in ${minutes} min`;
+
+  const time = at.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+  const today = new Date();
+  const sameDay =
+    at.getFullYear() === today.getFullYear() &&
+    at.getMonth() === today.getMonth() &&
+    at.getDate() === today.getDate();
+
+  if (sameDay) return `at ${time}`;
+  return `${at.toLocaleDateString("en-GB", { weekday: "short", day: "numeric", month: "short" })} ${time}`;
 }
 
 /**

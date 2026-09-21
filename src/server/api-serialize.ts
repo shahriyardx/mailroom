@@ -130,6 +130,10 @@ export function serializeMessage(row: Message, extra: MessageExtras = {}) {
     opened_at: row.openedAt,
     open_count: row.openCount,
     api_key_id: row.apiKeyId,
+    /** Set while a message is waiting for its time; cleared once it goes out. */
+    scheduled_at: row.scheduledAt,
+    /** Written by a test key, and never handed to SES. */
+    test: row.isTest,
     sent_at: row.sentAt,
     received_at: row.receivedAt,
     created_at: row.createdAt,

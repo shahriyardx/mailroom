@@ -1,9 +1,12 @@
 import { db } from "@/db";
 import { attachment, mailbox, message, messageEvent } from "@/db/schema";
-import { fail, ok } from "@/lib/api-http";
+import { fail, ok, readBody } from "@/lib/api-http";
+import { parseSchedule } from "@/lib/schedule";
 import { apiRoute, callerMailboxIds } from "@/server/api-auth";
 import { serializeMessage } from "@/server/api-serialize";
+import { rescheduleSend } from "@/server/scheduling";
 import { and, asc, eq, inArray } from "drizzle-orm";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -53,3 +56,30 @@ export const GET = apiRoute<{ id: string }>("emails:read", async ({ caller, para
     }),
   );
 });
+
+const patchSchema = z.object({
+  /** The new time. Same forms POST /v1/emails accepts. */
+  scheduled_at: z.union([z.string(), z.number()]),
+});
+
+/**
+ * PATCH /api/v1/emails/:id — move a waiting message to a different time.
+ *
+ * Only while it is still waiting. A message already handed to a worker, or
+ * already sent, answers 409.
+ */
+export const PATCH = apiRoute<{ id: string }>(
+  "emails:send",
+  async ({ caller, params, request }) => {
+    const input = await readBody(request, patchSchema);
+
+    const when = parseSchedule(input.scheduled_at);
+    if ("error" in when) return fail("invalid_request", when.error);
+
+    const result = await rescheduleSend(caller, params.id, when.at);
+    if (!result.ok) {
+      return fail(result.status === 404 ? "not_found" : "conflict", result.reason);
+    }
+    return ok(serializeMessage(result.message, { mailboxAddress: result.mailboxAddress }));
+  },
+);

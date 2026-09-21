@@ -39,6 +39,11 @@ const DOUBLES = {
   "@/lib/ses": join(root, "test/fakes/ses.ts"),
 };
 
+/** Framework modules that cannot load outside `next dev`, stood in for. */
+const STUBS = {
+  "next/server": join(root, "test/fakes/next-server.ts"),
+};
+
 const shims = {
   name: "test-shims",
   setup(build) {
@@ -49,6 +54,11 @@ const shims = {
       namespace: "stub",
     }));
     build.onLoad({ filter: /.*/, namespace: "stub" }, () => ({ contents: "export {};" }));
+
+    build.onResolve({ filter: /^next\// }, (args) => {
+      const stub = STUBS[args.path];
+      return stub ? { path: stub } : undefined;
+    });
 
     build.onResolve({ filter: /^@\// }, (args) => {
       const double = DOUBLES[args.path];

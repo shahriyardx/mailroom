@@ -2,6 +2,11 @@
 
 import {
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
   IconButton,
   Input,
   Select,
@@ -13,7 +18,17 @@ import {
 import type { Mailbox } from "@/db/schema";
 import { cn, formatBytes } from "@/lib/utils";
 import { deleteDraftAction, saveDraftAction, sendMessageAction } from "@/server/actions";
-import { Loader2, Maximize2, Minimize2, Paperclip, Send, Trash2, X } from "lucide-react";
+import {
+  CalendarClock,
+  ChevronDown,
+  Loader2,
+  Maximize2,
+  Minimize2,
+  Paperclip,
+  Send,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -65,6 +80,8 @@ export function Composer({ draft, mailboxes, defaultMailboxId, onClose }: Props)
   const [sending, setSending] = useState(false);
   const [draftId, setDraftId] = useState(draft.draftId);
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  const [scheduledAt, setScheduledAt] = useState<Date | null>(null);
+  const [pickingTime, setPickingTime] = useState(false);
 
   const signature = mailboxes.find((box) => box.id === mailboxId)?.signature;
 
@@ -121,10 +138,10 @@ export function Composer({ draft, mailboxes, defaultMailboxId, onClose }: Props)
     }
   }
 
-  async function send() {
+  async function send(at: Date | null = scheduledAt) {
     setSending(true);
     try {
-      await sendMessageAction({
+      const result = await sendMessageAction({
         draftId,
         mailboxId,
         to,
@@ -136,8 +153,19 @@ export function Composer({ draft, mailboxes, defaultMailboxId, onClose }: Props)
         inReplyTo: draft.inReplyTo,
         references: draft.references,
         attachmentIds: files.map((file) => file.id),
+        scheduledAt: at ? at.toISOString() : undefined,
       });
-      toast.success("Message sent");
+
+      // A message SES could not take is not a failure the writer has to act
+      // on — it is in the queue — but saying "Message sent" would be a lie.
+      if (result.status === "scheduled" && result.scheduledAt) {
+        toast.success(`Scheduled for ${describeTime(result.scheduledAt)}`);
+      } else if (result.status === "queued") {
+        toast.success("Queued — SES is busy, this will keep trying");
+      } else {
+        toast.success("Message sent");
+      }
+
       onClose();
       router.refresh();
     } catch (sendError) {
@@ -277,18 +305,97 @@ export function Composer({ draft, mailboxes, defaultMailboxId, onClose }: Props)
         </ul>
       )}
 
+      {pickingTime && (
+        <div className="flex shrink-0 items-center gap-2 border-t border-border px-4 py-2.5">
+          <CalendarClock className="size-3.5 shrink-0 text-muted-foreground" />
+          <Input
+            type="datetime-local"
+            aria-label="Send at"
+            className="h-8 w-56 text-[12.5px]"
+            min={localInputValue(new Date(Date.now() + 60_000))}
+            defaultValue={localInputValue(scheduledAt ?? new Date(Date.now() + 3_600_000))}
+            onChange={(event) => {
+              const picked = event.target.value ? new Date(event.target.value) : null;
+              setScheduledAt(picked && !Number.isNaN(picked.getTime()) ? picked : null);
+            }}
+          />
+          <button
+            type="button"
+            className="text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+            onClick={() => {
+              setPickingTime(false);
+              setScheduledAt(null);
+            }}
+          >
+            Cancel
+          </button>
+        </div>
+      )}
+
       <footer className="flex h-14 shrink-0 items-center gap-2 border-t border-border px-4">
-        <Button
-          variant="solid"
-          size="md"
-          pill
-          onClick={send}
-          loading={sending}
-          disabled={!to.trim() || !mailboxId}
-        >
-          {!sending && <Send />}
-          Send
-        </Button>
+        <div className="flex items-center">
+          <Button
+            variant="solid"
+            size="md"
+            pill
+            className={scheduledAt ? "rounded-r-none pr-3" : undefined}
+            onClick={() => send()}
+            loading={sending}
+            disabled={!to.trim() || !mailboxId}
+          >
+            {!sending && (scheduledAt ? <CalendarClock /> : <Send />)}
+            {scheduledAt ? `Send ${describeTime(scheduledAt)}` : "Send"}
+          </Button>
+
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="solid"
+                size="md"
+                pill
+                aria-label="Send later"
+                className={cn(
+                  "px-2",
+                  scheduledAt ? "rounded-l-none border-l border-l-white/20" : "ml-1",
+                )}
+                disabled={!to.trim() || !mailboxId || sending}
+              >
+                <ChevronDown />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {SCHEDULE_PRESETS.map((preset) => (
+                <DropdownMenuItem
+                  key={preset.label}
+                  onSelect={() => {
+                    setPickingTime(false);
+                    setScheduledAt(preset.at());
+                  }}
+                >
+                  <CalendarClock />
+                  {preset.label}
+                  <span className="ml-auto pl-4 text-[11px] text-muted-foreground">
+                    {describeTime(preset.at())}
+                  </span>
+                </DropdownMenuItem>
+              ))}
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onSelect={() => setPickingTime(true)}>
+                Pick a time…
+              </DropdownMenuItem>
+              {scheduledAt && (
+                <DropdownMenuItem
+                  onSelect={() => {
+                    setScheduledAt(null);
+                    setPickingTime(false);
+                  }}
+                >
+                  Send now instead
+                </DropdownMenuItem>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
 
         <input
           ref={fileInput}
@@ -360,4 +467,59 @@ function Row({
       {action}
     </div>
   );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Saying when                                                                */
+/* -------------------------------------------------------------------------- */
+
+/** The three times anybody actually picks, before reaching for a calendar. */
+const SCHEDULE_PRESETS: { label: string; at: () => Date }[] = [
+  { label: "In an hour", at: () => new Date(Date.now() + 3_600_000) },
+  { label: "Tomorrow morning", at: () => atHour(1, 9) },
+  { label: "Monday morning", at: () => nextMonday() },
+];
+
+function atHour(daysAhead: number, hour: number) {
+  const date = new Date();
+  date.setDate(date.getDate() + daysAhead);
+  date.setHours(hour, 0, 0, 0);
+  return date;
+}
+
+function nextMonday() {
+  const date = new Date();
+  // 1 is Monday; a Monday today means the one after, not this morning.
+  const ahead = (1 - date.getDay() + 7) % 7 || 7;
+  return atHour(ahead, 9);
+}
+
+/** Short enough for a button: "at 14:30" today, "Mon 09:00" after that. */
+function describeTime(value: Date | string) {
+  const date = value instanceof Date ? value : new Date(value);
+  const today = new Date();
+  const sameDay =
+    date.getFullYear() === today.getFullYear() &&
+    date.getMonth() === today.getMonth() &&
+    date.getDate() === today.getDate();
+
+  const time = date.toLocaleTimeString("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+
+  if (sameDay) return `at ${time}`;
+  const day = date.toLocaleDateString("en-GB", {
+    weekday: "short",
+    day: "numeric",
+    month: "short",
+  });
+  return `${day} ${time}`;
+}
+
+/** What <input type="datetime-local"> wants: local time, no zone, no seconds. */
+function localInputValue(date: Date) {
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(date.getHours())}:${pad(date.getMinutes())}`;
 }

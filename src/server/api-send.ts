@@ -4,6 +4,7 @@ import { db } from "@/db";
 import { domain, mailbox } from "@/db/schema";
 import { type EmailAddress, coveringDomain, parseAddress, parseAddressList } from "@/lib/mail";
 import type { MimeAttachment } from "@/lib/mime";
+import { parseSchedule } from "@/lib/schedule";
 import { and, eq, inArray } from "drizzle-orm";
 import { z } from "zod";
 import type { ApiCaller } from "./api-auth";
@@ -25,6 +26,12 @@ export const emailSchema = z.object({
   html: z.string().optional(),
   text: z.string().optional(),
   headers: z.record(z.string()).optional(),
+  /**
+   * Hold the message until this time. An ISO 8601 timestamp, a Unix time, or
+   * a relative form such as "in 30 minutes". A time that has already passed
+   * sends now.
+   */
+  scheduled_at: z.union([z.string(), z.number()]).optional(),
   /** Existing thread to add this message to, so replies stay together. */
   thread_id: z.string().optional(),
   in_reply_to: z.string().optional(),
@@ -121,6 +128,12 @@ export interface SentResult {
   from: string;
   to: string[];
   subject: string;
+  /**
+   * "sent" reached SES. "scheduled" is waiting for its time, "queued" is
+   * waiting for SES to be able to take it, and both are still to come.
+   */
+  status: string;
+  scheduled_at: string | null;
 }
 
 /**
@@ -134,6 +147,13 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
   const fromAddress = parseAddress(input.from).address;
   const { box, reason } = await senderFor(caller, fromAddress);
   if (!box) throw new SendError(reason ?? "Cannot send from that address", 403);
+
+  let scheduledAt: Date | null = null;
+  if (input.scheduled_at !== undefined) {
+    const parsed = parseSchedule(input.scheduled_at);
+    if ("error" in parsed) throw new SendError(parsed.error, 422);
+    scheduledAt = parsed.at;
+  }
 
   const to = toList(input.to);
   const files: MimeAttachment[] = (input.attachments ?? []).map((file) => ({
@@ -159,6 +179,7 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     inReplyTo: input.in_reply_to ?? null,
     references: input.references,
     apiKeyId: caller.keyId,
+    scheduledAt,
   });
 
   return {
@@ -169,6 +190,8 @@ export async function sendOne(caller: ApiCaller, input: EmailInput): Promise<Sen
     from: box.address,
     to: to.map((entry) => entry.address),
     subject: input.subject,
+    status: result.status,
+    scheduled_at: result.scheduledAt ? result.scheduledAt.toISOString() : null,
   };
 }
 

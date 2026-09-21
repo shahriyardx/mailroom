@@ -19,6 +19,7 @@ import {
 import { generateApiKey } from "@/lib/api-key";
 import { WILDCARD, isScope } from "@/lib/api-scopes";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
+import { parseSchedule } from "@/lib/schedule";
 import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
@@ -40,7 +41,9 @@ import { type SubdomainReceiving, ensureSubdomainReceiving } from "./inbound";
 import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./inbound";
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
+import { cancelJobForMessage } from "./outbox";
 import { deliverMessage } from "./send";
+import { markCanceled } from "./sent";
 import { checkWebhookUrl, makeWebhookSecret, pingWebhook } from "./webhooks";
 
 async function assertOwnsThreads(orgId: string, threadIds: string[], allowed?: string[]) {
@@ -71,6 +74,8 @@ const composeSchema = z.object({
   references: z.array(z.string()).optional(),
   draftId: z.string().optional(),
   attachmentIds: z.array(z.string()).optional(),
+  /** ISO time to hold the message until. Absent means send now. */
+  scheduledAt: z.string().optional(),
 });
 
 export type ComposeInput = z.input<typeof composeSchema>;
@@ -79,6 +84,13 @@ export async function sendMessageAction(raw: ComposeInput) {
   const access = await requireAccess();
   const input = composeSchema.parse(raw);
   await assertCanSendAs(access, input.mailboxId);
+
+  let scheduledAt: Date | null = null;
+  if (input.scheduledAt) {
+    const parsed = parseSchedule(input.scheduledAt);
+    if ("error" in parsed) throw new Error(parsed.error);
+    scheduledAt = parsed.at;
+  }
 
   const result = await deliverMessage({
     orgId: access.orgId,
@@ -95,10 +107,62 @@ export async function sendMessageAction(raw: ComposeInput) {
     inReplyTo: input.inReplyTo,
     references: input.references,
     draftId: input.draftId,
+    scheduledAt,
   });
 
   revalidatePath("/mail", "layout");
-  return { threadId: result.threadId, messageId: result.messageId };
+  return {
+    threadId: result.threadId,
+    messageId: result.messageId,
+    status: result.status,
+    scheduledAt: result.scheduledAt,
+  };
+}
+
+/**
+ * Calls off a message that has not gone out.
+ *
+ * Bounded by what this person may read, the same as every other action here:
+ * a message id is not a secret, and without the check anyone signed in could
+ * stop anyone else's mail.
+ */
+export async function cancelScheduledAction(messageId: string) {
+  const access = await requireAccess();
+  const mailboxIds = await resolveScope(
+    access.orgId,
+    { kind: "all" },
+    await readableMailboxIds(access),
+  );
+  if (mailboxIds.length === 0) throw new Error("No such message");
+
+  const [row] = await db
+    .select({ msg: message, address: mailbox.address })
+    .from(message)
+    .innerJoin(mailbox, eq(mailbox.id, message.mailboxId))
+    .where(and(eq(message.id, messageId), inArray(message.mailboxId, mailboxIds)))
+    .limit(1);
+
+  if (!row) throw new Error("No such message");
+  if (row.msg.deliveryStatus !== "queued") throw new Error("That message has already been sent");
+
+  const taken = await cancelJobForMessage(messageId);
+  if (!taken) throw new Error("That message is already on its way to SES");
+
+  await markCanceled({
+    orgId: access.orgId,
+    messageId: row.msg.id,
+    threadId: row.msg.threadId,
+    mailboxId: row.msg.mailboxId,
+    mailboxAddress: row.address,
+    rfcMessageId: row.msg.rfcMessageId,
+    to: row.msg.to,
+    cc: row.msg.cc,
+    subject: row.msg.subject,
+    apiKeyId: row.msg.apiKeyId,
+    isTest: row.msg.isTest,
+  });
+
+  revalidatePath("/mail", "layout");
 }
 
 const draftSchema = composeSchema.partial({ to: true }).extend({ draftId: z.string().optional() });
