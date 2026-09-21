@@ -120,7 +120,7 @@ export async function deployWorker(orgId: string) {
   const appUrl = env.appUrl.replace(/\/+$/, "");
   if (appUrl.includes("localhost")) {
     throw new Error(
-      "NEXT_PUBLIC_APP_URL still points at localhost. Cloudflare has to be able to reach this app.",
+      "APP_URL still points at localhost. Cloudflare has to be able to reach this app.",
     );
   }
 

@@ -55,7 +55,7 @@ Keep the client ID and secret.
 DATABASE_URL=postgres://user:pass@host:5432/mail
 BETTER_AUTH_SECRET=          # openssl rand -base64 32
 BETTER_AUTH_URL=https://mail.yourdomain.com
-NEXT_PUBLIC_APP_URL=https://mail.yourdomain.com
+APP_URL=https://mail.yourdomain.com
 
 GITHUB_CLIENT_ID=
 GITHUB_CLIENT_SECRET=

@@ -125,9 +125,7 @@ export async function setUpEvents(): Promise<EventsStatus> {
   const endpoint = `${env.appUrl.replace(/\/+$/, "")}/api/ses/events`;
 
   if (endpoint.includes("localhost")) {
-    throw new Error(
-      "NEXT_PUBLIC_APP_URL still points at localhost. AWS has to be able to reach this app.",
-    );
+    throw new Error("APP_URL still points at localhost. AWS has to be able to reach this app.");
   }
 
   const { ses, sns } = clients();
