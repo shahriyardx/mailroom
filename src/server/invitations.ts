@@ -66,16 +66,31 @@ export async function sendInvitationEmail(input: {
   }
 
   const link = inviteLink(input.secret);
-  const company = input.companyName;
+
+  // An instance still named after the person who installed it, or after the
+  // product, would otherwise read as "Alice invited you to Alice on
+  // Mailroom". Where the company adds nothing, it is left out.
+  const company = input.companyName.trim();
+  const named =
+    company &&
+    company.toLowerCase() !== "mailroom" &&
+    company.toLowerCase() !== input.inviterName.trim().toLowerCase();
+
+  const subject = named
+    ? `${input.inviterName} invited you to ${company}`
+    : `${input.inviterName} invited you to Mailroom`;
+  const sentence = named
+    ? `${input.inviterName} (${from.address}) invited you to join ${company} on Mailroom, the company's own mail.`
+    : `${input.inviterName} (${from.address}) invited you to Mailroom, the company's own mail.`;
 
   try {
     await deliverMessage({
       orgId: input.orgId,
       mailboxId: from.id,
       to: [{ address: input.email, name: null }],
-      subject: `${input.inviterName} invited you to ${company}`,
+      subject,
       text: [
-        `${input.inviterName} has invited you to ${company} on Mailroom.`,
+        sentence,
         "",
         "Open this link to accept and choose a password:",
         link,
@@ -86,8 +101,10 @@ export async function sendInvitationEmail(input: {
       html: `
         <div style="font-family:system-ui,-apple-system,Segoe UI,sans-serif;max-width:480px">
           <p style="font-size:15px;line-height:1.5">
-            <strong>${escapeHtml(input.inviterName)}</strong> has invited you to
-            <strong>${escapeHtml(company)}</strong> on Mailroom.
+            <strong>${escapeHtml(input.inviterName)}</strong>
+            (${escapeHtml(from.address)}) invited you to
+            ${named ? `join <strong>${escapeHtml(company)}</strong> on Mailroom` : "<strong>Mailroom</strong>"},
+            the company's own mail.
           </p>
           <p style="margin:24px 0">
             <a href="${link}"

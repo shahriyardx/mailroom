@@ -30,17 +30,14 @@ async function createInstance(user: { id: string; email: string; name?: string |
   const orgId = newId("org");
   const teamId = newId("team");
 
-  const company = (user.name?.trim() || user.email.split("@")[0]) ?? "Mailroom";
-  const slug = company
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
-
+  // Named after the product, not after the person who installed it. The
+  // company name is written into every invitation, and one named after its
+  // owner reads as "Alice invited you to Alice". The owner renames it under
+  // Settings -> Account.
   await db.insert(organization).values({
     id: orgId,
-    name: company,
-    slug: slug || "mailroom",
+    name: "Mailroom",
+    slug: "mailroom",
   });
 
   // The root team reaches every domain and mailbox without a grant.
