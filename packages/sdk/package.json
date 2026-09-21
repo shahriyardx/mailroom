@@ -11,26 +11,13 @@
     "directory": "packages/sdk"
   },
   "bugs": "https://github.com/shahriyardx/mailroom/issues",
-  "keywords": [
-    "mailroom",
-    "email",
-    "transactional-email",
-    "ses",
-    "inbox",
-    "webhooks",
-    "sdk"
-  ],
+  "keywords": ["mailroom", "email", "transactional-email", "ses", "inbox", "webhooks", "sdk"],
   "type": "module",
   "sideEffects": false,
   "engines": {
     "node": ">=18"
   },
-  "files": [
-    "dist",
-    "src",
-    "README.md",
-    "LICENSE"
-  ],
+  "files": ["dist", "src", "README.md", "LICENSE"],
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
   "types": "./dist/index.d.ts",

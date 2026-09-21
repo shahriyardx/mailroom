@@ -1,16 +1,20 @@
 "use client";
 
 import {
+  Button,
   ConfirmDialog,
   IconButton,
+  Input,
   List,
   ListEmpty,
   ListRow,
+  Note,
   Panel,
   StatusPill,
 } from "@/components/kit";
 import { removeSuppressionAction } from "@/server/actions";
-import { ShieldOff, Trash2 } from "lucide-react";
+import { Search, ShieldOff, Trash2 } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
@@ -22,15 +26,33 @@ interface Row {
   createdAt: Date;
 }
 
-export function SuppressionPanel({ rows }: { rows: Row[] }) {
+interface Props {
+  rows: Row[];
+  query: string;
+  /** How many rows the current search matches, not how many are on this page. */
+  matching: number;
+  total: number;
+  page: number;
+  pageCount: number;
+}
+
+export function SuppressionPanel({ rows, query, matching, total, page, pageCount }: Props) {
   const router = useRouter();
   const [unblocking, setUnblocking] = useState<Row | null>(null);
+
+  const href = (next: number) => {
+    const params = new URLSearchParams();
+    if (query) params.set("q", query);
+    if (next > 1) params.set("page", String(next));
+    const search = params.toString();
+    return search ? `/settings/blocked?${search}` : "/settings/blocked";
+  };
 
   return (
     <Panel
       title="Suppression list"
       description="Added automatically after a hard bounce or a spam complaint. Sending to these is refused."
-      meta={`${rows.length}`}
+      meta={`${total}`}
     >
       {/* Unblocking is not undoing a mistake, usually. The address is here
           because mail to it bounced or somebody reported it, and sending
@@ -55,6 +77,30 @@ export function SuppressionPanel({ rows }: { rows: Row[] }) {
         }}
       />
 
+      {/* Whether one address is on this list is the question people come here
+          with, and scrolling a few thousand rows is not an answer to it. */}
+      <form method="get" className="mb-4 flex items-center gap-2">
+        <span className="relative flex-1">
+          <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 size-3.5 text-muted-foreground" />
+          <Input
+            name="q"
+            defaultValue={query}
+            mono
+            placeholder="Search a blocked address"
+            aria-label="Search blocked addresses"
+            className="pl-9"
+          />
+        </span>
+        <Button type="submit" variant="outline">
+          Search
+        </Button>
+        {query && (
+          <Button type="button" variant="ghost" onClick={() => router.push("/settings/blocked")}>
+            Clear
+          </Button>
+        )}
+      </form>
+
       <List>
         {rows.map((row) => (
           <ListRow key={row.id}>
@@ -69,8 +115,38 @@ export function SuppressionPanel({ rows }: { rows: Row[] }) {
             </IconButton>
           </ListRow>
         ))}
-        {rows.length === 0 && <ListEmpty>Nothing is blocked.</ListEmpty>}
+        {rows.length === 0 && (
+          <ListEmpty>
+            {query ? `Nothing blocked matches “${query}”.` : "Nothing is blocked."}
+          </ListEmpty>
+        )}
       </List>
+
+      {matching > 0 && (
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+          <Note>
+            {query
+              ? `${matching} of ${total} blocked ${total === 1 ? "address" : "addresses"} match.`
+              : `${total} blocked ${total === 1 ? "address" : "addresses"}.`}
+            {pageCount > 1 && ` Page ${page} of ${pageCount}.`}
+          </Note>
+
+          {pageCount > 1 && (
+            <span className="flex items-center gap-2">
+              {page > 1 && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={href(page - 1)}>Previous</Link>
+                </Button>
+              )}
+              {page < pageCount && (
+                <Button asChild variant="outline" size="sm">
+                  <Link href={href(page + 1)}>Next</Link>
+                </Button>
+              )}
+            </span>
+          )}
+        </div>
+      )}
     </Panel>
   );
 }

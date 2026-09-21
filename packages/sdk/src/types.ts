@@ -143,6 +143,14 @@ export interface Message {
   dkim: string | null;
   dmarc: string | null;
   spam_score: number | null;
+  /**
+   * Who handed the message over, as against who it claims to be from: the
+   * envelope sender's domain, the domain that signed it with DKIM, and how the
+   * last hop reached us ("TLS1.3", or "none" for a plaintext hop).
+   */
+  mailed_by: string | null;
+  signed_by: string | null;
+  tls: string | null;
   /** Outbound delivery. */
   ses_message_id: string | null;
   status: DeliveryStatus | null;

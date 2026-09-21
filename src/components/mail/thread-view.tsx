@@ -197,8 +197,10 @@ export function ThreadView({ thread, backHref, labels }: Props) {
 
       <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
         {/* The subject names the conversation, so it is stated once at the
-            top rather than buried inside the message that started it. */}
-        <div className="mb-5">
+            top rather than buried inside the message that started it. It lines
+            up with the messages rather than the avatars beside them, so the
+            column of text under it reads as one thing. */}
+        <div className="mb-5 pl-[3.25rem]">
           <h1 className="font-display text-[22px] font-semibold leading-snug tracking-[-0.02em]">
             {thread.subject || "(no subject)"}
           </h1>

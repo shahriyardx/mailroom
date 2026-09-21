@@ -125,6 +125,10 @@ export function serializeMessage(row: Message, extra: MessageExtras = {}) {
     dkim: row.dkim,
     dmarc: row.dmarc,
     spam_score: row.spamScore,
+    // Who handed it over, as against who it claims to be from.
+    mailed_by: row.mailedBy,
+    signed_by: row.signedBy,
+    tls: row.tls,
     // Outbound delivery.
     ses_message_id: row.sesMessageId,
     status: row.deliveryStatus,

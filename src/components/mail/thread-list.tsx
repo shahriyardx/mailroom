@@ -1,6 +1,6 @@
 "use client";
 
-import { Avatar, Button, Checkbox, Hint, IconButton } from "@/components/kit";
+import { Avatar, Button, Checkbox, ConfirmDialog, Hint, IconButton } from "@/components/kit";
 import type { Label as LabelRow } from "@/db/schema";
 import type { ViewFolder } from "@/lib/scope";
 import { cn } from "@/lib/utils";
@@ -96,6 +96,7 @@ export function ThreadList({
   labels,
 }: Props) {
   const router = useRouter();
+  const [purging, setPurging] = useState<ThreadListItem | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
 
@@ -119,6 +120,23 @@ export function ThreadList({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
+      {/* Everywhere but Trash, deleting moves a conversation somewhere it can
+          be got back from. Here there is nowhere further to move it. */}
+      <ConfirmDialog
+        open={purging !== null}
+        onOpenChange={(next) => !next && setPurging(null)}
+        title="Delete this conversation forever?"
+        description={purging?.subject || "(no subject)"}
+        consequences="It is already in Trash. This removes its messages and their attachments for good."
+        confirmLabel="Delete forever"
+        onConfirm={async () => {
+          if (!purging) return;
+          await deleteThreadsAction([purging.id]);
+          setPurging(null);
+          router.refresh();
+        }}
+      />
+
       {/* The toolbar only appears once there is a selection to act on. */}
       {hasSelection && (
         <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-4">
@@ -304,6 +322,19 @@ export function ThreadList({
                 >
                   {item.unreadCount > 0 ? <MailOpen /> : <MailQuestion />}
                 </RowAction>
+                {/* Everywhere else this moves the conversation to Trash and is
+                    undoable from there. In Trash there is nowhere further to
+                    move it, so the same click destroys it and has to ask. */}
+                <RowAction
+                  label={folder === "trash" ? "Delete forever" : "Delete"}
+                  destructive
+                  onClick={() => {
+                    if (folder === "trash") setPurging(item);
+                    else run(() => deleteThreadsAction([item.id]));
+                  }}
+                >
+                  <Trash2 />
+                </RowAction>
               </span>
 
               {/* Starred rows keep their star visible when the row is at rest. */}
@@ -348,10 +379,13 @@ function EmptyFolder({ folder }: { folder: ViewFolder }) {
 function RowAction({
   label,
   onClick,
+  destructive,
   children,
 }: {
   label: string;
   onClick: () => void;
+  /** Archive and delete are near-identical at this size; colour tells them apart. */
+  destructive?: boolean;
   children: React.ReactNode;
 }) {
   return (
@@ -360,7 +394,10 @@ function RowAction({
         label={label}
         size="xs"
         variant="subtle"
-        className="bg-card shadow-raise hover:bg-accent"
+        className={cn(
+          "bg-card shadow-raise hover:bg-accent",
+          destructive && "hover:bg-danger-soft hover:text-destructive",
+        )}
         onClick={onClick}
       >
         {children}

@@ -19,82 +19,81 @@ const SITE = "https://mailroom-docs.shahriyar.dev";
  * from the machine-readable index.
  */
 const SIDEBAR = {
-      "/guide/": [
-        {
-          text: "Getting started",
-          items: [
-            { text: "What it is", link: "/guide/" },
-            { text: "How it fits together", link: "/guide/architecture" },
-            { text: "Self-hosting it", link: "/guide/self-hosting" },
-          ],
-        },
-        {
-          text: "Running it",
-          items: [
-            { text: "Sending domains", link: "/guide/domains" },
-            { text: "Receiving mail", link: "/guide/receiving" },
-            { text: "Mailboxes and people", link: "/guide/mailboxes" },
-            { text: "API keys", link: "/guide/api-keys" },
-            { text: "Test keys", link: "/guide/test-mode" },
-            { text: "The send queue", link: "/guide/queue" },
-          ],
-        },
+  "/guide/": [
+    {
+      text: "Getting started",
+      items: [
+        { text: "What it is", link: "/guide/" },
+        { text: "How it fits together", link: "/guide/architecture" },
+        { text: "Self-hosting it", link: "/guide/self-hosting" },
       ],
-
-      "/api/": [
-        {
-          text: "Using the API",
-          items: [
-            { text: "Overview", link: "/api/" },
-            { text: "Scopes and reach", link: "/api/scopes" },
-            { text: "Pagination", link: "/api/pagination" },
-            { text: "Errors", link: "/api/errors" },
-            { text: "Idempotency and limits", link: "/api/idempotency" },
-          ],
-        },
-        {
-          text: "Endpoints",
-          items: [
-            { text: "Emails", link: "/api/emails" },
-            { text: "Templates", link: "/api/templates" },
-            { text: "Threads", link: "/api/threads" },
-            { text: "Messages and files", link: "/api/messages" },
-            { text: "Mailboxes", link: "/api/mailboxes" },
-            { text: "Domains", link: "/api/domains" },
-            { text: "Labels and contacts", link: "/api/labels" },
-            { text: "Blocked addresses", link: "/api/suppressions" },
-            { text: "Webhooks", link: "/api/webhooks" },
-            { text: "Statistics", link: "/api/stats" },
-          ],
-        },
+    },
+    {
+      text: "Running it",
+      items: [
+        { text: "Sending domains", link: "/guide/domains" },
+        { text: "Receiving mail", link: "/guide/receiving" },
+        { text: "Mailboxes and people", link: "/guide/mailboxes" },
+        { text: "API keys", link: "/guide/api-keys" },
+        { text: "Test keys", link: "/guide/test-mode" },
+        { text: "The send queue", link: "/guide/queue" },
       ],
+    },
+  ],
 
-      "/sdk/": [
-        {
-          text: "Node SDK",
-          items: [
-            { text: "Getting started", link: "/sdk/" },
-            { text: "Sending", link: "/sdk/sending" },
-            { text: "Reading mail", link: "/sdk/reading" },
-            { text: "Managing the account", link: "/sdk/managing" },
-            { text: "Errors and retries", link: "/sdk/errors" },
-          ],
-        },
+  "/api/": [
+    {
+      text: "Using the API",
+      items: [
+        { text: "Overview", link: "/api/" },
+        { text: "Scopes and reach", link: "/api/scopes" },
+        { text: "Pagination", link: "/api/pagination" },
+        { text: "Errors", link: "/api/errors" },
+        { text: "Idempotency and limits", link: "/api/idempotency" },
       ],
-
-      "/webhooks/": [
-        {
-          text: "Webhooks",
-          items: [
-            { text: "Overview", link: "/webhooks/" },
-            { text: "The events", link: "/webhooks/events" },
-            { text: "Verifying a call", link: "/webhooks/verifying" },
-            { text: "Retries and replays", link: "/webhooks/retries" },
-          ],
-        },
+    },
+    {
+      text: "Endpoints",
+      items: [
+        { text: "Emails", link: "/api/emails" },
+        { text: "Templates", link: "/api/templates" },
+        { text: "Threads", link: "/api/threads" },
+        { text: "Messages and files", link: "/api/messages" },
+        { text: "Mailboxes", link: "/api/mailboxes" },
+        { text: "Domains", link: "/api/domains" },
+        { text: "Labels and contacts", link: "/api/labels" },
+        { text: "Blocked addresses", link: "/api/suppressions" },
+        { text: "Webhooks", link: "/api/webhooks" },
+        { text: "Statistics", link: "/api/stats" },
       ],
-    };
+    },
+  ],
 
+  "/sdk/": [
+    {
+      text: "Node SDK",
+      items: [
+        { text: "Getting started", link: "/sdk/" },
+        { text: "Sending", link: "/sdk/sending" },
+        { text: "Reading mail", link: "/sdk/reading" },
+        { text: "Managing the account", link: "/sdk/managing" },
+        { text: "Errors and retries", link: "/sdk/errors" },
+      ],
+    },
+  ],
+
+  "/webhooks/": [
+    {
+      text: "Webhooks",
+      items: [
+        { text: "Overview", link: "/webhooks/" },
+        { text: "The events", link: "/webhooks/events" },
+        { text: "Verifying a call", link: "/webhooks/verifying" },
+        { text: "Retries and replays", link: "/webhooks/retries" },
+      ],
+    },
+  ],
+};
 
 /** Every page in the sidebar, flattened, in the order the menu shows them. */
 function sidebarPages(): { text: string; link: string }[] {
