@@ -35,6 +35,8 @@ const SIDEBAR = {
             { text: "Receiving mail", link: "/guide/receiving" },
             { text: "Mailboxes and people", link: "/guide/mailboxes" },
             { text: "API keys", link: "/guide/api-keys" },
+            { text: "Test keys", link: "/guide/test-mode" },
+            { text: "The send queue", link: "/guide/queue" },
           ],
         },
       ],
@@ -54,6 +56,7 @@ const SIDEBAR = {
           text: "Endpoints",
           items: [
             { text: "Emails", link: "/api/emails" },
+            { text: "Templates", link: "/api/templates" },
             { text: "Threads", link: "/api/threads" },
             { text: "Messages and files", link: "/api/messages" },
             { text: "Mailboxes", link: "/api/mailboxes" },

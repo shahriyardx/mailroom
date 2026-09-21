@@ -36,6 +36,9 @@ curl -X POST https://mail.yourdomain.com/api/v1/emails \
 | `subject` | | Defaults to empty |
 | `html`, `text` | | Send either, or both |
 | `headers` | | Extra headers, as a flat object |
+| `template`, `template_id` | | A [saved template](/api/templates) to send instead of a body |
+| `data` | | The values that template asks for |
+| `scheduled_at` | | Hold it until then. See [Sending later](#sending-later) |
 | `thread_id` | | Add this message to an existing thread |
 | `in_reply_to`, `references` | | Threading headers, if you are building them yourself |
 | `attachments` | | At most 20. See below |
@@ -50,13 +53,90 @@ Returns `202`:
   "thread_id": "thr_…",
   "from": "receipts@example.com",
   "to": ["customer@example.net"],
-  "subject": "Your receipt"
+  "subject": "Your receipt",
+  "status": "sent",
+  "scheduled_at": null,
+  "test": false
 }
 ```
 
 `202`, not `200`: SES has accepted it, and whether it was *delivered* comes
 later — as a `status` on the message, and as an
 [`email.delivered` webhook](/webhooks/events).
+
+### What `status` means
+
+| | |
+| --- | --- |
+| `sent` | Handed to SES. The usual answer |
+| `scheduled` | Held until `scheduled_at` |
+| `queued` | SES could not take it right now. It will keep trying |
+| `delivered`, `bounced`, … | A [test key](/guide/test-mode) sent it, and the outcome was simulated |
+
+`queued` is not an error and needs nothing from you. A send that SES refuses
+for a reason that will still be true in an hour — an unverified identity, a
+malformed address, a suspended account — returns an error instead and records
+nothing. Anything else, from throttling to a dropped socket, goes into a queue
+and is retried with a widening gap between attempts, up to eight times over
+about three quarters of an hour. `email.sent` fires when it goes out, and
+`email.failed` if the attempts run out.
+
+## Sending later
+
+Set `scheduled_at` and the message is written to Sent straight away, marked
+`queued` with a time on it, and handed over when that time comes.
+
+```sh
+curl -X POST https://mail.yourdomain.com/api/v1/emails \
+  -H "Authorization: Bearer mk_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{
+    "from": "reminders@example.com",
+    "to": "customer@example.net",
+    "subject": "Your appointment tomorrow",
+    "text": "See you at 10.",
+    "scheduled_at": "in 2 hours"
+  }'
+```
+
+Any of these forms works:
+
+| | |
+| --- | --- |
+| `"2026-10-01T09:00:00Z"` | ISO 8601 |
+| `1790000000` | Unix time, seconds or milliseconds |
+| `"in 30 minutes"` | `second`, `minute`, `hour` or `day`, singular or plural |
+
+A time that has already passed sends now. At most 30 days ahead.
+
+### Call one off
+
+```
+POST /api/v1/emails/:id/cancel
+```
+
+Scope: `emails:send`
+
+Works on anything still waiting — scheduled, or queued because SES was busy.
+Returns the message with `status: "canceled"`.
+
+Answers `409` once a worker has picked the message up. At that point it is on
+its way to SES and there is nothing left to stop, and saying otherwise would
+be a lie you would go on to build on.
+
+### Move one
+
+```
+PATCH /api/v1/emails/:id
+```
+
+Scope: `emails:send`
+
+```json
+{ "scheduled_at": "2026-10-01T09:00:00Z" }
+```
+
+Same forms, and the same `409` once it has been picked up.
 
 ### Attachments
 
@@ -128,7 +208,7 @@ Scope: `emails:read`
 
 | Filter | |
 | --- | --- |
-| `status` | One or several of `queued`, `sent`, `delivered`, `bounced`, `complained`, `rejected`, `delayed`, `failed`. Comma-separated |
+| `status` | One or several of `queued`, `sent`, `delivered`, `bounced`, `complained`, `rejected`, `delayed`, `failed`, `canceled`. Comma-separated |
 | `from` | Exact sender address |
 | `to` | Exact recipient address |
 | `subject` | Substring |
@@ -137,6 +217,7 @@ Scope: `emails:read`
 | `api_key_id` | Only mail sent by one key |
 | `since`, `until` | ISO dates |
 | `mailbox_id`, `mailbox`, `domain` | Narrow to part of the account |
+| `test` | `true` for the test side, `all` for both. See [Test keys](/guide/test-mode) |
 | `limit`, `cursor` | See [Pagination](/api/pagination) |
 
 ```sh
@@ -144,7 +225,11 @@ curl "https://mail.yourdomain.com/api/v1/emails?status=bounced,complained&since=
   -H "Authorization: Bearer mk_live_..."
 ```
 
-Drafts are excluded: they are outbound, but they have not been sent.
+Drafts are excluded: they are outbound, but they have not been sent. So is
+mail written by a [test key](/guide/test-mode), unless you ask for it.
+
+Everything still waiting is `status=queued`; the ones with a `scheduled_at`
+are waiting for the clock, and the rest are waiting for SES.
 
 ## Read one
 

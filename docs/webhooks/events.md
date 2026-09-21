@@ -1,6 +1,6 @@
 # The events
 
-Nine, plus a test. Subscribe with a list of names, or `["*"]` for everything
+Eleven, plus a test. Subscribe with a list of names, or `["*"]` for everything
 including events added later.
 
 | Event | When |
@@ -13,6 +13,8 @@ including events added later.
 | `email.opened` | The tracking image was loaded |
 | `email.delayed` | SES is still trying |
 | `email.rejected` | SES refused to send it |
+| `email.failed` | It could not be handed to SES, and no attempts are left |
+| `email.canceled` | A scheduled message was called off before it went out |
 | `thread.updated` | A thread was moved, read, starred or labelled through the API |
 
 `webhook.test` is sent only by a [ping](/api/webhooks#test). It is deliberately
@@ -25,7 +27,15 @@ Everything except `email.sent` comes from SES's own reporting. Without
 See [Sending domains](/guide/domains#delivery-reporting).
 
 `email.sent` fires from the app itself the moment SES accepts a message, so it
-arrives either way.
+arrives either way, and so do `email.failed` and `email.canceled`, which are
+about this app's own [send queue](/guide/queue) rather than about SES.
+:::
+
+::: tip A test key produces them without sending anything
+A [test key](/guide/test-mode) fires `email.sent` and then a simulated
+delivery or bounce, in the same shape as the real thing with `simulated: true`
+added. It is the way to try a receiver end to end without a configuration set,
+and without bouncing a real message.
 :::
 
 ## mail.received
@@ -122,6 +132,32 @@ a script's mail from a person's.
 
 `recipients` is **which addresses this event was about** — a message to five
 people can bounce for one of them, and `to` still lists all five.
+
+A [test key](/guide/test-mode) produces the same shape with `"simulated": true`
+alongside `occurred_at`, and `"test": true` on the email. Nothing else differs,
+which is the point.
+
+## email.failed and email.canceled
+
+Both are about this app's [send queue](/guide/queue) rather than about SES.
+
+`email.failed` fires when a message could not be handed to SES and the
+attempts have run out. It carries the same `email` object as `email.sent`,
+plus the last reason:
+
+```json
+{
+  "type": "email.failed",
+  "data": {
+    "email": { "id": "msg_…", "status": "failed", "…": "…" },
+    "error": "Maximum sending rate exceeded"
+  }
+}
+```
+
+`email.canceled` fires when a scheduled or queued message is called off with
+[`POST /emails/:id/cancel`](/api/emails#call-one-off), and carries the `email`
+object alone.
 
 ## thread.updated
 

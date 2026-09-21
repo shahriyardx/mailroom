@@ -20,6 +20,8 @@ Scopes say **what kind of call** is allowed.
 | `labels:read` | Listing and reading labels |
 | `labels:write` | Creating, renaming and deleting them |
 | `contacts:read` | Listing contacts |
+| `templates:read` | Listing and reading templates, and sending one |
+| `templates:write` | Creating, changing and deleting them |
 | `suppressions:read` | Listing blocked addresses |
 | `suppressions:write` | Blocking and unblocking |
 | `webhooks:read` | Listing endpoints and deliveries |
@@ -30,6 +32,9 @@ Scopes say **what kind of call** is allowed.
 **Writing implies reading.** A key with `mail:write` has `mail:read` without
 being given it, because "may change but may not see" is a trap that only ever
 shows up as a 403 in production.
+
+Sending a [template](/api/templates) needs `templates:read` as well as
+`emails:send`, so the ready-made **Send only** choice carries both.
 
 A missing scope is a `403`:
 

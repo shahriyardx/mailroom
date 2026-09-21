@@ -25,6 +25,79 @@ understood.
 domain can use any address on it — the mailbox is created the first time it
 does.
 
+## When it does not go out at once
+
+```ts
+const sent = await mail.emails.send({ /* … */ });
+
+if (sent.status === "queued") {
+  // SES could not take it right now. It is in the queue and will keep trying.
+}
+```
+
+A send SES refuses for good throws. Anything else — throttling, an outage, a
+dropped socket — comes back `queued`, and the [send queue](/guide/queue)
+carries it from there. You do not have to do anything about it.
+
+## Sending later
+
+```ts
+const sent = await mail.emails.send({
+  from: "reminders@yourdomain.com",
+  to: "customer@example.net",
+  subject: "Your appointment tomorrow",
+  text: "See you at 10.",
+  scheduled_at: "in 2 hours",
+});
+
+console.log(sent.status);        // "scheduled"
+console.log(sent.scheduled_at);  // "2026-09-21T16:00:00.000Z"
+```
+
+`scheduled_at` takes a `Date`, an ISO 8601 string, a Unix time, or a short
+relative form: `"in 30 minutes"`, `"in 2 hours"`, `"in 1 day"`. A time already
+past sends now, and 30 days is as far ahead as it goes.
+
+While it waits:
+
+```ts
+await mail.emails.reschedule(sent.id, new Date("2026-10-01T09:00:00Z"));
+await mail.emails.cancel(sent.id);
+```
+
+Both throw `ConflictError` once the message has been picked up for sending.
+They work on a `queued` message too, not only a scheduled one.
+
+## Templates
+
+```ts
+await mail.templates.create({
+  name: "Receipt",
+  subject: "Your receipt, {{ name }}",
+  html: "<p>Hello {{ name }}, you paid {{ amount }}.</p>",
+});
+
+await mail.emails.send({
+  from: "receipts@yourdomain.com",
+  to: "customer@example.net",
+  template: "receipt",
+  data: { name: "Ada", amount: "£10.00" },
+});
+```
+
+<code v-pre>{{ name }}</code> substitutes with HTML escaped, <code v-pre>{{{ body }}}</code> substitutes
+without, and <code v-pre>{{ user.name }}</code> reaches into an object. That is the whole
+language — see [Templates](/api/templates).
+
+A value you did not send throws `ValidationError` naming what is missing,
+rather than leaving a hole in the message. `templates.get()` tells you what a
+template asks for:
+
+```ts
+const template = await mail.templates.get("receipt");
+console.log(template.variables); // ["name", "amount"]
+```
+
 ## Attachments
 
 ```ts
