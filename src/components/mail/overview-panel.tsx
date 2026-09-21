@@ -26,9 +26,20 @@ interface Props {
   account: AccountStatus | null;
 }
 
+const TOO_FEW = "too few sent to read as a rate";
+
 export function OverviewPanel({ data, windowDays, account }: Props) {
   const { sending, receiving, storage, days, mailboxes, keys, api, counts } = data;
   const totalStorage = storage.attachmentBytes + storage.rawBytes;
+
+  /**
+   * Below this, a percentage is not a rate. One bounce out of a dozen reads as
+   * eight per cent and turns the panel red, which is what a single test send
+   * to a dead address does — while AWS, which is watching real volume, thinks
+   * nothing of it. Under the floor the counts are shown instead: the fact,
+   * without the arithmetic that overstates it.
+   */
+  const judgeable = sending.sent >= 100;
   const quota = account ? readQuota(account) : null;
 
   return (
@@ -50,27 +61,45 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
           />
           <Stat
             label="Bounce rate"
-            value={`${sending.bounceRate.toFixed(1)}%`}
-            sub={`${sending.bounced} bounced`}
-            tone={sending.bounceRate >= 5 ? "bad" : sending.bounceRate >= 2 ? "warn" : undefined}
+            value={
+              judgeable
+                ? `${sending.bounceRate.toFixed(1)}%`
+                : `${sending.bounced} of ${sending.sent}`
+            }
+            sub={judgeable ? `${sending.bounced} bounced` : TOO_FEW}
+            tone={
+              !judgeable
+                ? undefined
+                : sending.bounceRate >= 5
+                  ? "bad"
+                  : sending.bounceRate >= 2
+                    ? "warn"
+                    : undefined
+            }
           />
           <Stat
             label="Complaint rate"
-            value={`${sending.complaintRate.toFixed(2)}%`}
-            sub={`${sending.complained} marked as spam`}
+            value={
+              judgeable
+                ? `${sending.complaintRate.toFixed(2)}%`
+                : `${sending.complained} of ${sending.sent}`
+            }
+            sub={judgeable ? `${sending.complained} marked as spam` : TOO_FEW}
             tone={
-              sending.complaintRate >= 0.1
-                ? "bad"
-                : sending.complaintRate >= 0.05
-                  ? "warn"
-                  : undefined
+              !judgeable
+                ? undefined
+                : sending.complaintRate >= 0.1
+                  ? "bad"
+                  : sending.complaintRate >= 0.05
+                    ? "warn"
+                    : undefined
             }
           />
         </Stats>
 
         <Activity days={days} className="mt-6" />
 
-        {(sending.bounceRate >= 5 || sending.complaintRate >= 0.1) && (
+        {judgeable && (sending.bounceRate >= 5 || sending.complaintRate >= 0.1) && (
           <Note className="mt-4 text-destructive">
             SES suspends accounts above a 5% bounce rate or a 0.1% complaint rate. Clean your lists
             before sending more.
