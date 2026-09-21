@@ -5,8 +5,13 @@ export const runtime = "nodejs";
 
 const RELEASES = "https://api.github.com/repos/shahriyardx/mailroom/releases/latest";
 
-/** Long enough that a busy instance asks GitHub four times a day. */
-const CACHE_SECONDS = 21_600;
+/**
+ * Half an hour. Long enough that a busy instance asks GitHub twice an hour
+ * however many people are using it, short enough that a release does not sit
+ * unannounced for most of a day — which is how a six-hour cache made the
+ * notice look broken on the one day anybody was watching for it.
+ */
+const CACHE_SECONDS = 1_800;
 
 /**
  * GET /api/version — what is running, and whether anything newer was released.
