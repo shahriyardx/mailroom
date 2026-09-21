@@ -1,16 +1,12 @@
 "use client";
 
-import { Button, Field, Input, List, ListRow, Panel } from "@/components/kit";
+import { Button, List, ListRow, Panel } from "@/components/kit";
 import { authClient } from "@/lib/auth-client";
-import { renameCompanyAction } from "@/server/team";
 import { LogOut } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
-import { toast } from "sonner";
+import { useState } from "react";
 
 interface Props {
-  company: { name: string; createdAt: Date } | null;
-  canRename: boolean;
   name: string;
   role: string;
   email: string;
@@ -19,65 +15,12 @@ interface Props {
   domainCount: number;
 }
 
-export function AccountPanel({
-  company,
-  canRename,
-  name,
-  role,
-  email,
-  createdAt,
-  mailboxCount,
-  domainCount,
-}: Props) {
-  const [companyName, setCompanyName] = useState(company?.name ?? "");
+export function AccountPanel({ name, role, email, createdAt, mailboxCount, domainCount }: Props) {
   const router = useRouter();
   const [pending, setPending] = useState(false);
-  const [, start] = useTransition();
 
   return (
     <>
-      {company && (
-        <Panel
-          title="Company"
-          description="The name this instance goes by. It is what an invitation says someone is being invited to."
-        >
-          {canRename ? (
-            <div className="flex flex-wrap items-end gap-3">
-              <Field label="Name" htmlFor="company-name" className="max-w-xs flex-1">
-                <Input
-                  id="company-name"
-                  value={companyName}
-                  onChange={(event) => setCompanyName(event.target.value)}
-                />
-              </Field>
-              <Button
-                variant="solid"
-                pill
-                disabled={!companyName.trim() || companyName.trim() === company.name}
-                onClick={() =>
-                  start(async () => {
-                    const result = await renameCompanyAction(companyName);
-                    if (!result.ok) {
-                      toast.error(result.error);
-                      return;
-                    }
-                    toast.success("Company renamed");
-                    router.refresh();
-                  })
-                }
-              >
-                Rename
-              </Button>
-            </div>
-          ) : (
-            <List>
-              <Row label="Name" value={company.name} />
-              <Row label="Since" value={company.createdAt.toLocaleDateString()} />
-            </List>
-          )}
-        </Panel>
-      )}
-
       <Panel title="Signed in as" description="The login this mail app is tied to.">
         <List>
           <Row label="Name" value={name} />
