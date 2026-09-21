@@ -26,7 +26,6 @@ import {
   type ViewFolder,
   scopeHref,
   scopeKey,
-  supportsUnreadFilter,
 } from "@/lib/scope";
 import { cn, colorOf } from "@/lib/utils";
 import {
@@ -364,9 +363,10 @@ function NavPanel({
                   An All/Unread switch used to sit above the list, where it
                   cost a row of chrome on every screen to say "All", which is
                   the answer almost every time. Here it only exists while the
-                  folder it belongs to is open.
+                  inbox is open, which is the one folder people sort through
+                  rather than go to for something in particular.
                 */}
-                {active && supportsUnreadFilter(item) && (
+                {active && item === "inbox" && (
                   <ul className="mt-0.5 mb-1 ml-[19px] space-y-0.5 border-sidebar-border border-l pl-3">
                     <li>
                       <SubRow href={scopeHref(scope, item)} active={!unreadOnly}>
