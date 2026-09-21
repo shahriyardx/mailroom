@@ -158,7 +158,9 @@ SNS topic, wires SES to it and subscribes the app.
 One manual step after it: set `SES_CONFIGURATION_SET=mail-events` in your
 environment and redeploy. SES only reports on a message that was sent with a
 configuration set attached, and that variable is what attaches it. The panel
-shows the topic ARN if you also want to pin `SES_SNS_TOPIC_ARN`.
+then gains an **SNS topic** row: click it to copy the ARN, and put that in
+`SES_SNS_TOPIC_ARN` so no other topic is accepted. `pnpm ses:setup` does the
+same from the command line and writes both variables into `.env` for you.
 
 ## 6. Turn on receiving
 

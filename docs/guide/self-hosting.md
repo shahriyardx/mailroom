@@ -47,7 +47,105 @@ It also derives the key that encrypts your stored Cloudflare token. Changing
 it later makes that token unreadable, and you will have to paste a new one.
 :::
 
-Leave the AWS keys empty to use an instance role instead.
+### Where each value comes from
+
+Three of these you generate, several you copy out of a dashboard, and two you
+cannot fill in until step 5 — leave those empty for the first deploy.
+
+#### You make these up
+
+| | |
+| --- | --- |
+| `BETTER_AUTH_SECRET` | Run `openssl rand -base64 32` |
+| `INBOUND_WEBHOOK_SECRET` | Run `openssl rand -hex 32` |
+| `DATABASE_URL` | Your Postgres. On Coolify, add a Postgres service and copy the internal URL it shows |
+
+#### Your app's own address
+
+| | |
+| --- | --- |
+| `BETTER_AUTH_URL` | The public URL of this app, e.g. `https://mail.yourdomain.com` |
+| `NEXT_PUBLIC_APP_URL` | The same URL. Both, and they must match |
+
+#### GitHub
+
+From the OAuth app you made in step 1:
+
+| | |
+| --- | --- |
+| `GITHUB_CLIENT_ID` | On the OAuth app's page |
+| `GITHUB_CLIENT_SECRET` | Press **Generate a new client secret**. Shown once |
+
+#### AWS
+
+| | |
+| --- | --- |
+| `AWS_REGION` | The region you set SES up in, e.g. `us-east-1`. SES is per-region — mail sent from the wrong one fails |
+| `AWS_ACCESS_KEY_ID` | IAM → Users → your user → **Security credentials** → Create access key |
+| `AWS_SECRET_ACCESS_KEY` | Shown once, beside the key id |
+
+Give that IAM user [the policy below](#the-iam-policy). **Leave both keys empty
+to use an instance role instead**, which is better if you are on EC2 or
+anything else that can assume one.
+
+#### Cloudflare R2
+
+In the Cloudflare dashboard, **R2 → Overview**:
+
+| | |
+| --- | --- |
+| `R2_ACCOUNT_ID` | The **Account ID** in the right-hand sidebar |
+| `R2_BUCKET` | The bucket you create here. Any name; `mail-attachments` is the default |
+| `R2_ACCESS_KEY_ID` | **Manage R2 API Tokens** → Create API token → **Object Read & Write** |
+| `R2_SECRET_ACCESS_KEY` | Shown once, with the key id |
+
+::: warning Keep the bucket private
+Giving it a public custom domain makes every raw message and attachment
+readable by anyone with the URL. Let the app serve them instead — it signs
+short-lived links.
+:::
+
+#### Filled in after step 5
+
+These two do not exist yet. Deploy without them, press **Set up delivery
+reporting** on Settings → Domains, then come back.
+
+**`SES_CONFIGURATION_SET=mail-events`** — that exact string. It is what
+attaches a configuration set to outgoing mail, and without it SES never
+reports anything, so every message stays at `sent` forever.
+
+**`SES_SNS_TOPIC_ARN`** is optional, and it looks like this:
+
+```
+arn:aws:sns:us-east-1:123456789012:mail-events
+             ^^^^^^^^^ ^^^^^^^^^^^^ ^^^^^^^^^^^
+             region    your AWS      the topic
+                       account id    name
+```
+
+You cannot invent it — the middle part is your twelve-digit AWS account id.
+Get the real one in any of three ways:
+
+1. **From the app.** After pressing *Set up delivery reporting*, the panel on
+   Settings → Domains gains an **SNS topic** row. Click it to copy.
+2. **From the setup script.** `pnpm ses:setup` creates the whole pipeline and
+   writes both `SES_CONFIGURATION_SET` and `SES_SNS_TOPIC_ARN` into your
+   `.env` for you.
+3. **From AWS.** Console → SNS → Topics → `mail-events`. The ARN is at the
+   top of the page.
+
+Setting it makes the app **refuse events from any other topic**, so a stranger
+who finds your `/api/ses/events` URL cannot post fake bounces at it. Worth
+doing once you have it; the app works without it.
+
+#### Safe to leave alone
+
+| | Default |
+| --- | --- |
+| `SES_MAIL_FROM_PREFIX` | `mail` — the return path becomes `mail.yourdomain.com` |
+| `SES_DKIM_SELECTOR` | `mail` — only used for keys this app generates |
+| `FORWARD_TO` | empty — set it to also forward every inbound message to another address |
+| `RUN_MIGRATIONS_ON_BOOT` | `true` — set `false` to apply migrations yourself |
 
 ### The IAM policy
 

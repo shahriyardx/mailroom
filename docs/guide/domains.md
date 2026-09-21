@@ -50,8 +50,13 @@ in your environment and redeploy. SES only reports on a message that was sent
 **with a configuration set attached**, and that variable is what attaches it.
 Without it, every message stays at `sent` forever.
 
-The panel shows the topic ARN if you also want to pin `SES_SNS_TOPIC_ARN` so
-only that topic is accepted.
+Once it has run, the panel gains an **SNS topic** row showing the ARN it
+built — click it to copy. Put that in `SES_SNS_TOPIC_ARN` and redeploy, and
+the app will accept events from that topic only, so a stranger who finds your
+`/api/ses/events` URL cannot post fake bounces at it.
+
+`pnpm ses:setup` does the same job from the command line and writes both
+variables into your `.env` itself.
 
 ## The sending limit
 

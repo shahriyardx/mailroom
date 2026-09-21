@@ -2,6 +2,9 @@ node_modules
 .next
 .env
 .env.local
+.env.production
+.env.production.example
+.env.*.local
 *.tsbuildinfo
 next-env.d.ts
 worker/.wrangler
