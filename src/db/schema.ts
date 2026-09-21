@@ -615,8 +615,32 @@ export const apiKey = pgTable(
     /** Short visible fragment, shown in the UI so keys can be told apart. */
     prefix: text("prefix").notNull(),
     hash: text("hash").notNull(),
-    /** Optional lock to a single mailbox; null means any mailbox the user owns. */
+    /**
+     * The old single lock. Kept so a row written by an earlier version still
+     * means something, and still read when the two lists below are empty.
+     * Nothing new is written here.
+     */
     mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
+    /**
+     * What the key may reach, as named addresses and whole domains.
+     *
+     * A domain covers every address on it, including ones made later, which
+     * is what somebody means by "this key handles support mail". Naming
+     * addresses instead covers exactly those. Both empty means the whole
+     * account, which is what a key with nothing chosen has always meant.
+     */
+    scopeMailboxIds: text("scope_mailbox_ids").array().notNull().default(sql`'{}'::text[]`),
+    scopeDomainIds: text("scope_domain_ids").array().notNull().default(sql`'{}'::text[]`),
+    /**
+     * What the key may do. A key holding "*" may do everything, which is what
+     * every key made before scopes existed was already able to do.
+     *
+     * A lock to one mailbox narrows this further: a scope says which kinds of
+     * call are allowed, the lock says which mail they may touch.
+     */
+    scopes: text("scopes").array().notNull().default(sql`'{}'::text[]`),
+    /** Requests per minute. Null falls back to the instance default. */
+    rateLimit: integer("rate_limit"),
     lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
     revokedAt: timestamp("revoked_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
@@ -646,6 +670,101 @@ export const filterRule = pgTable("filter_rule", {
   actionStar: boolean("action_star").notNull().default(false),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* -------------------------------------------------------------------------- */
+/* Public API: webhooks and idempotency                                       */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Somewhere to send what happens to mail, so an application does not have to
+ * poll for it. One row is one endpoint; which events it wants is a list of
+ * names rather than a column each, because the set grows.
+ */
+export const webhook = pgTable(
+  "webhook",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    description: text("description"),
+    /** Event names this endpoint wants; ["*"] means all of them. */
+    events: text("events").array().notNull().default(sql`'{}'::text[]`),
+    /**
+     * Shared secret the signature header is computed with. Shown in full to
+     * whoever made the endpoint, since they need it to verify us; it grants
+     * nothing on its own.
+     */
+    secret: text("secret").notNull(),
+    enabled: boolean("enabled").notNull().default(true),
+    /** Only fire for mail in this mailbox. Null means every mailbox. */
+    mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
+    /** Rolling health, so a broken endpoint can be spotted without reading deliveries. */
+    lastStatus: integer("last_status"),
+    lastDeliveredAt: timestamp("last_delivered_at", { withTimezone: true }),
+    lastErrorAt: timestamp("last_error_at", { withTimezone: true }),
+    lastError: text("last_error"),
+    consecutiveFailures: integer("consecutive_failures").notNull().default(0),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("webhook_org_idx").on(t.organizationId)],
+);
+
+/** One attempt at calling an endpoint, kept so a failure can be read and replayed. */
+export const webhookDelivery = pgTable(
+  "webhook_delivery",
+  {
+    id: text("id").primaryKey(),
+    webhookId: text("webhook_id")
+      .notNull()
+      .references(() => webhook.id, { onDelete: "cascade" }),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    event: text("event").notNull(),
+    payload: jsonb("payload").$type<Record<string, unknown>>().notNull(),
+    /** How many times we have tried, including the one this row records. */
+    attempt: integer("attempt").notNull().default(1),
+    statusCode: integer("status_code"),
+    /** First part of the response body, enough to see what an endpoint complained about. */
+    responseBody: text("response_body"),
+    error: text("error"),
+    durationMs: integer("duration_ms"),
+    succeeded: boolean("succeeded").notNull().default(false),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("webhook_delivery_hook_idx").on(t.webhookId, t.createdAt.desc()),
+    index("webhook_delivery_org_idx").on(t.organizationId, t.createdAt.desc()),
+  ],
+);
+
+/**
+ * The answer a request with an Idempotency-Key already got. A network that
+ * drops the reply must not turn one send into two, and the only way to know
+ * a repeat from a new request is to remember what was said the first time.
+ */
+export const idempotencyRecord = pgTable(
+  "idempotency_record",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    key: text("key").notNull(),
+    /** sha256 of the body, so the same key with different content is refused. */
+    requestHash: text("request_hash").notNull(),
+    endpoint: text("endpoint").notNull(),
+    statusCode: integer("status_code").notNull(),
+    response: jsonb("response").$type<Record<string, unknown>>().notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("idempotency_org_key_idx").on(t.organizationId, t.key),
+    index("idempotency_created_idx").on(t.createdAt),
+  ],
+);
 
 /* -------------------------------------------------------------------------- */
 /* Relations                                                                  */
@@ -734,3 +853,9 @@ export type Thread = typeof thread.$inferSelect;
 export type Message = typeof message.$inferSelect;
 export type Attachment = typeof attachment.$inferSelect;
 export type Label = typeof label.$inferSelect;
+export type Contact = typeof contact.$inferSelect;
+export type Suppression = typeof suppression.$inferSelect;
+export type FilterRule = typeof filterRule.$inferSelect;
+export type MessageEvent = typeof messageEvent.$inferSelect;
+export type Webhook = typeof webhook.$inferSelect;
+export type WebhookDelivery = typeof webhookDelivery.$inferSelect;

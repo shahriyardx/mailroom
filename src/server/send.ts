@@ -26,6 +26,7 @@ import { newId } from "@/lib/utils";
 import { and, eq, inArray, isNull, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
 import { publish } from "./realtime";
+import { dispatchWebhooks } from "./webhooks";
 
 export interface DeliverInput {
   orgId: string;
@@ -250,6 +251,32 @@ export async function deliverMessage(input: DeliverInput) {
 
   await recomputeThread(threadId);
   await publish({ type: "mail:sent", orgId: input.orgId, mailboxId: box.id, threadId });
+
+  // Fired here rather than from the SES event stream, so it arrives whether
+  // or not a configuration set has been set up, and the moment SES accepts
+  // the message rather than a second or two later.
+  void dispatchWebhooks(
+    input.orgId,
+    "email.sent",
+    {
+      email: {
+        id: messageId,
+        thread_id: threadId,
+        mailbox_id: box.id,
+        mailbox: box.address,
+        ses_message_id: sesMessageId || null,
+        message_id: rfcMessageId,
+        from: box.address,
+        to: input.to,
+        cc: input.cc ?? [],
+        subject: input.subject,
+        status: "sent",
+        api_key_id: input.apiKeyId ?? null,
+        sent_at: new Date().toISOString(),
+      },
+    },
+    { mailboxId: box.id },
+  );
 
   return { threadId, messageId, sesMessageId, rfcMessageId };
 }

@@ -120,6 +120,20 @@
       "when": 1789975570306,
       "tag": "0016_message_opens",
       "breakpoints": true
+    },
+    {
+      "idx": 17,
+      "version": "7",
+      "when": 1789975630306,
+      "tag": "0017_public_api",
+      "breakpoints": true
+    },
+    {
+      "idx": 18,
+      "version": "7",
+      "when": 1789975690306,
+      "tag": "0018_api_key_reach",
+      "breakpoints": true
     }
   ]
 }

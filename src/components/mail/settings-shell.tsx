@@ -17,6 +17,7 @@ import {
   Tag,
   User,
   Users,
+  Webhook,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -69,6 +70,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/settings/people", label: "People", icon: Users, needs: "member:manage" },
       { href: "/settings/access", label: "Access", icon: ShieldCheck, needs: "access:manage" },
       { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
+      { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
       { href: "/settings/account", label: "Account", icon: User },
     ],
   },

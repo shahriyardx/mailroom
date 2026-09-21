@@ -1,32 +1,42 @@
-import { authenticateApiKey } from "@/server/api-auth";
-import { listDomainsForUser, recordsForDomain } from "@/server/domains";
-import { type NextRequest, NextResponse } from "next/server";
+import { db } from "@/db";
+import { domain } from "@/db/schema";
+import { fail, ok, page, readBody } from "@/lib/api-http";
+import { apiRoute } from "@/server/api-auth";
+import { serializeDomain } from "@/server/api-serialize";
+import { addDomain, listDomainsForUser } from "@/server/domains";
+import { eq } from "drizzle-orm";
+import { z } from "zod";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-/** GET /api/v1/domains — what the account can send from, and the DNS it needs. */
-export async function GET(request: NextRequest) {
-  const caller = await authenticateApiKey(request);
-  if (!caller) {
-    return NextResponse.json({ error: "Invalid or missing API key" }, { status: 401 });
-  }
-
+/** GET /api/v1/domains — what this account can send from, and the DNS it needs. */
+export const GET = apiRoute("domains:read", async ({ caller }) => {
   const rows = await listDomainsForUser(caller.orgId);
+  return page(rows.map(serializeDomain), null);
+});
 
-  return NextResponse.json({
-    data: rows.map((row) => ({
-      id: row.id,
-      name: row.name,
-      region: row.region,
-      status: row.status,
-      sending_enabled: row.sendingEnabled,
-      dkim_status: row.dkimStatus,
-      mail_from_domain: row.mailFromDomain,
-      spf_verified: row.spfVerified,
-      dmarc_verified: row.dmarcVerified,
-      imported: Boolean(row.importedAt),
-      records: recordsForDomain(row),
-    })),
-  });
-}
+const createSchema = z.object({ name: z.string().min(3) });
+
+/**
+ * POST /api/v1/domains — create the identity in SES and return the records
+ * that have to be published before it will send.
+ *
+ * A subdomain of a domain already verified here is recorded as covered by its
+ * parent and needs no DNS of its own.
+ */
+export const POST = apiRoute("domains:write", async ({ caller, request }) => {
+  const input = await readBody(request, createSchema);
+
+  try {
+    const created = await addDomain(caller.orgId, input.name);
+    const [row] = await db.select().from(domain).where(eq(domain.id, created.id));
+    if (!row) return fail("server_error", "The domain was created but could not be read back");
+    return ok(serializeDomain(row), 201);
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : "The domain could not be added";
+    // "already here" and "does not look like a domain" are both the caller's
+    // to fix, and neither is a fault of this server.
+    return fail(detail.includes("already") ? "conflict" : "invalid_request", detail);
+  }
+});

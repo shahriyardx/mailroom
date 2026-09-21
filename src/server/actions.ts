@@ -13,10 +13,14 @@ import {
   suppression,
   thread,
   threadLabel,
+  webhook,
+  webhookDelivery,
 } from "@/db/schema";
 import { generateApiKey } from "@/lib/api-key";
+import { WILDCARD, isScope } from "@/lib/api-scopes";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { newId } from "@/lib/utils";
+import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
 import {
   assertCanManage,
@@ -37,6 +41,7 @@ import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./in
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
 import { deliverMessage } from "./send";
+import { makeWebhookSecret, pingWebhook } from "./webhooks";
 
 async function assertOwnsThreads(orgId: string, threadIds: string[], allowed?: string[]) {
   if (threadIds.length === 0) return [];
@@ -594,16 +599,79 @@ export async function removeDomainAction(domainId: string, alsoDeleteInSes: bool
 /* API keys                                                                   */
 /* -------------------------------------------------------------------------- */
 
-export async function createApiKeyAction(name: string, mailboxId?: string) {
+/**
+ * Only scope names this build knows, and "*" on its own. A list that says
+ * nothing would otherwise make a key that can do nothing, which reads as a
+ * broken key rather than a deliberate one.
+ */
+function cleanScopes(given: string[] | undefined) {
+  if (!given || given.length === 0) return [WILDCARD];
+  if (given.includes(WILDCARD)) return [WILDCARD];
+  const kept = [...new Set(given.filter(isScope))];
+  if (kept.length === 0) throw new Error("Choose at least one thing this key may do");
+  return kept;
+}
+
+export interface KeyReach {
+  mailboxIds: string[];
+  domainIds: string[];
+}
+
+/**
+ * Keeps only addresses and domains this company actually owns. An id from a
+ * form is not evidence of anything.
+ */
+async function cleanReach(orgId: string, reach: KeyReach | undefined): Promise<KeyReach> {
+  if (!reach) return { mailboxIds: [], domainIds: [] };
+
+  const [boxes, domains] = await Promise.all([
+    reach.mailboxIds.length > 0
+      ? db
+          .select({ id: mailbox.id })
+          .from(mailbox)
+          .where(and(eq(mailbox.organizationId, orgId), inArray(mailbox.id, reach.mailboxIds)))
+      : Promise.resolve([] as { id: string }[]),
+    reach.domainIds.length > 0
+      ? db
+          .select({ id: domainTable.id })
+          .from(domainTable)
+          .where(
+            and(eq(domainTable.organizationId, orgId), inArray(domainTable.id, reach.domainIds)),
+          )
+      : Promise.resolve([] as { id: string }[]),
+  ]);
+
+  const domainIds = domains.map((row) => row.id);
+
+  // An address on a domain the key already holds is covered twice. Keeping
+  // both would leave the list saying something the picker never showed.
+  const covered = new Set(
+    domainIds.length > 0
+      ? (
+          await db
+            .select({ id: mailbox.id })
+            .from(mailbox)
+            .where(and(eq(mailbox.organizationId, orgId), inArray(mailbox.domainId, domainIds)))
+        ).map((row) => row.id)
+      : [],
+  );
+
+  return {
+    mailboxIds: boxes.map((row) => row.id).filter((id) => !covered.has(id)),
+    domainIds,
+  };
+}
+
+export async function createApiKeyAction(
+  name: string,
+  reach?: KeyReach,
+  scopes?: string[],
+  rateLimit?: number | null,
+) {
   const access = await requireAccess();
   assertCan(access, "apikey:manage");
 
-  if (mailboxId) {
-    const owns = await db.query.mailbox.findFirst({
-      where: and(eq(mailbox.id, mailboxId), eq(mailbox.organizationId, access.orgId)),
-    });
-    if (!owns) throw new Error("Unknown mailbox");
-  }
+  const limited = await cleanReach(access.orgId, reach);
 
   const generated = generateApiKey();
   const id = newId("key");
@@ -614,12 +682,74 @@ export async function createApiKeyAction(name: string, mailboxId?: string) {
     name: name.trim() || "API key",
     prefix: generated.prefix,
     hash: generated.hash,
-    mailboxId: mailboxId || null,
+    // The old single-lock column, still written when the answer happens to be
+    // one address, so a rollback to an earlier build still behaves.
+    mailboxId:
+      limited.domainIds.length === 0 && limited.mailboxIds.length === 1
+        ? limited.mailboxIds[0]!
+        : null,
+    scopeMailboxIds: limited.mailboxIds,
+    scopeDomainIds: limited.domainIds,
+    scopes: cleanScopes(scopes),
+    rateLimit: rateLimit && rateLimit > 0 ? Math.floor(rateLimit) : null,
   });
 
   revalidatePath("/settings");
   // The raw token is returned once here and never stored.
   return { id, token: generated.token };
+}
+
+/**
+ * Changes what an existing key may do, without handing out a new one. The
+ * alternative — revoke and reissue — means finding every place the old key
+ * was pasted.
+ */
+export async function updateApiKeyAction(
+  keyId: string,
+  patch: { name?: string; scopes?: string[]; reach?: KeyReach; rateLimit?: number | null },
+) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+
+  const owns = await db.query.apiKey.findFirst({
+    where: and(eq(apiKey.id, keyId), eq(apiKey.organizationId, access.orgId)),
+  });
+  if (!owns) return { ok: false as const, error: "Unknown key" };
+
+  try {
+    const limited = patch.reach
+      ? await cleanReach(access.orgId, patch.reach)
+      : { mailboxIds: owns.scopeMailboxIds, domainIds: owns.scopeDomainIds };
+
+    await db
+      .update(apiKey)
+      .set({
+        name: patch.name?.trim() || owns.name,
+        scopes: patch.scopes ? cleanScopes(patch.scopes) : owns.scopes,
+        ...(patch.reach
+          ? {
+              scopeMailboxIds: limited.mailboxIds,
+              scopeDomainIds: limited.domainIds,
+              mailboxId:
+                limited.domainIds.length === 0 && limited.mailboxIds.length === 1
+                  ? limited.mailboxIds[0]!
+                  : null,
+            }
+          : {}),
+        rateLimit:
+          patch.rateLimit === undefined
+            ? owns.rateLimit
+            : patch.rateLimit && patch.rateLimit > 0
+              ? Math.floor(patch.rateLimit)
+              : null,
+      })
+      .where(eq(apiKey.id, keyId));
+  } catch (error) {
+    return { ok: false as const, error: error instanceof Error ? error.message : "Could not save" };
+  }
+
+  revalidatePath("/settings");
+  return { ok: true as const };
 }
 
 export async function revokeApiKeyAction(keyId: string) {
@@ -725,4 +855,163 @@ export async function unrouteZoneAction(zoneId: string, alsoDisableRouting: bool
   } catch (error) {
     return failure(error, "Could not change routing for that zone");
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Webhooks                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Webhooks are part of the API surface, so they are managed by whoever
+ * manages its keys rather than by a capability of their own.
+ */
+export async function createWebhookAction(input: {
+  url: string;
+  description?: string;
+  events: string[];
+  mailboxId?: string | null;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+
+  let target: URL;
+  try {
+    target = new URL(input.url.trim());
+  } catch {
+    return { ok: false as const, error: "That is not a URL" };
+  }
+  if (target.protocol !== "https:" && target.hostname !== "localhost") {
+    return { ok: false as const, error: "A webhook URL must be https" };
+  }
+
+  const events = input.events.includes("*")
+    ? ["*"]
+    : [...new Set(input.events.filter(isWebhookEvent))];
+  if (events.length === 0) {
+    return { ok: false as const, error: "Choose at least one event to send" };
+  }
+
+  if (input.mailboxId) {
+    const owns = await db.query.mailbox.findFirst({
+      where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, access.orgId)),
+    });
+    if (!owns) return { ok: false as const, error: "Unknown mailbox" };
+  }
+
+  const id = newId("whk");
+  const secret = makeWebhookSecret();
+  await db.insert(webhook).values({
+    id,
+    organizationId: access.orgId,
+    url: target.toString(),
+    description: input.description?.trim() || null,
+    events,
+    secret,
+    mailboxId: input.mailboxId || null,
+  });
+
+  revalidatePath("/settings");
+  // Shown once here, the same way a key is.
+  return { ok: true as const, id, secret };
+}
+
+export async function updateWebhookAction(
+  webhookId: string,
+  patch: { url?: string; description?: string | null; events?: string[]; enabled?: boolean },
+) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+
+  const owns = await db.query.webhook.findFirst({
+    where: and(eq(webhook.id, webhookId), eq(webhook.organizationId, access.orgId)),
+  });
+  if (!owns) return { ok: false as const, error: "Unknown webhook" };
+
+  if (patch.url) {
+    try {
+      const target = new URL(patch.url.trim());
+      if (target.protocol !== "https:" && target.hostname !== "localhost") {
+        return { ok: false as const, error: "A webhook URL must be https" };
+      }
+    } catch {
+      return { ok: false as const, error: "That is not a URL" };
+    }
+  }
+
+  const events = patch.events
+    ? patch.events.includes("*")
+      ? ["*"]
+      : [...new Set(patch.events.filter(isWebhookEvent))]
+    : owns.events;
+  if (events.length === 0) return { ok: false as const, error: "Choose at least one event" };
+
+  await db
+    .update(webhook)
+    .set({
+      url: patch.url?.trim() || owns.url,
+      description: patch.description === undefined ? owns.description : patch.description,
+      events,
+      enabled: patch.enabled ?? owns.enabled,
+      // Switching an endpoint back on is what somebody does after fixing it,
+      // so the failures that turned it off no longer stand against it.
+      ...(patch.enabled === true ? { consecutiveFailures: 0, lastError: null } : {}),
+    })
+    .where(eq(webhook.id, webhookId));
+
+  revalidatePath("/settings");
+  return { ok: true as const };
+}
+
+export async function rotateWebhookSecretAction(webhookId: string) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+
+  const owns = await db.query.webhook.findFirst({
+    where: and(eq(webhook.id, webhookId), eq(webhook.organizationId, access.orgId)),
+  });
+  if (!owns) return { ok: false as const, error: "Unknown webhook" };
+
+  const secret = makeWebhookSecret();
+  await db.update(webhook).set({ secret }).where(eq(webhook.id, webhookId));
+  revalidatePath("/settings");
+  return { ok: true as const, secret };
+}
+
+export async function deleteWebhookAction(webhookId: string) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+  await db
+    .delete(webhook)
+    .where(and(eq(webhook.id, webhookId), eq(webhook.organizationId, access.orgId)));
+  revalidatePath("/settings");
+  return { ok: true as const };
+}
+
+export async function pingWebhookAction(webhookId: string) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+
+  const result = await pingWebhook(access.orgId, webhookId);
+  if (!result) return { ok: false as const, error: "Unknown webhook" };
+
+  revalidatePath("/settings");
+  return result.succeeded
+    ? { ok: true as const, status: result.statusCode }
+    : {
+        ok: false as const,
+        error: result.error ?? `The endpoint replied ${result.statusCode}`,
+      };
+}
+
+/** The most recent attempts at every endpoint, for the panel's history list. */
+export async function recentDeliveriesAction(limit = 20) {
+  const access = await requireAccess();
+  assertCan(access, "apikey:manage");
+
+  return db
+    .select()
+    .from(webhookDelivery)
+    .where(eq(webhookDelivery.organizationId, access.orgId))
+    .orderBy(sql`${webhookDelivery.createdAt} desc`)
+    .limit(Math.min(limit, 100));
 }

@@ -2,6 +2,7 @@ import { db } from "@/db";
 import { mailbox, message, messageEvent, suppression } from "@/db/schema";
 import { type SnsEnvelope, verifySnsMessage } from "@/lib/sns";
 import { newId } from "@/lib/utils";
+import { type WebhookEvent, dispatchWebhooks } from "@/server/webhooks";
 import { eq, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
@@ -19,6 +20,18 @@ const EVENT_MAP: Record<string, (typeof messageEvent.type.enumValues)[number]> =
   DeliveryDelay: "delivery_delay",
   RenderingFailure: "rendering_failure",
   Subscription: "subscription",
+};
+
+/** The public event name each SES notification is passed on under. */
+// "Send" is missing on purpose: this app records its own sends and fires
+// email.sent there, which works whether or not a configuration set exists.
+const WEBHOOK_MAP: Record<string, WebhookEvent> = {
+  Delivery: "email.delivered",
+  Bounce: "email.bounced",
+  Complaint: "email.complained",
+  Open: "email.opened",
+  Reject: "email.rejected",
+  DeliveryDelay: "email.delayed",
 };
 
 const STATUS_MAP: Record<string, (typeof message.deliveryStatus.enumValues)[number]> = {
@@ -171,6 +184,37 @@ export async function POST(request: NextRequest) {
           })
           .onConflictDoNothing();
       }
+    }
+  }
+
+  // Pass it on to whoever asked to hear about it. Not awaited: SNS retries a
+  // slow endpoint, and a webhook of our own must not be the reason it does.
+  const outward = WEBHOOK_MAP[kind];
+  if (outward && row) {
+    const box = await db.query.mailbox.findFirst({ where: eq(mailbox.id, row.mailboxId) });
+    if (box) {
+      void dispatchWebhooks(
+        box.organizationId,
+        outward,
+        {
+          email: {
+            id: row.id,
+            thread_id: row.threadId,
+            mailbox_id: row.mailboxId,
+            mailbox: box.address,
+            ses_message_id: sesMessageId,
+            message_id: row.rfcMessageId,
+            from: row.fromAddress,
+            to: row.to,
+            subject: row.subject,
+            status: status ?? row.deliveryStatus,
+          },
+          recipients: recipients.filter(Boolean),
+          detail,
+          occurred_at: new Date().toISOString(),
+        },
+        { mailboxId: row.mailboxId },
+      );
     }
   }
 

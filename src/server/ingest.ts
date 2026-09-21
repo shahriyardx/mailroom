@@ -16,6 +16,7 @@ import { colorOf, newId } from "@/lib/utils";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
 import { publish } from "./realtime";
+import { dispatchWebhooks } from "./webhooks";
 
 export interface InboundAttachment {
   filename: string;
@@ -186,6 +187,8 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
     from: string;
     subject: string;
   }[] = [];
+  /** What each stored message needs for the outward webhook, in the same order. */
+  const notify: { orgId: string; mailboxId: string; payload: Record<string, unknown> }[] = [];
 
   for (const address of deliveredTo) {
     const box = await resolveMailbox(address);
@@ -293,6 +296,34 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
 
     await recomputeThread(threadId);
     stored.push(messageId);
+    notify.push({
+      orgId: box.organizationId,
+      mailboxId: box.id,
+      payload: {
+        email: {
+          id: messageId,
+          thread_id: threadId,
+          mailbox_id: box.id,
+          mailbox: box.address,
+          message_id: payload.messageId ?? null,
+          from: { name: payload.from.name ?? null, address: payload.from.address },
+          to: (payload.toAddresses ?? []).map((a) => ({
+            name: a.name ?? null,
+            address: a.address,
+          })),
+          delivered_to: address,
+          subject,
+          snippet: makeSnippet(payload.text ?? null, payload.html ?? null),
+          folder: rules.folder,
+          has_attachments: attachments.length > 0,
+          spf: payload.auth?.spf ?? null,
+          dkim: payload.auth?.dkim ?? null,
+          dmarc: payload.auth?.dmarc ?? null,
+          spam_score: payload.spamScore ?? null,
+          received_at: receivedAt.toISOString(),
+        },
+      },
+    });
     announce.push({
       orgId: box.organizationId,
       mailboxId: box.id,
@@ -305,6 +336,15 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
   // Tell any open browser on this account, so the list fills in by itself.
   for (const entry of announce) {
     await publish({ type: "mail:received", ...entry });
+  }
+
+  // And tell anything subscribed from outside. Not awaited: the worker that
+  // handed us this message is waiting, and a slow endpoint of somebody else's
+  // must not make it time out and redeliver.
+  for (const entry of notify) {
+    void dispatchWebhooks(entry.orgId, "mail.received", entry.payload, {
+      mailboxId: entry.mailboxId,
+    });
   }
 
   return { stored };
