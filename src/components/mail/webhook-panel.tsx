@@ -24,6 +24,7 @@ import {
   SelectLabel,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   StatusPill,
   Switch,
   Tabs,
@@ -31,6 +32,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/kit";
+
 import type { Mailbox, Webhook, WebhookDelivery } from "@/db/schema";
 import { useSubmit } from "@/lib/use-submit";
 import { cn } from "@/lib/utils";
@@ -53,9 +55,17 @@ import {
   Webhook as WebhookIcon,
   Zap,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+
+// Highlighting pulls in CodeMirror, which has no business in the first load
+// of a settings page. It arrives when a sample is actually on screen.
+const CodeBlock = dynamic(() => import("./code-block").then((module) => module.CodeBlock), {
+  ssr: false,
+  loading: () => <Skeleton className="h-40 rounded-xl" />,
+});
 
 /**
  * One control, three kinds of answer.
@@ -496,8 +506,9 @@ function Verification() {
         constant time.
       </Note>
 
-      <pre className="mt-3 overflow-x-auto rounded-xl bg-muted p-3.5 font-mono text-[11.5px] leading-relaxed">
-        {`import { createHmac, timingSafeEqual } from "node:crypto";
+      <div className="mt-3 overflow-x-auto rounded-xl bg-muted p-3.5">
+        <CodeBlock
+          code={`import { createHmac, timingSafeEqual } from "node:crypto";
 
 export function verify(secret, rawBody, header) {
   const parts = Object.fromEntries(
@@ -514,7 +525,9 @@ export function verify(secret, rawBody, header) {
   const b = Buffer.from(parts.v1 ?? "");
   return a.length === b.length && timingSafeEqual(a, b);
 }`}
-      </pre>
+          language="javascript"
+        />
+      </div>
 
       <Note className="mt-3">
         Answer with a 2xx as soon as you have the body. A failure is retried four times over about

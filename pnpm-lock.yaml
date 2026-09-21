@@ -26,6 +26,9 @@ importers:
       '@codemirror/lang-html':
         specifier: ^6.4.12
         version: 6.4.12
+      '@codemirror/lang-javascript':
+        specifier: ^6.2.5
+        version: 6.2.5
       '@codemirror/view':
         specifier: ^6.43.12
         version: 6.43.12

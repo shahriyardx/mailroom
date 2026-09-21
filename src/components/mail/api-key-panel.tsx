@@ -28,6 +28,7 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Skeleton,
   StatusPill,
   Switch,
 } from "@/components/kit";
@@ -60,6 +61,7 @@ import {
   Pencil,
   Trash2,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -68,6 +70,12 @@ const CUSTOM = "custom";
 
 /** Where the full API reference lives, so this screen does not have to be it. */
 const DOCS_URL = "https://mailroom-docs.shahriyar.dev/api/";
+
+// CodeMirror is worth loading for one sample on screen, and not before.
+const CodeBlock = dynamic(() => import("./code-block").then((module) => module.CodeBlock), {
+  ssr: false,
+  loading: () => <Skeleton className="h-48 rounded-lg" />,
+});
 
 interface Props {
   keys: ApiKey[];
@@ -858,10 +866,12 @@ function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
         <Note className="mt-1">
           The same API, typed, with retries, paging and webhook signature checking already done.
         </Note>
-        <pre className="mt-2.5 overflow-x-auto rounded-lg bg-muted p-3 font-mono text-[11.5px] leading-relaxed">
-          {`npm install @shahriyardx/mailroom
+        <div className="mt-2.5 overflow-x-auto rounded-lg bg-muted p-3">
+          <CodeBlock
+            code={`npm install @shahriyardx/mailroom
 
 import { Mailroom } from "@shahriyardx/mailroom";
+
 
 const mail = new Mailroom({
   apiKey: process.env.MAILROOM_API_KEY,
@@ -874,7 +884,8 @@ await mail.emails.send({
   subject: "Hello",
   html: "<p>Sent through SES</p>",
 });`}
-        </pre>
+          />
+        </div>
       </div>
 
       {/* The endpoint list used to be printed here in full, which made this

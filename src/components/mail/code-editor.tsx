@@ -43,6 +43,10 @@ export function CodeEditor({ value, onChange, placeholder, minRows = 12, id }: P
           padding: "10px 12px",
           fontFamily: "var(--font-mono)",
           lineHeight: `${LINE_HEIGHT}px`,
+          // Markup is edited character by character; a font that joins two of
+          // them into one glyph makes that harder to do accurately.
+          fontVariantLigatures: "none",
+          fontFeatureSettings: '"liga" 0, "calt" 0',
         },
         ".cm-line": { padding: "0" },
         ".cm-gutters": { display: "none" },
