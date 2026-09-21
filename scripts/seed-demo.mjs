@@ -10,6 +10,7 @@
  *
  *   node scripts/seed-demo.mjs                              # the first mailbox
  *   node scripts/seed-demo.mjs --mailbox=you@yours.com      # a particular one
+ *   node scripts/seed-demo.mjs --count=100                  # plus 100 ordinary ones
  *   node scripts/seed-demo.mjs --remove                     # take it all back out
  *
  * Everything it writes is tagged, so --remove touches nothing else.
@@ -368,6 +369,74 @@ total += await thread({
   ],
 });
 
-console.log(`Added ${total} messages in 7 threads to ${box.address}.`);
+/* ------------------------------------------------------- filling the list */
+
+/**
+ * Ordinary mail, in whatever quantity the list needs to be worth scrolling.
+ *
+ * Seven hand-written threads show the rendering. They do not show what fifty
+ * rows of a real inbox look like beside each other, or that paging works at
+ * all, and those only turn up once there is enough mail to page through.
+ */
+const SENDERS = [
+  ["Priya Raman", "priya@harbourline.example"],
+  ["Tomas Vrba", "tomas@harbourline.example"],
+  ["Ola Nilsen", "ola@fjordworks.example"],
+  ["Support", "help@northwind.example"],
+  ["Deploy bot", "deploys@buildpipe.example"],
+  ["Hana Kovac", "hana@meridian.example"],
+  ["Accounts", "accounts@westbay.example"],
+  ["Sam Okafor", "sam@lanternco.example"],
+];
+
+const SUBJECTS = [
+  "Re: onboarding for the pilot",
+  "Invoice 2026-{n} is ready",
+  "Weekly summary",
+  "Question about rate limits",
+  "Contract for review",
+  "Re: the staging outage",
+  "Access request for the reporting tool",
+  "Notes from Thursday",
+  "Renewal coming up",
+  "Re: SSO rollout",
+  "Backup finished",
+  "New comment on your thread",
+];
+
+const BODIES = [
+  "Sending this over before the end of the week so you have time to look at it.",
+  "No action needed — this is the summary going out to everyone on the account.",
+  "Could you confirm the numbers below before I pass them on?",
+  "Following up on the thread from Tuesday. Happy to jump on a call if that is easier.",
+  "This ran clean overnight. Nothing to do unless the report says otherwise.",
+  "Short one: are we still on for the review, and is the room booked?",
+];
+
+const bulk = Number(process.argv.find((arg) => arg.startsWith("--count="))?.split("=")[1] ?? 0);
+
+for (let index = 0; index < bulk; index += 1) {
+  const [name, address] = SENDERS[index % SENDERS.length];
+  const subject = SUBJECTS[index % SUBJECTS.length].replace("{n}", String(1400 + index));
+  const body = BODIES[index % BODIES.length];
+
+  total += await thread({
+    subject,
+    // A real list is mostly read, with a scattering of unread and starred.
+    starred: index % 17 === 0,
+    messages: [
+      {
+        from: { name, address },
+        unread: index % 5 === 0,
+        // Spread over weeks so the list shows dates as well as times.
+        at: ago(600 + index * 137),
+        text: plain(body),
+        html: reply(`${body}\n\n— ${name}`),
+      },
+    ],
+  });
+}
+
+console.log(`Added ${total} messages in ${7 + bulk} threads to ${box.address}.`);
 console.log("Undo with: node scripts/seed-demo.mjs --remove");
 await sql.end();
