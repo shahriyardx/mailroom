@@ -246,27 +246,42 @@ export function MailShell({
             >
               <Menu />
             </IconButton>
+            {/* On a narrow screen the header is the search field. The folder
+                is already named in the drawer you just came out of, and the
+                one row of space is better spent on the thing you cannot get
+                to any other way. */}
+            <div className="min-w-0 flex-1 md:hidden">
+              <SearchField
+                id="mail-search-mobile"
+                defaultValue={searchValue}
+                onCommit={(value) => setParam("q", value)}
+                showShortcut={false}
+              />
+            </div>
+
             {/* The folder names the view; the scope only qualifies it, and
                   only when it is narrower than everything. */}
-            <h1 className="shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em]">
+            <h1 className="hidden shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em] md:block">
               {FOLDER_LABELS[folder]}
             </h1>
             {threadCount > 0 && (
-              <span className="shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums">
+              <span className="hidden shrink-0 rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground tabular-nums md:block">
                 {threadCount}
               </span>
             )}
             {scope.kind !== "all" && (
-              <span className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+              <span className="hidden min-w-0 truncate text-[12.5px] text-muted-foreground md:block">
                 in <span className="font-mono">{scopeLabel}</span>
               </span>
             )}
 
+            {/* The search term is in the field itself on a narrow screen, so
+                showing it again beside it would be saying it twice. */}
             {searchValue && (
               <button
                 type="button"
                 onClick={() => setParam("q", null)}
-                className="ml-auto flex shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] text-primary-soft-foreground"
+                className="ml-auto hidden shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] text-primary-soft-foreground md:flex"
               >
                 <span className="max-w-36 truncate font-mono">{searchValue}</span>
                 <X className="size-3" />
@@ -277,7 +292,7 @@ export function MailShell({
               <IconButton
                 size="md"
                 label="Refresh"
-                className={cn("shrink-0", !searchValue && "ml-auto")}
+                className={cn("shrink-0", !searchValue && "md:ml-auto")}
                 onClick={() => router.refresh()}
               >
                 <RefreshCw />
@@ -294,7 +309,7 @@ export function MailShell({
             >
               {/* Filters sit over the list, never over the whole app. */}
               {supportsUnreadFilter(folder) && (
-                <div className="flex shrink-0 items-center gap-2 px-4 py-3">
+                <div className="hidden shrink-0 items-center gap-2 px-4 py-3 md:flex">
                   <Tabs
                     value={unreadOnly ? "unread" : "all"}
                     onValueChange={(value) => setParam("unread", value === "unread" ? "1" : null)}
@@ -632,15 +647,25 @@ function DomainBranch({
 function SearchField({
   defaultValue,
   onCommit,
+  id = "mail-search",
+  showShortcut = true,
 }: {
   defaultValue: string;
   onCommit: (value: string | null) => void;
+  /** Unique per instance: the header and the drawer can both be mounted. */
+  id?: string;
+  showShortcut?: boolean;
 }) {
   const [value, setValue] = useState(defaultValue);
 
   useEffect(() => setValue(defaultValue), [defaultValue]);
 
   useEffect(() => {
+    // Only the field that advertises the shortcut listens for it. Two
+    // listeners both reaching for the same element is how one of them ends
+    // up focusing a field that is not on the screen.
+    if (!showShortcut) return;
+
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       const typing =
@@ -648,18 +673,18 @@ function SearchField({
       if (typing || event.metaKey || event.ctrlKey) return;
       if (event.key === "/") {
         event.preventDefault();
-        document.getElementById("mail-search")?.focus();
+        document.getElementById(id)?.focus();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, []);
+  }, [id, showShortcut]);
 
   return (
     <div className="relative">
       <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 size-4 text-muted-foreground" />
       <Input
-        id="mail-search"
+        id={id}
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
@@ -670,12 +695,14 @@ function SearchField({
           }
         }}
         placeholder="Search"
-        className="h-9 rounded-xl pr-9 pl-9 text-[13px]"
+        className={cn("h-9 rounded-xl pl-9 text-[13px]", showShortcut ? "pr-9" : "pr-3")}
       />
       {/* The shortcut lives where you look for the field, not in a status bar. */}
-      <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5">
-        <span className="kbd">/</span>
-      </span>
+      {showShortcut && (
+        <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5">
+          <span className="kbd">/</span>
+        </span>
+      )}
     </div>
   );
 }
