@@ -93,18 +93,27 @@ describe("a reply with something quoted under it", () => {
 
   it("frees your own words to follow the theme", () => {
     const out = prepare(reply);
-    assert.doesNotMatch(
-      out.html.slice(0, out.html.indexOf("<blockquote")),
-      /color:#27272a/,
-      "the reply's own dark text is dropped",
-    );
+    assert.doesNotMatch(out.html, /color:#27272a/, "the reply's own dark text is dropped");
+  });
+
+  it("hands the quote back on its own, so it can be folded away", () => {
+    const out = prepare(reply);
+    assert.ok(out.quoted, "there is something quoted");
+    assert.doesNotMatch(out.html, /<blockquote/, "and it is not in the part they wrote");
+    assert.match(out.html, /Thanks for the information/);
   });
 
   it("leaves the quoted message exactly as it arrived", () => {
     const out = prepare(reply);
-    const quote = out.html.slice(out.html.indexOf("<blockquote"));
-    assert.match(quote, /background:#f4f4f5/);
-    assert.match(quote, /color:#18181b/, "the quote keeps the colours its page needs");
+    assert.match(out.quoted!, /background:#f4f4f5/);
+    assert.match(out.quoted!, /color:#18181b/, "the quote keeps the colours its page needs");
+    assert.equal(out.quotedOwnsBackground, true);
+  });
+
+  it("folds the attribution line in with the quote it introduces", () => {
+    const out = prepare(reply);
+    assert.doesNotMatch(out.html, /wrote:/, "left behind, it dangles over nothing");
+    assert.match(out.quoted!, /billing@ccbot\.app<\/a>> wrote:|wrote:/);
   });
 
   it("still rescues a quote that brought no page of its own", () => {
@@ -122,7 +131,8 @@ describe("a reply with something quoted under it", () => {
     ].join("");
     const out = prepare(nested);
     assert.equal(out.ownsBackground, false);
-    assert.match(out.html, /color:#18181b/, "the inner quote rides on the outer one's page");
+    assert.match(out.quoted!, /color:#18181b/, "the inner quote rides on the outer one's page");
+    assert.doesNotMatch(out.html, /Older/, "only one quote comes back, not two");
   });
 });
 

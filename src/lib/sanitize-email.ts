@@ -161,6 +161,27 @@ function splitQuotes(html: string) {
   return parts;
 }
 
+/**
+ * The line a mail client writes above a quote — "On Tuesday, Ada wrote:".
+ *
+ * It reads as part of the quote and should fold away with it. Matched only at
+ * the very end of what came before, so a message that happens to contain the
+ * word "wrote" keeps it.
+ */
+function takeAttribution(html: string) {
+  const match = html.match(
+    /(<(?:div|p|blockquote)[^>]*>|^|<br\s*\/?>)((?:(?!<(?:div|p)[^>]*>)[\s\S]){0,400}?wrote:\s*(?:<\/(?:div|p)>|<br\s*\/?>)?\s*)$/i,
+  );
+  if (!match) return null;
+
+  const opening = match[1] ?? "";
+  const start = match.index! + (opening === "^" ? 0 : opening.length);
+  return {
+    rest: html.slice(0, match.index!),
+    attribution: html.slice(match.index!) === html ? html : opening + html.slice(start),
+  };
+}
+
 export function prepareEmailHtml(
   html: string,
   options: { showRemoteImages: boolean; inlineImages?: Record<string, string>; dark?: boolean },
@@ -214,26 +235,50 @@ export function prepareEmailHtml(
 
   const parts = splitQuotes(output);
 
+  // Each part is judged on its own: a quoted newsletter keeps its colours
+  // because it brought a page to put them on, while a plain quote is as
+  // unreadable on a dark page as the reply above it would be.
+  const dress = (text: string) =>
+    options.dark && !declaresBackground(text) ? dropUnreadableColours(text) : text;
+
+  const written: string[] = [];
+  const quoted: string[] = [];
+
+  for (const [index, part] of parts.entries()) {
+    if (part.quoted) {
+      // "On Tuesday, so-and-so wrote:" belongs to the quote it introduces.
+      // Left behind it dangles over nothing once the quote is folded away.
+      const previous = written.length - 1;
+      if (previous >= 0 && index > 0) {
+        const trimmed = takeAttribution(written[previous]!);
+        if (trimmed) {
+          written[previous] = trimmed.rest;
+          quoted.push(trimmed.attribution);
+        }
+      }
+      quoted.push(part.text);
+    } else {
+      written.push(part.text);
+    }
+  }
+
   /**
    * Whether the message paints its own page is asked of what the sender
    * actually wrote, not of what they quoted. A reply to a newsletter carries
    * that newsletter's background along with it, and answering yes there put a
    * lit slab behind two lines of "Thanks for the information".
    */
-  const ownsBackground = parts
-    .filter((part) => !part.quoted)
-    .some((part) => declaresBackground(part.text));
+  const writtenHtml = written.map(dress).join("");
+  const quotedHtml = quoted.length > 0 ? quoted.map(dress).join("") : null;
 
-  if (options.dark) {
-    // Each part is judged on its own: a quoted newsletter keeps its colours
-    // because it brought a page to put them on, while a plain quote is as
-    // unreadable on a dark page as the reply above it would be.
-    output = parts
-      .map((part) => (declaresBackground(part.text) ? part.text : dropUnreadableColours(part.text)))
-      .join("");
-  }
-
-  return { html: output, blockedImages, ownsBackground };
+  return {
+    html: writtenHtml,
+    /** What this message carried along from the one it answers. */
+    quoted: quotedHtml,
+    quotedOwnsBackground: quotedHtml ? declaresBackground(quotedHtml) : false,
+    blockedImages,
+    ownsBackground: written.some((part) => declaresBackground(part)),
+  };
 }
 
 export const EMAIL_FRAME_STYLES = `

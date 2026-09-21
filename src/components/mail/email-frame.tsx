@@ -2,7 +2,7 @@
 
 import { EMAIL_FRAME_STYLES, prepareEmailHtml } from "@/lib/sanitize-email";
 import { cn } from "@/lib/utils";
-import { ImageOff } from "lucide-react";
+import { ImageOff, MoreHorizontal } from "lucide-react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 interface Props {
@@ -19,9 +19,8 @@ interface Props {
  * no `allow-scripts` means nothing in the message can execute.
  */
 export function EmailFrame({ html, text, inlineImages }: Props) {
-  const frameRef = useRef<HTMLIFrameElement>(null);
-  const [height, setHeight] = useState(0);
   const [showImages, setShowImages] = useState(false);
+  const [showQuote, setShowQuote] = useState(false);
   const [dark, setDark] = useState(false);
 
   // The frame cannot see the app's CSS variables, so the theme is mirrored in.
@@ -35,23 +34,105 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
   }, []);
 
   const prepared = useMemo(() => {
-    if (!html) return { html: null, blockedImages: 0, ownsBackground: false };
+    if (!html) {
+      return {
+        html: null,
+        quoted: null,
+        quotedOwnsBackground: false,
+        blockedImages: 0,
+        ownsBackground: false,
+      };
+    }
     return prepareEmailHtml(html, { showRemoteImages: showImages, inlineImages, dark });
   }, [html, showImages, inlineImages, dark]);
 
   /**
-   * A newsletter that paints its own page chose those colours together, so it
-   * is shown on white in either theme and otherwise left alone. Everything
+   * A newsletter that paints its own page designed those colours together, so
+   * it is shown on white in either theme and otherwise left alone. Everything
    * else — which is most mail — is a few paragraphs that inherit whatever the
    * client puts behind them, and those follow the app like the rest of it.
    */
-  const ownsColours = prepared.ownsBackground;
+  const body = prepared.html ?? `<pre>${escapeHtml(text ?? "")}</pre>`;
+  const themed = dark && !prepared.ownsBackground;
 
-  const srcDoc = useMemo(() => {
-    const body = prepared.html ?? `<pre>${escapeHtml(text ?? "")}</pre>`;
-    const theme = dark && !prepared.ownsBackground ? "dark" : "";
-    return `<!doctype html><html class="${theme}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}</style></head><body>${body}</body></html>`;
-  }, [prepared.html, prepared.ownsBackground, text, dark]);
+  return (
+    <div>
+      {/* Blocking remote images is the protection working, not a fault, so
+          this states itself quietly instead of borrowing warning colours. */}
+      {prepared.blockedImages > 0 && !showImages && (
+        <div className="mb-3 flex items-center gap-2 text-[11.5px] text-muted-foreground">
+          <ImageOff className="size-3.5 shrink-0" />
+          <span>
+            {prepared.blockedImages} remote {prepared.blockedImages === 1 ? "image" : "images"}{" "}
+            blocked to stop read tracking.
+          </span>
+          <button
+            type="button"
+            onClick={() => setShowImages(true)}
+            className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
+          >
+            Show images
+          </button>
+        </div>
+      )}
+
+      <Frame body={body} themed={themed} onWhite={prepared.ownsBackground} />
+
+      {/*
+        A reply carries the whole message it answers, and that message carries
+        the one before it. Shown in full, three lines of new writing arrive
+        under a wall of things the reader has already read — so the carried
+        part folds away, and says so.
+      */}
+      {prepared.quoted && (
+        <>
+          <button
+            type="button"
+            onClick={() => setShowQuote((value) => !value)}
+            aria-expanded={showQuote}
+            aria-label={showQuote ? "Hide quoted text" : "Show quoted text"}
+            className={cn(
+              "mt-2 flex h-5 items-center rounded px-1.5 transition-colors",
+              showQuote ? "bg-accent text-foreground" : "bg-muted text-muted-foreground",
+              "hover:bg-accent hover:text-foreground",
+            )}
+          >
+            <MoreHorizontal className="size-3.5" />
+          </button>
+
+          {showQuote && (
+            <div className="mt-2">
+              <Frame
+                body={prepared.quoted}
+                themed={dark && !prepared.quotedOwnsBackground}
+                onWhite={prepared.quotedOwnsBackground}
+              />
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+/** One measured iframe. The height follows the document inside it. */
+function Frame({
+  body,
+  themed,
+  onWhite,
+}: {
+  body: string;
+  themed: boolean;
+  onWhite: boolean;
+}) {
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const [height, setHeight] = useState(0);
+
+  const srcDoc = useMemo(
+    () =>
+      `<!doctype html><html class="${themed ? "dark" : ""}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}</style></head><body>${body}</body></html>`,
+    [body, themed],
+  );
 
   const measure = useCallback(() => {
     const frame = frameRef.current;
@@ -108,38 +189,17 @@ export function EmailFrame({ html, text, inlineImages }: Props) {
   }, [measure]);
 
   return (
-    <div>
-      {/* Blocking remote images is the protection working, not a fault, so
-          this states itself quietly instead of borrowing warning colours. */}
-      {prepared.blockedImages > 0 && !showImages && (
-        <div className="mb-3 flex items-center gap-2 text-[11.5px] text-muted-foreground">
-          <ImageOff className="size-3.5 shrink-0" />
-          <span>
-            {prepared.blockedImages} remote {prepared.blockedImages === 1 ? "image" : "images"}{" "}
-            blocked to stop read tracking.
-          </span>
-          <button
-            type="button"
-            onClick={() => setShowImages(true)}
-            className="font-medium text-foreground underline underline-offset-2 hover:text-primary"
-          >
-            Show images
-          </button>
-        </div>
-      )}
-
-      <div className={cn(ownsColours && "overflow-hidden rounded-xl bg-white")}>
-        <iframe
-          key={srcDoc.length}
-          ref={frameRef}
-          title="Message body"
-          sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
-          srcDoc={srcDoc}
-          onLoad={measure}
-          className="w-full border-0 bg-transparent"
-          style={{ height: height || 32 }}
-        />
-      </div>
+    <div className={cn(onWhite && "overflow-hidden rounded-xl bg-white")}>
+      <iframe
+        key={srcDoc.length}
+        ref={frameRef}
+        title="Message body"
+        sandbox="allow-same-origin allow-popups allow-popups-to-escape-sandbox"
+        srcDoc={srcDoc}
+        onLoad={measure}
+        className="w-full border-0 bg-transparent"
+        style={{ height: height || 32 }}
+      />
     </div>
   );
 }
