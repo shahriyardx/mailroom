@@ -16,6 +16,11 @@ The Node SDK is MIT, so your application can use it whatever you are doing.
 
 ## 0. The image
 
+**Run the published image.** Do not build from a clone — you would be
+compiling the same thing the release already built, and a clone follows
+`main`, which is whatever was merged this afternoon rather than a version
+somebody decided was ready.
+
 Published to GitHub's registry on every release, for `amd64` and `arm64`:
 
 ```sh
@@ -265,9 +270,28 @@ press **Deploy worker**, then **Receive mail here** on each domain.
 **Settings → Mailboxes.** Add `you@yourdomain.com` and send yourself
 something.
 
-## Running it locally
+## Upgrading
+
+Pull the tag you follow and start it again. Migrations run on boot, so
+there is no separate step.
 
 ```sh
+docker compose pull && docker compose up -d
+```
+
+Following `latest` moves you across major versions, which may need a look
+at the release notes first. Following `1` keeps you on that major version
+and takes fixes automatically, which is what most installs want.
+
+## Working on Mailroom itself
+
+Only if you are changing the code. To *run* an instance, use the image
+above — it is the same build, already made, and it upgrades by pulling a
+tag rather than by pulling a branch.
+
+```sh
+git clone https://github.com/shahriyardx/mailroom.git
+cd mailroom
 pnpm install
 cp .env.example .env     # fill it in
 pnpm db:migrate
@@ -278,6 +302,8 @@ Sending works locally. Receiving does not — Cloudflare cannot reach your
 laptop, so deploy somewhere to test inbound mail.
 
 ## Commands
+
+For the repository, not for an install.
 
 | | |
 | --- | --- |

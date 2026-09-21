@@ -26,6 +26,23 @@ finds the sign-in page cannot give themselves an inbox.
   with scoped keys and signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
 
+## Install
+
+Run the published image. Do not build from a clone — a release is already
+built, for `amd64` and `arm64`, and a clone follows `main` rather than a
+version somebody decided was ready.
+
+```sh
+docker run -d --name mailroom -p 3000:3000 --env-file .env \
+  ghcr.io/shahriyardx/mailroom:latest
+```
+
+Or take a Postgres with it: [`compose.yaml`](compose.yaml).
+
+Nothing about your install is inside the image — every setting is read when
+the container starts, and migrations run on boot. Full walkthrough in the
+[self-hosting guide](https://mailroom-docs.shahriyar.dev/guide/self-hosting).
+
 ## Before you start
 
 You need five things:
