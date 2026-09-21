@@ -134,7 +134,9 @@ export function ThreadList({
 
   /** One conversation. Pulled out so the sections can each map it. */
   function row(item: ThreadListItem) {
-    const unread = item.unreadCount > 0;
+    // Nothing in Sent is unread — you wrote it. What is unread in one of these
+    // threads is a reply, and the reply is waiting in the inbox.
+    const unread = folder !== "sent" && item.unreadCount > 0;
     const active = item.id === activeThreadId;
     const sender = item.participants[0];
     const checked = selected.has(item.id);

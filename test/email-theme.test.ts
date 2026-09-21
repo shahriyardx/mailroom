@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
+import { quoteForReply } from "@/lib/mail";
 import { prepareEmailHtml } from "@/lib/sanitize-email";
 
 /**
@@ -133,6 +134,72 @@ describe("a reply with something quoted under it", () => {
     assert.equal(out.ownsBackground, false);
     assert.match(out.quoted!, /color:#18181b/, "the inner quote rides on the outer one's page");
     assert.doesNotMatch(out.html, /Older/, "only one quote comes back, not two");
+  });
+});
+
+describe("a real reply out of Gmail", () => {
+  // Saved from a message that came back through this account. Gmail wraps the
+  // "On Tuesday, so-and-so wrote:" line and the quote it introduces in one
+  // gmail_quote container, so splitting on the blockquote alone left that line
+  // stranded above the fold, pointing at nothing.
+  // Copied from a message that came back through this account, trimmed to the
+  // structure that matters. The test runner bundles these files, so reading it
+  // off disk would look for it next to the bundle rather than next to this.
+  const body = `<div dir="ltr">Thanks for the information. I live this bot very much</div><br><div class="gmail_quote gmail_quote_container"><div dir="ltr" class="gmail_attr">On Tue, 22 Sept 2026 at 02:33, &lt;<a href="mailto:billing@ccbot.app">billing@ccbot.app</a>&gt; wrote:<br></div><blockquote class="gmail_quote" style="margin:0px 0px 0px 0.8ex;border-left:1px solid rgb(204,204,204);padding-left:1ex"><div style="background:rgb(244,244,247)"><h1 style="color:rgb(17,17,17)">Advanced is live</h1><img alt="" src="https://ltdc289y.r.us-east-1.awstrack.me/I0/pixel" style="display:none"></div></blockquote></div>`;
+
+  it("keeps only what the sender typed", () => {
+    const out = prepare(body);
+    assert.match(out.html, /I live this bot very much/);
+    assert.doesNotMatch(out.html, /wrote:/, "the attribution folds away with the quote");
+    assert.doesNotMatch(out.html, /Advanced is live/, "and so does the message it quotes");
+  });
+
+  it("folds the attribution in with the quote", () => {
+    const out = prepare(body);
+    assert.match(out.quoted!, /wrote:/);
+    assert.match(out.quoted!, /Advanced is live/);
+  });
+
+  it("leaves nothing of the container behind", () => {
+    const out = prepare(body);
+    assert.doesNotMatch(out.html, /gmail_quote/, "the wrapper goes with what it wrapped");
+    assert.doesNotMatch(out.html, /<\/div>\s*$/, "and no orphan closing tag is left");
+  });
+
+  it("counts the tracking pixel inside the quote", () => {
+    const out = prepareEmailHtml(body, { showRemoteImages: false, dark: true });
+    assert.ok(out.blockedImages > 0, "awstrack.me pixel is a remote image");
+  });
+});
+
+describe("the quote we write ourselves", () => {
+  const ours = () =>
+    quoteForReply({
+      fromLabel: "Md Shahriyar Alam",
+      sentAt: new Date("2026-09-21T20:38:16Z"),
+      html: "<div>Hello How are you</div>",
+      text: null,
+    });
+
+  it("carries its own border, because a class name cannot travel", () => {
+    // A message has no stylesheet. A bare blockquote arrives at Gmail as a
+    // plain indent with no rule beside it, which is not a quotation.
+    assert.match(ours(), /border-left:\s*1px solid/);
+  });
+
+  it("is marked the way clients look for when they fold a quote", () => {
+    assert.match(ours(), /class="gmail_quote"/);
+    assert.match(ours(), /wrote:/);
+  });
+
+  it("folds away when it comes back to us", () => {
+    const roundTrip = `<div>Im fine thank you?</div>${ours()}`;
+    const out = prepare(roundTrip);
+
+    assert.match(out.html, /Im fine thank you/);
+    assert.doesNotMatch(out.html, /wrote:/, "our own attribution folds too");
+    assert.doesNotMatch(out.html, /Hello How are you/);
+    assert.match(out.quoted!, /Hello How are you/);
   });
 });
 

@@ -162,7 +162,27 @@ export function quoteForReply(options: {
 }) {
   const stamp = options.sentAt.toUTCString();
   const body = options.html ?? textToHtml(options.text ?? "");
-  return `<br/><br/><div class="mail-quote">On ${stamp}, ${options.fromLabel} wrote:<blockquote>${body}</blockquote></div>`;
+
+  /**
+   * The quote is styled inline and marked the way Gmail marks its own.
+   *
+   * A message carries no stylesheet, so a class name is the one thing that
+   * cannot survive the trip — a bare `<blockquote>` arrives as a plain indent
+   * with no rule beside it, which is not recognisably a quotation. The border
+   * has to travel with the element.
+   *
+   * `gmail_quote` is not decoration: it is what clients look for to fold the
+   * quote away, and it is what every other client has settled on reading.
+   */
+  return [
+    "<br><br>",
+    '<div class="gmail_quote">',
+    `<div class="gmail_attr">On ${stamp}, ${options.fromLabel} wrote:<br></div>`,
+    '<blockquote class="gmail_quote" style="margin:0 0 0 0.8ex;border-left:1px solid #ccc;padding-left:1ex">',
+    body,
+    "</blockquote>",
+    "</div>",
+  ].join("");
 }
 
 export function generateMessageId(domain: string) {

@@ -215,6 +215,12 @@ export async function folderCounts(orgId: string, scope: Scope, allowed?: string
   const counts = { ...empty } as Record<string, number>;
   for (const row of rows) {
     // Drafts show a total, everything else shows unread, like a normal client.
+    //
+    // Sent shows neither. A conversation stays in Sent once you have written
+    // in it, so a thread there can hold an unread reply — but the reply is
+    // unread in the inbox, which is where it is waiting to be read. Counting
+    // it twice put a badge on the one folder that cannot contain new mail.
+    if (row.folder === "sent") continue;
     counts[row.folder] = row.folder === "drafts" ? row.total : row.unread;
   }
 

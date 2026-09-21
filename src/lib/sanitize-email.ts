@@ -127,37 +127,65 @@ function dropUnreadableColours(html: string) {
  * them somebody else's message carried along whole. They were written against
  * different pages and have to be treated separately — otherwise two lines of
  * "Thanks" inherit the styling of whatever newsletter they were sent under.
+ *
+ * Two shapes cover nearly all of it. A bare `<blockquote>` is the old
+ * convention every client understands. Gmail wraps the quote and the "On
+ * Tuesday, so-and-so wrote:" line above it together in one `gmail_quote`
+ * container — so looking only for the blockquote leaves that line stranded
+ * above the fold, pointing at nothing.
  */
-function splitQuotes(html: string) {
-  const parts: { quoted: boolean; text: string }[] = [];
-  const tags = /<\/?blockquote\b[^>]*>/gi;
+function quotedRanges(html: string) {
+  const ranges: { from: number; to: number }[] = [];
 
-  let depth = 0;
-  let start = 0;
-  let match = tags.exec(html);
-
-  while (match) {
-    const closing = match[0].startsWith("</");
-    if (closing) {
-      depth = Math.max(0, depth - 1);
-      if (depth === 0) {
-        const end = match.index + match[0].length;
-        parts.push({ quoted: true, text: html.slice(start, end) });
-        start = end;
-      }
-    } else {
-      // Only the outermost quote is a boundary; one nested inside another is
-      // part of the same carried-along message.
-      if (depth === 0 && match.index > start) {
-        parts.push({ quoted: false, text: html.slice(start, match.index) });
-        start = match.index;
-      }
-      depth += 1;
+  const closingFor = (openTag: RegExp, closeTag: RegExp, from: number, openLength: number) => {
+    // Walk the tags that nest, counting, until the one that closes this.
+    const scan = new RegExp(`${openTag.source}|${closeTag.source}`, "gi");
+    scan.lastIndex = from + openLength;
+    let depth = 1;
+    let hit = scan.exec(html);
+    while (hit) {
+      depth += hit[0].startsWith("</") ? -1 : 1;
+      if (depth === 0) return hit.index + hit[0].length;
+      hit = scan.exec(html);
     }
-    match = tags.exec(html);
+    return html.length;
+  };
+
+  const containers = /<div\b[^>]*class\s*=\s*["'][^"']*\bgmail_quote\b[^"']*["'][^>]*>/gi;
+  let container = containers.exec(html);
+  while (container) {
+    const to = closingFor(/<div\b[^>]*>/, /<\/div\s*>/, container.index, container[0].length);
+    ranges.push({ from: container.index, to });
+    containers.lastIndex = to;
+    container = containers.exec(html);
   }
 
-  if (start < html.length) parts.push({ quoted: depth > 0, text: html.slice(start) });
+  const quotes = /<blockquote\b[^>]*>/gi;
+  let quote = quotes.exec(html);
+  while (quote) {
+    // One already inside a container is part of it, not a quote of its own.
+    const inside = ranges.some((range) => quote!.index >= range.from && quote!.index < range.to);
+    const to = closingFor(/<blockquote\b[^>]*>/, /<\/blockquote\s*>/, quote.index, quote[0].length);
+    if (!inside) ranges.push({ from: quote.index, to });
+    quotes.lastIndex = to;
+    quote = quotes.exec(html);
+  }
+
+  return ranges.sort((a, b) => a.from - b.from);
+}
+
+function splitQuotes(html: string) {
+  const parts: { quoted: boolean; text: string }[] = [];
+  let at = 0;
+
+  for (const range of quotedRanges(html)) {
+    if (range.from < at) continue;
+    if (range.from > at) parts.push({ quoted: false, text: html.slice(at, range.from) });
+    parts.push({ quoted: true, text: html.slice(range.from, range.to) });
+    at = range.to;
+  }
+
+  if (at < html.length) parts.push({ quoted: false, text: html.slice(at) });
   return parts;
 }
 
@@ -170,7 +198,7 @@ function splitQuotes(html: string) {
  */
 function takeAttribution(html: string) {
   const match = html.match(
-    /(<(?:div|p|blockquote)[^>]*>|^|<br\s*\/?>)((?:(?!<(?:div|p)[^>]*>)[\s\S]){0,400}?wrote:\s*(?:<\/(?:div|p)>|<br\s*\/?>)?\s*)$/i,
+    /(<(?:div|p|blockquote)[^>]*>|^|<br\s*\/?>)((?:(?!<(?:div|p)[^>]*>)[\s\S]){0,400}?wrote:\s*(?:<br\s*\/?>|<\/(?:div|p)>|\s)*)$/i,
   );
   if (!match) return null;
 
