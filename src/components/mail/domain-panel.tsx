@@ -17,7 +17,8 @@ import {
   Switch,
 } from "@/components/kit";
 import type { Domain } from "@/db/schema";
-import { type DnsRecord, relativeName } from "@/lib/ses";
+import { agesOutAt, formatCap, formatGap, formatRate, readQuota } from "@/lib/quota";
+import { type AccountStatus, type DnsRecord, relativeName } from "@/lib/ses";
 import { useSubmit } from "@/lib/use-submit";
 import { cn } from "@/lib/utils";
 import {
@@ -34,6 +35,7 @@ import {
   ChevronDown,
   Copy,
   DownloadCloud,
+  Info,
   Loader2,
   RefreshCw,
   Trash2,
@@ -49,17 +51,17 @@ export interface DomainRow extends Domain {
 
 interface Props {
   domains: DomainRow[];
-  account: {
-    productionAccess: boolean;
-    enforcementStatus: string;
-    max24Hour: number;
-    sentLast24Hours: number;
-    maxSendRate: number;
-  } | null;
+  account: AccountStatus | null;
+  /**
+   * The earliest send this app still has inside the 24-hour window, used to
+   * say when headroom comes back. Null when nothing was sent, or when it does
+   * not matter because the account is nowhere near its cap.
+   */
+  oldestSend: Date | null;
   syncError?: string;
 }
 
-export function DomainPanel({ domains, account, syncError }: Props) {
+export function DomainPanel({ domains, account, oldestSend, syncError }: Props) {
   const router = useRouter();
   const [pending, start] = useTransition();
   const [sending, submit] = useSubmit();
@@ -114,21 +116,7 @@ export function DomainPanel({ domains, account, syncError }: Props) {
         </Button>
       }
     >
-      {account && (
-        <div className="mb-4 flex flex-wrap items-center gap-2 rounded-xl bg-muted/60 px-3 py-2">
-          <StatusPill state={account.productionAccess ? "ok" : "pending"}>
-            {account.productionAccess ? "Production access" : "Sandbox"}
-          </StatusPill>
-          <StatusPill state={account.enforcementStatus === "HEALTHY" ? "ok" : "bad"}>
-            {account.enforcementStatus === "HEALTHY" ? "Healthy" : account.enforcementStatus}
-          </StatusPill>
-          <span className="text-[12px] text-muted-foreground">
-            <span className="font-mono">{account.sentLast24Hours.toLocaleString()}</span> of{" "}
-            <span className="font-mono">{account.max24Hour.toLocaleString()}</span> sent in 24
-            hours, up to <span className="font-mono">{account.maxSendRate}</span> a second
-          </span>
-        </div>
-      )}
+      {account && <QuotaStrip account={account} oldestSend={oldestSend} />}
 
       {syncError && (
         <p className="mb-4 flex items-center gap-2 rounded-xl bg-danger-soft px-3 py-2 text-[12.5px] text-destructive">
@@ -500,5 +488,59 @@ function CopyCell({ value, copy }: { value: string; copy?: string }) {
         <Copy className="size-3 shrink-0 text-muted-foreground opacity-0 transition group-hover:opacity-100" />
       )}
     </button>
+  );
+}
+
+/**
+ * Where the account stands with SES.
+ *
+ * The 24-hour figure is rolling, which is the one thing worth being explicit
+ * about: people read "11 of 50,000 in 24 hours" as an allowance that resets,
+ * and then go looking for the clock. There is none. Each send simply stops
+ * counting 24 hours after it went out.
+ */
+function QuotaStrip({
+  account,
+  oldestSend,
+}: {
+  account: AccountStatus;
+  oldestSend: Date | null;
+}) {
+  const quota = readQuota(account);
+
+  return (
+    <div className="mb-4 rounded-xl bg-muted/60 px-3 py-2">
+      <div className="flex flex-wrap items-center gap-2">
+        <StatusPill state={account.productionAccess ? "ok" : "pending"}>
+          {account.productionAccess ? "Production access" : "Sandbox"}
+        </StatusPill>
+        <StatusPill state={account.enforcementStatus === "HEALTHY" ? "ok" : "bad"}>
+          {account.enforcementStatus === "HEALTHY" ? "Healthy" : account.enforcementStatus}
+        </StatusPill>
+
+        <span className="flex items-center gap-1.5 text-[12px] text-muted-foreground">
+          <span>
+            <span className="font-mono">{quota.used.toLocaleString()}</span> of{" "}
+            <span className="font-mono">{formatCap(quota.cap)}</span> in the last 24 hours, up to{" "}
+            <span className="font-mono">{formatRate(quota.perSecond)}</span> a second
+          </span>
+          <Hint label="A rolling window, not a daily allowance: there is no reset. Each message stops counting against it 24 hours after it was sent, so the headroom comes back a little at a time.">
+            <button type="button" aria-label="How the 24-hour limit works">
+              <Info className="size-3.5 text-muted-foreground" />
+            </button>
+          </Hint>
+        </span>
+      </div>
+
+      {quota.tight && oldestSend && (
+        <p className="mt-1.5 text-[11.5px] text-muted-foreground">
+          The oldest message this app sent stops counting in{" "}
+          <span className="font-mono">
+            {formatGap(agesOutAt(oldestSend).getTime() - Date.now())}
+          </span>
+          . Anything else sending through this AWS account counts too and is not shown here.
+        </p>
+      )}
+    </div>
   );
 }

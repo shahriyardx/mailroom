@@ -1,9 +1,11 @@
 import { DomainPanel, type DomainRow } from "@/components/mail/domain-panel";
 import { EventsPanel } from "@/components/mail/events-panel";
+import { readQuota } from "@/lib/quota";
 import { getAccountStatus } from "@/lib/ses";
 import { ensureDomainsSynced, recordsForDomain } from "@/server/domains";
 import { eventsStatus } from "@/server/events";
 import { requireCapability } from "@/server/permissions";
+import { oldestSendInWindow } from "@/server/quota";
 
 export const dynamic = "force-dynamic";
 
@@ -19,6 +21,11 @@ export default async function DomainsSettingsPage() {
     eventsStatus(),
   ]);
 
+  // Only worth asking when the answer would be shown: well under the cap,
+  // when headroom comes back is not a question anybody has.
+  const quota = account ? readQuota(account) : null;
+  const oldestSend = quota?.tight ? await oldestSendInWindow(access.orgId).catch(() => null) : null;
+
   const domains: DomainRow[] = sync.rows.map((row) => ({
     ...row,
     records: recordsForDomain(row),
@@ -29,6 +36,7 @@ export default async function DomainsSettingsPage() {
       <DomainPanel
         domains={domains}
         account={account}
+        oldestSend={oldestSend}
         syncError={sync.ok ? undefined : sync.error}
       />
       <EventsPanel status={events} />

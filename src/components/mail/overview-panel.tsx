@@ -13,6 +13,8 @@ import {
   Stats,
   StatusPill,
 } from "@/components/kit";
+import { formatCap, formatRate, readQuota } from "@/lib/quota";
+import type { AccountStatus } from "@/lib/ses";
 import { cn, formatBytes } from "@/lib/utils";
 import type { Overview } from "@/server/analytics";
 import { ArrowRight } from "lucide-react";
@@ -21,18 +23,13 @@ import Link from "next/link";
 interface Props {
   data: Overview;
   windowDays: number;
-  account: {
-    productionAccess: boolean;
-    enforcementStatus: string;
-    max24Hour: number;
-    sentLast24Hours: number;
-    maxSendRate: number;
-  } | null;
+  account: AccountStatus | null;
 }
 
 export function OverviewPanel({ data, windowDays, account }: Props) {
   const { sending, receiving, storage, days, mailboxes, keys, api, counts } = data;
   const totalStorage = storage.attachmentBytes + storage.rawBytes;
+  const quota = account ? readQuota(account) : null;
 
   return (
     <>
@@ -106,7 +103,7 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
         )}
       </Panel>
 
-      {account && (
+      {account && quota && (
         <Panel
           title="SES account"
           description="Your sending quota, straight from Amazon."
@@ -119,26 +116,34 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
           <div className="max-w-lg">
             <div className="flex items-baseline justify-between gap-3">
               <span className="font-display text-[22px] font-semibold tabular-nums">
-                {account.sentLast24Hours.toLocaleString()}
+                {quota.used.toLocaleString()}
               </span>
               <span className="text-[12.5px] text-muted-foreground">
-                of {account.max24Hour.toLocaleString()} in 24 hours
+                of {formatCap(quota.cap)} in the last 24 hours
               </span>
             </div>
-            <Meter
-              className="mt-2"
-              value={account.sentLast24Hours}
-              max={account.max24Hour}
-              tone={
-                account.sentLast24Hours / Math.max(1, account.max24Hour) > 0.8 ? "warn" : "accent"
-              }
-            />
+            {/* No bar when there is no cap: a meter that can never fill is a
+                decoration pretending to be a reading. */}
+            {quota.cap !== null && (
+              <Meter
+                className="mt-2"
+                value={quota.used}
+                max={quota.cap}
+                tone={quota.tight ? "warn" : "accent"}
+              />
+            )}
             <Note className="mt-2">
-              Up to {account.maxSendRate} a second. Reputation is{" "}
+              Up to {formatRate(quota.perSecond)} a second. Reputation is{" "}
               {account.enforcementStatus === "HEALTHY"
                 ? "healthy"
                 : account.enforcementStatus.toLowerCase()}
               .
+            </Note>
+            {/* People read this as a daily allowance and then look for the
+                clock. There is no clock. */}
+            <Note className="mt-1">
+              This is a rolling 24 hours, not a daily allowance that resets. Each message stops
+              counting against it 24 hours after it was sent.
             </Note>
           </div>
         </Panel>
