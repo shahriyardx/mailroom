@@ -28,6 +28,42 @@ export function ListEmpty({ className, ...props }: React.ComponentProps<"p">) {
   );
 }
 
+/**
+ * What a list shows when it is empty and the reader is meant to fill it.
+ * A sentence on its own reads as a stray line of text; the outline gives it
+ * the shape of the rows that are missing.
+ */
+export function BlankSlate({
+  icon,
+  title,
+  hint,
+  className,
+  ...props
+}: React.ComponentProps<"div"> & {
+  icon?: React.ReactNode;
+  title: React.ReactNode;
+  hint?: React.ReactNode;
+}) {
+  return (
+    <div
+      data-slot="blank-slate"
+      className={cn(
+        "flex flex-col items-center gap-2 rounded-xl border border-border border-dashed px-6 py-8 text-center",
+        className,
+      )}
+      {...props}
+    >
+      {icon && (
+        <span className="grid size-9 place-items-center rounded-full bg-muted text-muted-foreground [&_svg]:size-4">
+          {icon}
+        </span>
+      )}
+      <p className="text-[13px] font-medium">{title}</p>
+      {hint && <p className="max-w-xs text-[12.5px] text-muted-foreground">{hint}</p>}
+    </div>
+  );
+}
+
 /** A quiet note under or beside a control. */
 export function Note({ className, ...props }: React.ComponentProps<"p">) {
   return (

@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  BlankSlate,
   Button,
   Field,
   Fieldset,
@@ -8,7 +9,6 @@ import {
   IconButton,
   Input,
   List,
-  ListEmpty,
   ListRow,
   Note,
   Panel,
@@ -21,7 +21,7 @@ import {
 } from "@/components/kit";
 import type { ApiKey, Mailbox } from "@/db/schema";
 import { createApiKeyAction, deleteApiKeyAction, revokeApiKeyAction } from "@/server/actions";
-import { Check, Copy, KeyRound, Trash2 } from "lucide-react";
+import { Check, ChevronRight, Copy, KeyRound, Trash2 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -45,7 +45,7 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
   return (
     <Panel
       title="Your keys"
-      description="Send from your own code. A key that is not locked to a mailbox can send as any address on a domain you have verified, creating the mailbox on first use. Keys are stored hashed, so a key is shown once and never again."
+      description="Send from your own code. A key is either locked to one mailbox, or free to send as any address on a verified domain."
       meta={`${keys.filter((item) => !item.revokedAt).length} active`}
     >
       {fresh && (
@@ -80,62 +80,83 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
         </div>
       )}
 
-      <List>
-        {keys.map((item) => (
-          <ListRow key={item.id} className="flex-wrap">
-            <KeyRound className="size-4 shrink-0 text-muted-foreground" />
-            <div className="min-w-0 flex-1">
-              <p className="truncate text-[13px] font-medium">{item.name}</p>
-              <p className="truncate font-mono text-[12px] text-muted-foreground">{item.prefix}</p>
-            </div>
+      {keys.length === 0 ? (
+        <BlankSlate
+          icon={<KeyRound />}
+          title="No keys yet"
+          hint="Make one below to send mail from a script, a server, or anything else outside this screen."
+        />
+      ) : (
+        <>
+          <div className="flex items-center gap-3 border-border border-b pb-1.5 text-[11.5px] text-muted-foreground">
+            <span className="min-w-0 flex-1">Key</span>
+            <span className="w-44 shrink-0">Can send from</span>
+            <span className="w-24 shrink-0">Last used</span>
+            <span className="w-[4.5rem] shrink-0" />
+          </div>
+          <List>
+            {keys.map((item) => (
+              <ListRow key={item.id}>
+                <KeyRound className="size-4 shrink-0 text-muted-foreground" />
+                <div className="min-w-0 flex-1">
+                  <p className="flex items-center gap-2 truncate text-[13px] font-medium">
+                    {item.name}
+                    {item.revokedAt && <StatusPill state="bad">Revoked</StatusPill>}
+                  </p>
+                  <p className="truncate font-mono text-[12px] text-muted-foreground">
+                    {item.prefix}
+                  </p>
+                </div>
 
-            {item.mailboxId && (
-              <StatusPill state="pending">
-                {mailboxes.find((box) => box.id === item.mailboxId)?.address ?? "One mailbox"}
-              </StatusPill>
-            )}
-            <StatusPill state={item.revokedAt ? "bad" : "ok"}>
-              {item.revokedAt ? "Revoked" : "Active"}
-            </StatusPill>
-            <span className="text-[12px] text-muted-foreground">
-              {item.lastUsedAt ? `Used ${item.lastUsedAt.toLocaleDateString()}` : "Never used"}
-            </span>
+                <span className="w-44 shrink-0 truncate font-mono text-[12px] text-muted-foreground">
+                  {item.mailboxId
+                    ? (mailboxes.find((box) => box.id === item.mailboxId)?.address ?? "One mailbox")
+                    : "Any address"}
+                </span>
+                <span className="w-24 shrink-0 text-[12px] text-muted-foreground">
+                  {item.lastUsedAt ? item.lastUsedAt.toLocaleDateString() : "Never"}
+                </span>
 
-            {!item.revokedAt && (
-              <Button
-                variant="ghost"
-                size="sm"
-                pill
-                onClick={() =>
-                  start(async () => {
-                    await revokeApiKeyAction(item.id);
-                    router.refresh();
-                  })
-                }
-              >
-                Revoke
-              </Button>
-            )}
-            <IconButton
-              variant="danger"
-              label={`Delete ${item.name}`}
-              onClick={() =>
-                start(async () => {
-                  await deleteApiKeyAction(item.id);
-                  router.refresh();
-                })
-              }
-            >
-              <Trash2 />
-            </IconButton>
-          </ListRow>
-        ))}
-        {keys.length === 0 && <ListEmpty>No keys yet.</ListEmpty>}
-      </List>
+                {/* The slot is the same width whether or not a key can still
+                    be revoked, so the bins stay in one column. */}
+                <span className="flex w-[4.5rem] shrink-0 items-center justify-end gap-1">
+                  {!item.revokedAt && (
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      pill
+                      onClick={() =>
+                        start(async () => {
+                          await revokeApiKeyAction(item.id);
+                          router.refresh();
+                        })
+                      }
+                    >
+                      Revoke
+                    </Button>
+                  )}
+                  <IconButton
+                    variant="danger"
+                    label={`Delete ${item.name}`}
+                    onClick={() =>
+                      start(async () => {
+                        await deleteApiKeyAction(item.id);
+                        router.refresh();
+                      })
+                    }
+                  >
+                    <Trash2 />
+                  </IconButton>
+                </span>
+              </ListRow>
+            ))}
+          </List>
+        </>
+      )}
 
       <Fieldset title="Create a key">
-        <div className="flex flex-wrap items-start gap-5">
-          <Field label="Name" htmlFor="key-name" className="w-52">
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Name" htmlFor="key-name">
             <Input
               id="key-name"
               value={name}
@@ -146,8 +167,11 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
           <Field
             label="Can send from"
             htmlFor="key-mailbox"
-            hint="Any mailbox also allows addresses that do not exist yet."
-            className="w-56"
+            hint={
+              mailboxId === ANY_MAILBOX
+                ? "Any address on a verified domain, even one that does not exist yet."
+                : "Only this address."
+            }
           >
             <Select value={mailboxId} onValueChange={(value) => value && setMailboxId(value)}>
               <SelectTrigger id="key-mailbox" className="font-mono text-[12.5px]">
@@ -187,8 +211,11 @@ export function ApiKeyPanel({ keys, mailboxes, appUrl }: Props) {
         </FieldsetActions>
       </Fieldset>
 
-      <details className="mt-5 border-t border-border pt-4">
-        <summary className="cursor-pointer text-[13px] font-medium">How to send with it</summary>
+      <details className="group mt-5 border-t border-border pt-4">
+        <summary className="flex cursor-pointer list-none items-center gap-1.5 text-[13px] font-medium [&::-webkit-details-marker]:hidden">
+          <ChevronRight className="size-3.5 text-muted-foreground transition-transform group-open:rotate-90" />
+          How to send with it
+        </summary>
         <pre className="mt-3 overflow-x-auto rounded-xl bg-muted p-3.5 font-mono text-[11.5px] leading-relaxed">
           {`curl -X POST ${appUrl}/api/v1/emails \\
   -H "Authorization: Bearer mk_live_..." \\

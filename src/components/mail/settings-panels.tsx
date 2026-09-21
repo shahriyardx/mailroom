@@ -2,6 +2,7 @@
 
 import {
   Badge,
+  BlankSlate,
   Button,
   ColorPicker,
   DropdownMenu,
@@ -15,7 +16,6 @@ import {
   IconButton,
   Input,
   List,
-  ListEmpty,
   ListRow,
   Note,
   PALETTE,
@@ -41,7 +41,17 @@ import {
   setMyDefaultMailboxAction,
   updateMailboxAction,
 } from "@/server/actions";
-import { ChevronDown, MoreHorizontal, PenLine, Plus, Star, Trash2, X } from "lucide-react";
+import {
+  ChevronDown,
+  Filter,
+  Inbox,
+  MoreHorizontal,
+  PenLine,
+  Plus,
+  Star,
+  Trash2,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -184,7 +194,17 @@ export function MailboxPanel({
           </div>
         );
       })}
-      {mailboxes.length === 0 && <ListEmpty>No mailboxes yet.</ListEmpty>}
+      {mailboxes.length === 0 && (
+        <BlankSlate
+          icon={<Inbox />}
+          title="No addresses yet"
+          hint={
+            addable.length > 0
+              ? "Add one below. Mail sent to it arrives here, and you can send from it."
+              : "None have been shared with you yet."
+          }
+        />
+      )}
 
       {addable.length > 0 && (
         <Fieldset title="Add a mailbox">
@@ -574,8 +594,14 @@ export function RulePanel({
             </IconButton>
           </ListRow>
         ))}
-        {rules.length === 0 && <ListEmpty>No filters yet.</ListEmpty>}
       </List>
+      {rules.length === 0 && (
+        <BlankSlate
+          icon={<Filter />}
+          title="No filters yet"
+          hint="A filter reads the sender and the subject of arriving mail, and files it for you."
+        />
+      )}
 
       <Fieldset title="Add a filter">
         <div className="grid gap-4 sm:grid-cols-2">
