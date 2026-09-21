@@ -129,7 +129,7 @@ export function AccessPanel({ grants, teams, members, domains, mailboxes }: Prop
               </span>
               {/* Says the effect in words. A row of chips tells you which
                   switches are on, not what they let anyone do. */}
-              <span className="block truncate text-[12px] text-muted-foreground">
+              <span className="block text-[12px] leading-relaxed text-muted-foreground">
                 {describe(grant)}
               </span>
             </span>

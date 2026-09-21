@@ -41,7 +41,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Sending",
     items: [
       { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
-      { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:manage" },
+      { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:settings" },
       {
         href: "/settings/blocked",
         label: "Blocked addresses",

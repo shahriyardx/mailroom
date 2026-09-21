@@ -124,3 +124,23 @@ export async function assertCanRead(access: Access, mailboxId: string) {
     throw new Error("You do not have access to that mailbox");
   }
 }
+
+/**
+ * The mailboxes this person may change, and the domains they may add to.
+ * A grant can carry either, so the mailboxes screen is not only for
+ * administrators.
+ */
+export async function mailboxAdministration(access: Access) {
+  const [rights, creatable] = await Promise.all([
+    mailboxRights(access),
+    creatableDomainIds(access),
+  ]);
+
+  return {
+    manageable: [...rights.entries()].filter(([, r]) => r.manage).map(([id]) => id),
+    creatable,
+    get any() {
+      return this.manageable.length > 0 || this.creatable === "all" || this.creatable.length > 0;
+    },
+  };
+}
