@@ -12,6 +12,7 @@ import {
   KeyRound,
   Mail,
   Menu,
+  ScrollText,
   ShieldCheck,
   ShieldOff,
   SlidersHorizontal,
@@ -45,6 +46,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
       { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:settings" },
       { href: "/settings/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
+      { href: "/settings/logs", label: "Email log", icon: ScrollText, needs: "mail:read" },
       {
         href: "/settings/blocked",
         label: "Blocked addresses",
