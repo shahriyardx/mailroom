@@ -338,7 +338,7 @@ async function linkOrphanMailboxes(orgId: string) {
   await db
     .update(mailbox)
     .set({
-      domainId: sql`(select d.id from ${domain} d where d.user_id = ${orgId} and d.name = ${mailbox.domain} limit 1)`,
+      domainId: sql`(select d.id from ${domain} d where d.organization_id = ${orgId} and d.name = ${mailbox.domain} limit 1)`,
     })
     .where(and(eq(mailbox.organizationId, orgId), sql`${mailbox.domainId} is null`));
 }
