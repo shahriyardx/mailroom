@@ -52,7 +52,6 @@ import {
   Sun,
   Tag,
   Trash2,
-  X,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
@@ -212,8 +211,6 @@ export function MailShell({
       user={user}
       composer={composer}
       router={router}
-      searchValue={searchValue}
-      onSearch={(value) => setParam("q", value)}
     />
   );
 
@@ -246,21 +243,10 @@ export function MailShell({
             >
               <Menu />
             </IconButton>
-            {/* On a narrow screen the header is the search field. The folder
-                is already named in the drawer you just came out of, and the
-                one row of space is better spent on the thing you cannot get
-                to any other way. */}
-            <div className="min-w-0 flex-1 md:hidden">
-              <SearchField
-                id="mail-search-mobile"
-                defaultValue={searchValue}
-                onCommit={(value) => setParam("q", value)}
-                showShortcut={false}
-              />
-            </div>
-
             {/* The folder names the view; the scope only qualifies it, and
-                  only when it is narrower than everything. */}
+                  only when it is narrower than everything. On a phone none of
+                  it appears: you just tapped the folder in the drawer to get
+                  here, and the one row of space is worth more as search. */}
             <h1 className="hidden shrink-0 font-display text-[18px] font-semibold tracking-[-0.02em] md:block">
               {FOLDER_LABELS[folder]}
             </h1>
@@ -270,29 +256,23 @@ export function MailShell({
               </span>
             )}
             {scope.kind !== "all" && (
-              <span className="hidden min-w-0 truncate text-[12.5px] text-muted-foreground md:block">
+              <span className="hidden min-w-0 shrink truncate text-[12.5px] text-muted-foreground lg:block">
                 in <span className="font-mono">{scopeLabel}</span>
               </span>
             )}
 
-            {/* The search term is in the field itself on a narrow screen, so
-                showing it again beside it would be saying it twice. */}
-            {searchValue && (
-              <button
-                type="button"
-                onClick={() => setParam("q", null)}
-                className="ml-auto hidden shrink-0 items-center gap-1 rounded-full bg-primary-soft px-2.5 py-1 text-[11.5px] text-primary-soft-foreground md:flex"
-              >
-                <span className="max-w-36 truncate font-mono">{searchValue}</span>
-                <X className="size-3" />
-              </button>
-            )}
+            {/* Search belongs over the thing it searches, not in the list of
+                places to go. There is exactly one of these, so no second copy
+                can hold a different term than the one the results are for. */}
+            <div className="ml-auto min-w-0 flex-1 md:max-w-64 lg:max-w-80">
+              <SearchField defaultValue={searchValue} onCommit={(value) => setParam("q", value)} />
+            </div>
 
             <Hint label="Refresh">
               <IconButton
                 size="md"
                 label="Refresh"
-                className={cn("shrink-0", !searchValue && "md:ml-auto")}
+                className="shrink-0"
                 onClick={() => router.refresh()}
               >
                 <RefreshCw />
@@ -363,8 +343,6 @@ function NavPanel({
   user,
   composer,
   router,
-  searchValue,
-  onSearch,
 }: {
   folder: ViewFolder;
   scope: Scope;
@@ -378,17 +356,11 @@ function NavPanel({
   user: { name: string; email: string };
   composer: ReturnType<typeof useComposer>;
   router: ReturnType<typeof useRouter>;
-  searchValue: string;
-  onSearch: (value: string | null) => void;
 }) {
   return (
     <>
       <div className="flex h-14 shrink-0 items-center px-4">
         <Wordmark />
-      </div>
-
-      <div className="px-3 pb-3">
-        <SearchField defaultValue={searchValue} onCommit={onSearch} />
       </div>
 
       {/* Nothing to write from, nothing to offer. */}
@@ -647,25 +619,15 @@ function DomainBranch({
 function SearchField({
   defaultValue,
   onCommit,
-  id = "mail-search",
-  showShortcut = true,
 }: {
   defaultValue: string;
   onCommit: (value: string | null) => void;
-  /** Unique per instance: the header and the drawer can both be mounted. */
-  id?: string;
-  showShortcut?: boolean;
 }) {
   const [value, setValue] = useState(defaultValue);
 
   useEffect(() => setValue(defaultValue), [defaultValue]);
 
   useEffect(() => {
-    // Only the field that advertises the shortcut listens for it. Two
-    // listeners both reaching for the same element is how one of them ends
-    // up focusing a field that is not on the screen.
-    if (!showShortcut) return;
-
     function onKey(event: KeyboardEvent) {
       const target = event.target as HTMLElement | null;
       const typing =
@@ -673,18 +635,18 @@ function SearchField({
       if (typing || event.metaKey || event.ctrlKey) return;
       if (event.key === "/") {
         event.preventDefault();
-        document.getElementById(id)?.focus();
+        document.getElementById("mail-search")?.focus();
       }
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [id, showShortcut]);
+  }, []);
 
   return (
     <div className="relative">
       <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 size-4 text-muted-foreground" />
       <Input
-        id={id}
+        id="mail-search"
         value={value}
         onChange={(event) => setValue(event.target.value)}
         onKeyDown={(event) => {
@@ -695,14 +657,13 @@ function SearchField({
           }
         }}
         placeholder="Search"
-        className={cn("h-9 rounded-xl pl-9 text-[13px]", showShortcut ? "pr-9" : "pr-3")}
+        className="h-9 rounded-xl pr-3 pl-9 text-[13px] md:pr-9"
       />
-      {/* The shortcut lives where you look for the field, not in a status bar. */}
-      {showShortcut && (
-        <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5">
-          <span className="kbd">/</span>
-        </span>
-      )}
+      {/* The shortcut lives where you look for the field, not in a status
+          bar — and not at all on a phone, which has no key to press. */}
+      <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5 hidden md:block">
+        <span className="kbd">/</span>
+      </span>
     </div>
   );
 }
