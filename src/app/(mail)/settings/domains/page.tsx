@@ -1,9 +1,7 @@
 import { DomainPanel, type DomainRow } from "@/components/mail/domain-panel";
-import { EventsPanel } from "@/components/mail/events-panel";
 import { readQuota } from "@/lib/quota";
 import { getAccountStatus } from "@/lib/ses";
 import { ensureDomainsSynced, recordsForDomain } from "@/server/domains";
-import { eventsStatus } from "@/server/events";
 import { requireCapability } from "@/server/permissions";
 import { oldestSendInWindow } from "@/server/quota";
 
@@ -14,12 +12,9 @@ export default async function DomainsSettingsPage() {
 
   // Domains auto-import on first visit, and refresh when the cached status is stale.
   const sync = await ensureDomainsSynced(access.orgId);
-  // Neither call is required for the list, so a failure in one must not take
-  // the page down with it.
-  const [account, events] = await Promise.all([
-    getAccountStatus().catch(() => null),
-    eventsStatus(),
-  ]);
+  // Not required for the list, so a failure here must not take the page
+  // down with it.
+  const account = await getAccountStatus().catch(() => null);
 
   // Only worth asking when the answer would be shown: well under the cap,
   // when headroom comes back is not a question anybody has.
@@ -32,14 +27,11 @@ export default async function DomainsSettingsPage() {
   }));
 
   return (
-    <>
-      <DomainPanel
-        domains={domains}
-        account={account}
-        oldestSend={oldestSend}
-        syncError={sync.ok ? undefined : sync.error}
-      />
-      <EventsPanel status={events} />
-    </>
+    <DomainPanel
+      domains={domains}
+      account={account}
+      oldestSend={oldestSend}
+      syncError={sync.ok ? undefined : sync.error}
+    />
   );
 }

@@ -4,6 +4,7 @@ import { Avatar, IconButton, Sheet, SheetContent, SheetTitle, Wordmark } from "@
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
+  Activity,
   ArrowLeft,
   FileText,
   Gauge,
@@ -44,6 +45,12 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Sending",
     items: [
       { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+      {
+        href: "/settings/reporting",
+        label: "Delivery reporting",
+        icon: Activity,
+        needs: "domain:manage",
+      },
       { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:settings" },
       { href: "/settings/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
       { href: "/settings/logs", label: "Email log", icon: ScrollText, needs: "mail:read" },

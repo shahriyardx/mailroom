@@ -281,8 +281,8 @@ function Timeline({
       <div>
         <p className="mb-2 text-[12.5px] font-semibold">Events</p>
         <Note>
-          Nothing reported yet. SES reports through the pipeline on the Domains screen; without it a
-          message stays on the status the app recorded when it sent.
+          Nothing reported yet. SES reports through the pipeline on the Delivery reporting screen;
+          without it a message stays on the status the app recorded when it sent.
         </Note>
       </div>
     );
