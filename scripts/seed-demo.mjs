@@ -11,6 +11,7 @@
  *   node scripts/seed-demo.mjs                              # the first mailbox
  *   node scripts/seed-demo.mjs --mailbox=you@yours.com      # a particular one
  *   node scripts/seed-demo.mjs --count=100                  # plus 100 ordinary ones
+ *   node scripts/seed-demo.mjs --count=200 --no-samples     # only the ordinary ones
  *   node scripts/seed-demo.mjs --remove                     # take it all back out
  *
  * Everything it writes is tagged, so --remove touches nothing else.
@@ -211,163 +212,169 @@ const plain = (body) => body.trim();
 
 let total = 0;
 
-total += await thread({
-  subject: "Your September invoice",
-  messages: [
-    {
-      from: { name: "Northwind Billing", address: "billing@northwind.example" },
-      text: plain(`Thanks for another month. Your invoice for September is ready,
-and the card ending 4242 will be charged on the 1st. Total $66.00.`),
-      html: lightHtml,
-      mailedBy: "bounces.northwind.example",
-      signedBy: "northwind.example",
-      unread: true,
-    },
-  ],
-});
+/**
+ * The seven hand-written threads. Skip them with --no-samples when the mailbox
+ * already has them and all that is wanted is more rows to scroll.
+ */
+if (!process.argv.includes("--no-samples")) {
+  total += await thread({
+    subject: "Your September invoice",
+    messages: [
+      {
+        from: { name: "Northwind Billing", address: "billing@northwind.example" },
+        text: plain(`Thanks for another month. Your invoice for September is ready,
+  and the card ending 4242 will be charged on the 1st. Total $66.00.`),
+        html: lightHtml,
+        mailedBy: "bounces.northwind.example",
+        signedBy: "northwind.example",
+        unread: true,
+      },
+    ],
+  });
 
-total += await thread({
-  subject: "api-gateway is live",
-  messages: [
-    {
-      from: { name: "Deploy bot", address: "deploys@buildpipe.example" },
-      text: plain("Build 4f2a91c finished in 3m 12s and is serving all three regions."),
-      html: darkHtml,
-      mailedBy: "mail.buildpipe.example",
-      signedBy: "buildpipe.example",
-    },
-  ],
-});
+  total += await thread({
+    subject: "api-gateway is live",
+    messages: [
+      {
+        from: { name: "Deploy bot", address: "deploys@buildpipe.example" },
+        text: plain("Build 4f2a91c finished in 3m 12s and is serving all three regions."),
+        html: darkHtml,
+        mailedBy: "mail.buildpipe.example",
+        signedBy: "buildpipe.example",
+      },
+    ],
+  });
 
-const priya = { name: "Priya Raman", address: "priya@harbourline.example" };
-const dev = { name: "Tomas Vrba", address: "tomas@harbourline.example" };
+  const priya = { name: "Priya Raman", address: "priya@harbourline.example" };
+  const dev = { name: "Tomas Vrba", address: "tomas@harbourline.example" };
 
-total += await thread({
-  subject: "Migrating the reporting job off cron",
-  starred: true,
-  messages: [
-    {
-      from: priya,
-      unread: false,
-      text: plain(`The nightly reporting job overran again — it finished at 06:40,
-which is after the first customers are already in.`),
-      html: reply(`The nightly reporting job overran again — it finished at 06:40, which is
-      after the first customers are already in.
+  total += await thread({
+    subject: "Migrating the reporting job off cron",
+    starred: true,
+    messages: [
+      {
+        from: priya,
+        unread: false,
+        text: plain(`The nightly reporting job overran again — it finished at 06:40,
+  which is after the first customers are already in.`),
+        html: reply(`The nightly reporting job overran again — it finished at 06:40, which is
+        after the first customers are already in.
 
-      I think we have outgrown cron for this. Can we move it onto the queue and
-      let it retry on its own?`),
-    },
-    {
-      outbound: true,
-      from: priya,
-      text: plain(`Agreed. Cron has no idea whether the last run finished, which is
-exactly how we ended up with two of them writing the same rows.`),
-      html: reply(`Agreed. Cron has no idea whether the last run finished, which is exactly
-      how we ended up with two of them writing the same rows last Tuesday.
+        I think we have outgrown cron for this. Can we move it onto the queue and
+        let it retry on its own?`),
+      },
+      {
+        outbound: true,
+        from: priya,
+        text: plain(`Agreed. Cron has no idea whether the last run finished, which is
+  exactly how we ended up with two of them writing the same rows.`),
+        html: reply(`Agreed. Cron has no idea whether the last run finished, which is exactly
+        how we ended up with two of them writing the same rows last Tuesday.
 
-      I will put it behind the queue this week. One job per tenant rather than one
-      job for everybody, so a slow tenant stops holding up the rest.`),
-    },
-    {
-      from: dev,
-      text: plain(`One per tenant means a few thousand jobs a night. Is the queue
-happy with that?`),
-      html: reply(`One per tenant means a few thousand jobs a night. Is the queue happy with
-      that volume, or do we need to batch them?
+        I will put it behind the queue this week. One job per tenant rather than one
+        job for everybody, so a slow tenant stops holding up the rest.`),
+      },
+      {
+        from: dev,
+        text: plain(`One per tenant means a few thousand jobs a night. Is the queue
+  happy with that?`),
+        html: reply(`One per tenant means a few thousand jobs a night. Is the queue happy with
+        that volume, or do we need to batch them?
 
-      Not blocking — I would just rather find out now than at 03:00.`),
-    },
-    {
-      outbound: true,
-      from: dev,
-      text: plain(`It handles that comfortably. The old job did the same work, it
-just did it in one process where nobody could see it.`),
-      html: reply(`It handles that comfortably — we already push more than that through it on
-      a busy send day.
+        Not blocking — I would just rather find out now than at 03:00.`),
+      },
+      {
+        outbound: true,
+        from: dev,
+        text: plain(`It handles that comfortably. The old job did the same work, it
+  just did it in one process where nobody could see it.`),
+        html: reply(`It handles that comfortably — we already push more than that through it on
+        a busy send day.
 
-      The old job did the same amount of work. It just did it inside one process
-      where nobody could see which tenant was slow.`),
-    },
-    {
-      from: priya,
-      unread: true,
-      text: plain(`Good. Ship it behind a flag and let it run beside cron for a
-night so we can compare the two.`),
-      html: reply(`Good. Ship it behind a flag and let it run beside cron for a night so we
-      can compare the output before we turn the old one off.
+        The old job did the same amount of work. It just did it inside one process
+        where nobody could see which tenant was slow.`),
+      },
+      {
+        from: priya,
+        unread: true,
+        text: plain(`Good. Ship it behind a flag and let it run beside cron for a
+  night so we can compare the two.`),
+        html: reply(`Good. Ship it behind a flag and let it run beside cron for a night so we
+        can compare the output before we turn the old one off.
 
-      If the numbers match in the morning, delete the crontab and let us never
-      speak of it again.`),
-    },
-  ],
-});
+        If the numbers match in the morning, delete the crontab and let us never
+        speak of it again.`),
+      },
+    ],
+  });
 
-total += await thread({
-  subject: "Monday plan",
-  messages: [
-    {
-      from: priya,
-      unread: true,
-      text: plain("Just checking you saw the plan for next week. No rush — Monday is fine."),
-      html: trackedHtml,
-    },
-  ],
-});
+  total += await thread({
+    subject: "Monday plan",
+    messages: [
+      {
+        from: priya,
+        unread: true,
+        text: plain("Just checking you saw the plan for next week. No rush — Monday is fine."),
+        html: trackedHtml,
+      },
+    ],
+  });
 
-total += await thread({
-  subject: "Re: your account",
-  messages: [
-    {
-      from: { name: "Account Services", address: "security@paypa1-verify.example" },
-      unread: true,
-      spf: "fail",
-      dkim: "fail",
-      dmarc: "fail",
-      tls: "none",
-      mailedBy: "bulk.mailer-77.example",
-      signedBy: null,
-      text: plain(`Dear customer, your account has been limited. Confirm your details
-within 24 hours to restore access.`),
-      html: reply(`Dear customer,
+  total += await thread({
+    subject: "Re: your account",
+    messages: [
+      {
+        from: { name: "Account Services", address: "security@paypa1-verify.example" },
+        unread: true,
+        spf: "fail",
+        dkim: "fail",
+        dmarc: "fail",
+        tls: "none",
+        mailedBy: "bulk.mailer-77.example",
+        signedBy: null,
+        text: plain(`Dear customer, your account has been limited. Confirm your details
+  within 24 hours to restore access.`),
+        html: reply(`Dear customer,
 
-      Your account has been limited. Confirm your details within 24 hours to
-      restore access to your funds.`),
-    },
-  ],
-});
+        Your account has been limited. Confirm your details within 24 hours to
+        restore access to your funds.`),
+      },
+    ],
+  });
 
-total += await thread({
-  subject: "Notes from the call",
-  messages: [
-    {
-      from: { name: "Ola Nilsen", address: "ola@fjordworks.example" },
-      text: plain(`Rough notes, no formatting, sent from a terminal:
+  total += await thread({
+    subject: "Notes from the call",
+    messages: [
+      {
+        from: { name: "Ola Nilsen", address: "ola@fjordworks.example" },
+        text: plain(`Rough notes, no formatting, sent from a terminal:
 
-  - they want SSO before the pilot, not after
-  - invoicing in EUR, one invoice for all seats
-  - security review is two weeks, starts when we send the questionnaire
-  - Ana is the decision maker, not Henrik
+    - they want SSO before the pilot, not after
+    - invoicing in EUR, one invoice for all seats
+    - security review is two weeks, starts when we send the questionnaire
+    - Ana is the decision maker, not Henrik
 
-Next step is ours: questionnaire back to them by Thursday.`),
-      unread: true,
-    },
-  ],
-});
+  Next step is ours: questionnaire back to them by Thursday.`),
+        unread: true,
+      },
+    ],
+  });
 
-total += await thread({
-  subject: "Welcome to Harbourline",
-  messages: [
-    {
-      outbound: true,
-      from: { name: "New signup", address: "closed@mailbox.invalid" },
-      status: "bounced",
-      error: "550 5.1.1 The email account that you tried to reach does not exist.",
-      text: plain("Welcome aboard. Your workspace is ready whenever you are."),
-      html: reply(`Welcome aboard. Your workspace is ready whenever you are — sign in and add
-      your first domain to get going.`),
-    },
-  ],
-});
+  total += await thread({
+    subject: "Welcome to Harbourline",
+    messages: [
+      {
+        outbound: true,
+        from: { name: "New signup", address: "closed@mailbox.invalid" },
+        status: "bounced",
+        error: "550 5.1.1 The email account that you tried to reach does not exist.",
+        text: plain("Welcome aboard. Your workspace is ready whenever you are."),
+        html: reply(`Welcome aboard. Your workspace is ready whenever you are — sign in and add
+        your first domain to get going.`),
+      },
+    ],
+  });
+}
 
 /* ------------------------------------------------------- filling the list */
 
@@ -437,6 +444,7 @@ for (let index = 0; index < bulk; index += 1) {
   });
 }
 
-console.log(`Added ${total} messages in ${7 + bulk} threads to ${box.address}.`);
+const crafted = process.argv.includes("--no-samples") ? 0 : 7;
+console.log(`Added ${total} messages in ${crafted + bulk} threads to ${box.address}.`);
 console.log("Undo with: node scripts/seed-demo.mjs --remove");
 await sql.end();
