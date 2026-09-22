@@ -55,10 +55,7 @@ async function address(email: string, verified = true) {
   return id;
 }
 
-async function rule(
-  addressId: string,
-  width: { domainId?: string; mailboxId?: string } = {},
-) {
+async function rule(addressId: string, width: { domainId?: string; mailboxId?: string } = {}) {
   const { db } = await import("@/db");
   const { forwardRule } = await import("@/db/schema");
 

@@ -62,13 +62,6 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
 
   return (
     <>
-      {!view.connected ? (
-        <Warning>
-          No Cloudflare token is connected, so no address can be verified and nothing will be
-          forwarded. Connect one on <strong>Settings → Inbound worker</strong> first.
-        </Warning>
-      ) : null}
-
       <Panel
         title="Addresses"
         meta={view.addresses.length > 0 ? view.addresses.length : undefined}
@@ -98,6 +91,16 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
           ) : undefined
         }
       >
+        {/* Inside the panel, not above it: the page is a stack of panels and
+            each one owns its own spacing, so a loose banner at the top sits
+            flush against the header with a divider under it. */}
+        {!view.connected ? (
+          <Warning>
+            No Cloudflare token is connected, so no address can be verified and nothing will be
+            forwarded. Connect one on <strong>Settings → Inbound worker</strong> first.
+          </Warning>
+        ) : null}
+
         <form
           className="mb-4 flex flex-wrap gap-2"
           onSubmit={(event) => {
