@@ -74,6 +74,7 @@ const GROUPS: { title?: string; items: Item[] }[] = [
     title: "Sending",
     items: [
       { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+      { href: "/campaigns/metrics", label: "Metrics", icon: Activity, needs: "mail:read" },
       { href: "/campaigns/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
       {
         href: "/campaigns/reporting",
