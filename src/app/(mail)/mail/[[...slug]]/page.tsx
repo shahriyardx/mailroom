@@ -10,6 +10,7 @@ import { creatableDomainIds, readableMailboxIds } from "@/server/grants";
 import { imageChoices as imageChoicesFor } from "@/server/image-trust";
 import { listMailboxesFor } from "@/server/mailboxes";
 import { can } from "@/server/permissions";
+import { settingsLanding } from "@/server/settings-landing";
 import { getThreadDetail, listThreads } from "@/server/threads";
 import { eq } from "drizzle-orm";
 import { Inbox } from "lucide-react";
@@ -34,9 +35,10 @@ export default async function MailPage({ params, searchParams }: PageProps) {
   const { scope, folder } = parseRoute(slug);
 
   const allowed = await readableMailboxIds(access);
-  const [mailboxes, labels] = await Promise.all([
+  const [mailboxes, labels, settingsHref] = await Promise.all([
     listMailboxesFor(access),
     db.query.label.findMany({ where: eq(label.organizationId, access.orgId) }),
+    settingsLanding(access),
   ]);
 
   // Whether this person may add an address is a different question from
@@ -93,6 +95,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       folder={folder}
       user={{ name: access.name, email: access.email }}
       canAddMailbox={mayAddMailbox}
+      settingsHref={settingsHref}
       openSubject={detail?.subject || undefined}
       threadOpen={Boolean(detail)}
       list={

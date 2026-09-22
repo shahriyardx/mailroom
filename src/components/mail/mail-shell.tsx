@@ -83,6 +83,9 @@ interface Props {
   threadOpen?: boolean;
   /** Whether to offer the first address. A 404 for anyone who may not add one. */
   canAddMailbox?: boolean;
+  /** The settings screen this reader may open, resolved so the gear does not
+   * bounce through a redirect. */
+  settingsHref?: string;
 }
 
 export function MailShell({
@@ -96,6 +99,7 @@ export function MailShell({
   openSubject,
   threadOpen = false,
   canAddMailbox = false,
+  settingsHref = "/settings",
 }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -201,6 +205,7 @@ export function MailShell({
       domains={domains}
       mailboxes={mailboxes}
       canAddMailbox={canAddMailbox}
+      settingsHref={settingsHref}
       labels={labels}
       user={user}
       composer={composer}
@@ -299,6 +304,7 @@ function NavPanel({
   domains,
   mailboxes,
   canAddMailbox,
+  settingsHref,
   labels,
   user,
   composer,
@@ -314,6 +320,7 @@ function NavPanel({
   domains: [string, Mailbox[]][];
   mailboxes: Mailbox[];
   canAddMailbox: boolean;
+  settingsHref: string;
   labels: LabelRow[];
   user: { name: string; email: string };
   composer: ReturnType<typeof useComposer>;
@@ -452,7 +459,7 @@ function NavPanel({
             </DropdownMenuLabel>
             <DropdownMenuSeparator />
             <DropdownMenuItem asChild>
-              <Link href="/settings">
+              <Link href={settingsHref}>
                 <Settings /> Settings
               </Link>
             </DropdownMenuItem>
@@ -470,7 +477,7 @@ function NavPanel({
 
         <Hint label="Settings" side="top">
           <IconButton size="md" label="Settings" asChild>
-            <Link href="/settings">
+            <Link href={settingsHref}>
               <Settings />
             </Link>
           </IconButton>
