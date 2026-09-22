@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 
 const button = cva(
   [
-    "relative inline-flex shrink-0 select-none items-center justify-center gap-1.5",
+    "relative inline-flex shrink-0 select-none items-center justify-center gap-2",
     "whitespace-nowrap font-medium transition-[background-color,color,border-color,box-shadow]",
     "duration-150 outline-none disabled:pointer-events-none disabled:opacity-45",
     "[&_svg]:pointer-events-none [&_svg]:shrink-0",
@@ -42,11 +42,17 @@ const button = cva(
         "danger-ghost": "text-muted-foreground hover:bg-danger-soft hover:text-destructive",
         link: "text-primary underline-offset-4 hover:underline",
       },
+      /*
+       * Horizontal padding is set against the label, not the height. A 13px
+       * word inside 10px of space reads as cramped however tall the button
+       * is, which is what these were: the text had grown and the padding had
+       * not followed it.
+       */
       size: {
-        xs: "h-7 rounded-lg px-2 text-[12px] [&_svg]:size-3.5",
-        sm: "h-8 rounded-lg px-2.5 text-[13px] [&_svg]:size-4",
-        md: "h-9 rounded-[10px] px-3.5 text-[13.5px] [&_svg]:size-4",
-        lg: "h-10 rounded-xl px-5 text-[14px] [&_svg]:size-4",
+        xs: "h-7 rounded-lg px-2.5 text-[12px] [&_svg]:size-3.5",
+        sm: "h-8 rounded-lg px-3 text-[13px] [&_svg]:size-4",
+        md: "h-9 rounded-[10px] px-4 text-[13.5px] [&_svg]:size-4",
+        lg: "h-10 rounded-xl px-5.5 text-[14px] [&_svg]:size-4",
       },
       // Status-bearing and primary actions are pills, per the design rules.
       pill: { true: "rounded-full", false: "" },

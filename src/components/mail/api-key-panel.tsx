@@ -381,7 +381,7 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
         }}
       />
 
-      <ApiReference appUrl={appUrl} sample={mailboxes[0]?.address ?? "hello@acme.com"} />
+      <ApiReference appUrl={appUrl} />
     </Panel>
   );
 }
@@ -927,77 +927,39 @@ function Copyable({ text, className }: { text: string; className?: string }) {
   );
 }
 
-function ApiReference({ appUrl, sample }: { appUrl: string; sample: string }) {
+function ApiReference({ appUrl }: { appUrl: string }) {
   const origin = appUrl.replace(/\/+$/, "");
   const base = `${origin}/api/v1`;
 
+  /*
+   * What belongs beside a key you have just made is where to point it and
+   * what to put in the header. Everything else — the request bodies, the SDK,
+   * the endpoint list — was a second copy of the documentation living in a
+   * settings screen, free to fall behind the real one and read by nobody who
+   * was not already in the docs.
+   */
   return (
     <div className="mt-6 border-t border-border pt-5">
       <h3 className="font-display text-[15px] font-semibold tracking-[-0.01em]">The API</h3>
       <Note className="mt-1">
-        Everything below lives under <code className="font-mono">{base}</code> and takes{" "}
+        Everything lives under <code className="font-mono">{base}</code> and takes{" "}
         <code className="font-mono">Authorization: Bearer mk_live_…</code>. Lists are paged: pass
         the <code className="font-mono">next_cursor</code> you were given back as{" "}
         <code className="font-mono">?cursor=</code>.
       </Note>
 
-      <pre className="mt-3 overflow-x-auto rounded-xl bg-muted p-3.5 font-mono text-[11.5px] leading-relaxed">
-        {`curl -X POST ${base}/emails \\
-  -H "Authorization: Bearer mk_live_..." \\
-  -H "Idempotency-Key: order-4821" \\
-  -H "Content-Type: application/json" \\
-  -d '{
-    "from": "${sample}",
-    "to": ["someone@example.com"],
-    "subject": "Hello",
-    "html": "<p>Sent through SES</p>"
-  }'`}
-      </pre>
-
-      <div className="mt-4 rounded-xl border border-border p-3.5">
-        <p className="text-[12.5px] font-medium">Or use the Node SDK</p>
-        <Note className="mt-1">
-          The same API, typed, with retries, paging and webhook signature checking already done.
-        </Note>
-        {/* The install is a shell command, not JavaScript. Run together in
-            one block it was highlighted as though it were, and read as the
-            first line of the program rather than the thing done before it. */}
-        <Copyable text="npm install @shahriyardx/mailroom" className="mt-2.5" />
-
-        <div className="mt-2 overflow-x-auto rounded-lg bg-muted p-3">
-          <CodeBlock
-            code={`import { Mailroom } from "@shahriyardx/mailroom";
-
-const mail = new Mailroom({
-  apiKey: process.env.MAILROOM_API_KEY,
-  baseUrl: "${origin}",
-});
-
-await mail.emails.send({
-  from: "${sample}",
-  to: "someone@example.com",
-  subject: "Hello",
-  html: "<p>Sent through SES</p>",
-});`}
-          />
-        </div>
-      </div>
-
-      {/* The endpoint list used to be printed here in full, which made this
-          screen a copy of the documentation that could fall behind it. What
-          is worth having beside a key you have just made is the one request
-          that proves the key works; the rest is a link. */}
       <a
         href={DOCS_URL}
         target="_blank"
         rel="noreferrer noopener"
-        className="mt-4 flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 transition-colors hover:bg-accent/50"
+        className="mt-3 flex items-center gap-2.5 rounded-xl border border-border px-3.5 py-3 transition-colors hover:bg-accent/50"
       >
         <BookOpen className="size-4 shrink-0 text-muted-foreground" />
         <span className="min-w-0 flex-1">
           <span className="block text-[12.5px] font-medium">Every endpoint, in the docs</span>
           <span className="block text-[11.5px] text-muted-foreground">
-            Sending, threads, templates, webhooks, and which scope each one needs
+            Sending, threads, lists, templates and webhooks, with the scope each one needs and a
+            request you can copy
           </span>
         </span>
         <ArrowUpRight className="size-3.5 shrink-0 text-muted-foreground" />

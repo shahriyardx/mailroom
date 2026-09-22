@@ -95,7 +95,7 @@ export function ListDetailPanel({
   }
 
   const add = (
-    <Button variant="solid" onClick={() => setAdding(true)}>
+    <Button variant="solid" size="md" onClick={() => setAdding(true)}>
       <UserPlus />
       Add people
     </Button>
@@ -119,7 +119,7 @@ export function ListDetailPanel({
             : ""
         }`}
       >
-        <Button variant="danger" disabled={busy} onClick={() => setDeleting(true)}>
+        <Button variant="danger" size="md" disabled={busy} onClick={() => setDeleting(true)}>
           <Trash2 />
           Delete
         </Button>

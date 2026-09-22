@@ -43,7 +43,7 @@ export function ListsPanel({ lists }: { lists: ListSummary[] }) {
   }, [lists, query]);
 
   const create = (
-    <Button variant="solid" onClick={() => setOpen(true)}>
+    <Button variant="solid" size="md" onClick={() => setOpen(true)}>
       <Plus />
       Create list
     </Button>

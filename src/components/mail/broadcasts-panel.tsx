@@ -95,7 +95,7 @@ export function BroadcastsPanel({
   }
 
   const create = (
-    <Button variant="solid" disabled={!ready} onClick={() => setOpen(true)}>
+    <Button variant="solid" size="md" disabled={!ready} onClick={() => setOpen(true)}>
       <Plus />
       Create broadcast
     </Button>

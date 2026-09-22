@@ -136,18 +136,21 @@ export function Panel({
   );
 
   /*
-   * On an application screen the heading sits above the surface, not inside
-   * it — the same shape as the screens written for this view, so a borrowed
-   * one does not announce that it was borrowed. The content keeps a gutter of
-   * its own because list rows are written to take it from their container.
+   * On an application screen the heading sits above its content rather than
+   * inside a card with it — the shape the screens written for this view
+   * already use, so a borrowed one does not announce that it was borrowed.
+   *
+   * No card around the content. An earlier version put one there and every
+   * panel whose content is its own surface — a search field, a bordered list,
+   * a table — became a box inside a box, with its dividers inset from a
+   * border they were already drawing against. A page that wants a card asks
+   * for one; a panel does not impose it.
    */
   if (app) {
     return (
-      <section data-slot="panel" className={cn("mb-7 last:mb-0", className)} {...props}>
+      <section data-slot="panel" className={cn("mb-8 last:mb-0", className)} {...props}>
         {heading}
-        <div className="overflow-hidden rounded-2xl border border-border bg-card px-4">
-          {children}
-        </div>
+        {children}
       </section>
     );
   }
