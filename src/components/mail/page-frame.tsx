@@ -16,24 +16,36 @@ import { Search } from "lucide-react";
 export function PageHeader({
   title,
   count,
+  description,
   children,
 }: {
   title: string;
   /** Shown beside the title when there is something to count. */
   count?: number;
+  /**
+   * What this page is, under its name. For a state that belongs to the thing
+   * itself — how many people are on this list — rather than beside a search
+   * box, where it reads as a stray result count.
+   */
+  description?: React.ReactNode;
   /** The primary action, and anything beside it. */
   children?: React.ReactNode;
 }) {
   return (
-    <div className="mb-5 flex flex-wrap items-center gap-3">
-      <h1 className="flex min-w-0 flex-1 items-center gap-2.5 font-display text-[26px] font-semibold tracking-[-0.025em]">
-        {title}
-        {count !== undefined && count > 0 ? (
-          <span className="rounded-md bg-muted px-1.5 py-0.5 font-sans text-[12px] font-medium text-muted-foreground">
-            {count}
-          </span>
+    <div className="mb-5 flex flex-wrap items-start gap-3">
+      <div className="min-w-0 flex-1">
+        <h1 className="flex min-w-0 items-center gap-2.5 font-display text-[26px] font-semibold tracking-[-0.025em]">
+          {title}
+          {count !== undefined && count > 0 ? (
+            <span className="rounded-md bg-muted px-1.5 py-0.5 font-sans text-[12px] font-medium text-muted-foreground">
+              {count}
+            </span>
+          ) : null}
+        </h1>
+        {description ? (
+          <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
         ) : null}
-      </h1>
+      </div>
       {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
     </div>
   );

@@ -109,7 +109,14 @@ export function ListDetailPanel({
         All lists
       </Link>
 
-      <PageHeader title={list.name} count={members.length}>
+      <PageHeader
+        title={list.name}
+        description={`${list.subscribed.toLocaleString()} subscribed${
+          list.total > list.subscribed
+            ? ` · ${(list.total - list.subscribed).toLocaleString()} not`
+            : ""
+        }`}
+      >
         <Button
           variant="ghost"
           disabled={busy}
@@ -125,15 +132,11 @@ export function ListDetailPanel({
         {add}
       </PageHeader>
 
-      <Toolbar>
-        <SearchBox value={query} onChange={setQuery} placeholder="Search this list…" />
-        <span className="text-[12px] text-muted-foreground">
-          {list.subscribed.toLocaleString()} subscribed
-          {list.total > list.subscribed
-            ? ` · ${(list.total - list.subscribed).toLocaleString()} not`
-            : ""}
-        </span>
-      </Toolbar>
+      {members.length > 0 ? (
+        <Toolbar>
+          <SearchBox value={query} onChange={setQuery} placeholder="Search this list…" />
+        </Toolbar>
+      ) : null}
 
       <Surface>
         {members.length === 0 ? (
