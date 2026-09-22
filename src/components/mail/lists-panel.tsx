@@ -23,10 +23,10 @@ import {
   setListMemberStatusAction,
 } from "@/server/actions";
 import type { ListRow as ListSummary, MemberRow } from "@/server/campaigns";
-import { ListChecks, Plus, UserPlus, Users } from "lucide-react";
+import { FileUp, ListChecks, Plus, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState, useTransition } from "react";
+import { useMemo, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 /**
@@ -59,6 +59,30 @@ export function ListsPanel({
   const [name, setName] = useState("");
   const [paste, setPaste] = useState("");
   const [source, setSource] = useState("");
+  const [fileName, setFileName] = useState<string | null>(null);
+  const filePicker = useRef<HTMLInputElement>(null);
+
+  /*
+   * The file is read here and its text put in the box, rather than uploaded.
+   *
+   * There is nothing to store — the addresses go straight into rows — so an
+   * upload endpoint would only add a place for a half-finished import to sit.
+   * Putting the text in the box also means somebody can see what they are
+   * about to add, and fix a stray line, before anything is written.
+   */
+  function readFile(file: File) {
+    const reader = new FileReader();
+    reader.onload = () => {
+      setPaste(String(reader.result ?? ""));
+      setFileName(file.name);
+      if (!source.trim()) setSource(`imported from ${file.name}`);
+    };
+    reader.onerror = () => toast.error("That file could not be read");
+    reader.readAsText(file);
+  }
+
+  /** Roughly what will be added, so the count is not a surprise. */
+  const lineCount = paste.split(/\r?\n/).filter((line) => line.trim()).length;
 
   const shown = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -288,7 +312,8 @@ export function ListsPanel({
           <DialogHeader>
             <DialogTitle>Add people to {selected?.name}</DialogTitle>
             <DialogDescription>
-              One address per line. Add a name after a comma if you have one.
+              Upload a CSV, or paste one address per line. A name after a comma is used if you have
+              one.
             </DialogDescription>
           </DialogHeader>
 
@@ -310,19 +335,58 @@ export function ListsPanel({
                   }`,
                 );
                 setPaste("");
+                setFileName(null);
                 setAdding(false);
                 router.refresh();
               });
             }}
           >
-            <Field label="Addresses">
+            <button
+              type="button"
+              onClick={() => filePicker.current?.click()}
+              onDragOver={(event) => event.preventDefault()}
+              onDrop={(event) => {
+                event.preventDefault();
+                const file = event.dataTransfer.files[0];
+                if (file) readFile(file);
+              }}
+              className="flex w-full items-center gap-3 rounded-xl border border-border border-dashed px-3.5 py-3 text-left transition-colors hover:border-primary/50 hover:bg-muted/30"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">
+                <FileUp />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[13px] font-medium">{fileName ?? "Upload a CSV"}</span>
+                <span className="block text-[12px] text-muted-foreground">
+                  {fileName
+                    ? "Loaded below. Choose another to replace it."
+                    : "Or drop one here. A header row naming its columns is understood."}
+                </span>
+              </span>
+            </button>
+            <input
+              ref={filePicker}
+              type="file"
+              accept=".csv,.txt,text/csv,text/plain"
+              className="hidden"
+              onChange={(event) => {
+                const file = event.target.files?.[0];
+                if (file) readFile(file);
+                // Lets the same file be chosen twice in a row.
+                event.target.value = "";
+              }}
+            />
+
+            <Field label="Addresses" hint={lineCount > 0 ? `${lineCount} lines` : undefined}>
               <Textarea
                 value={paste}
-                onChange={(event) => setPaste(event.target.value)}
+                onChange={(event) => {
+                  setPaste(event.target.value);
+                  setFileName(null);
+                }}
                 placeholder={"ada@example.com, Ada Lovelace\nbob@example.com"}
                 rows={6}
                 disabled={busy}
-                autoFocus
               />
             </Field>
             <Field

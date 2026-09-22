@@ -225,3 +225,55 @@ describe("starting a broadcast", () => {
     await assert.rejects(() => startBroadcast(account.orgId, id), /already been started/);
   });
 });
+
+describe("reading a file somebody uploaded", () => {
+  it("takes one address per line", async () => {
+    const { parseMemberList } = await import("@/server/campaigns");
+    const people = parseMemberList("ada@example.com\nbob@example.com");
+
+    assert.deepEqual(
+      people.map((person) => person.address),
+      ["ada@example.com", "bob@example.com"],
+    );
+  });
+
+  it("takes an address and a name", async () => {
+    const { parseMemberList } = await import("@/server/campaigns");
+    const [person] = parseMemberList("ada@example.com, Ada Lovelace");
+
+    assert.equal(person?.address, "ada@example.com");
+    assert.equal(person?.name, "Ada Lovelace");
+  });
+
+  it("keeps a quoted name with a comma in it whole", async () => {
+    const { parseMemberList } = await import("@/server/campaigns");
+    // Every export from every other tool quotes names like this. Splitting on
+    // commas alone turns a normal file into nonsense.
+    const [person] = parseMemberList('ada@example.com,"Lovelace, Ada"');
+
+    assert.equal(person?.name, "Lovelace, Ada");
+  });
+
+  it("uses a header row when the file has one", async () => {
+    const { parseMemberList } = await import("@/server/campaigns");
+    const [person] = parseMemberList("name,email\nAda Lovelace,ada@example.com");
+
+    assert.equal(person?.address, "ada@example.com");
+    assert.equal(person?.name, "Ada Lovelace");
+  });
+
+  it("keeps the other columns as merge fields", async () => {
+    const { parseMemberList } = await import("@/server/campaigns");
+    const [person] = parseMemberList("email,name,plan\nada@example.com,Ada,pro");
+
+    assert.deepEqual(person?.fields, { plan: "pro" });
+  });
+
+  it("does not eat the first line when there is no header", async () => {
+    const { parseMemberList } = await import("@/server/campaigns");
+    // A file with no header starts with a real person, and losing them is a
+    // silent wrong answer rather than an error anybody would notice.
+    const people = parseMemberList("ada@example.com\nbob@example.com");
+    assert.equal(people.length, 2);
+  });
+});

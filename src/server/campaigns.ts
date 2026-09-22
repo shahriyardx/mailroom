@@ -232,21 +232,101 @@ export async function addMembers(
 }
 
 /**
- * One address per line, optionally `address, name`.
+ * Splits one CSV line, respecting quotes.
  *
- * Not a full CSV parser on purpose: quoted fields with commas in them are a
- * problem worth having a library for, and this handles the shape people
- * actually paste.
+ * `"Lovelace, Ada",ada@example.com` is two fields, not three. Every export
+ * from every other mailing tool quotes names that way, so splitting on commas
+ * alone turns a normal export into nonsense.
+ */
+function splitRow(line: string): string[] {
+  const out: string[] = [];
+  let field = "";
+  let quoted = false;
+
+  for (let i = 0; i < line.length; i += 1) {
+    const character = line[i];
+
+    if (quoted) {
+      // "" inside a quoted field is one literal quote.
+      if (character === '"' && line[i + 1] === '"') {
+        field += '"';
+        i += 1;
+      } else if (character === '"') {
+        quoted = false;
+      } else {
+        field += character;
+      }
+      continue;
+    }
+
+    if (character === '"') quoted = true;
+    else if (character === ",") {
+      out.push(field.trim());
+      field = "";
+    } else field += character;
+  }
+
+  out.push(field.trim());
+  return out;
+}
+
+/** Which column holds what, when the file came with a header row. */
+function readHeader(cells: string[]) {
+  const lower = cells.map((cell) => cell.toLowerCase().replace(/[\s_-]/g, ""));
+  const address = lower.findIndex((cell) =>
+    ["email", "emailaddress", "address", "e-mail", "mail"].includes(cell),
+  );
+  if (address === -1) return null;
+
+  const name = lower.findIndex((cell) =>
+    ["name", "fullname", "firstname", "displayname"].includes(cell),
+  );
+  return { address, name, labels: cells };
+}
+
+/**
+ * Whatever somebody pasted or uploaded, as people.
+ *
+ * Handles the three shapes that actually turn up: one address per line, an
+ * `address, name` pair per line, and a CSV exported from something else with
+ * a header row naming its columns.
+ *
+ * A header is detected rather than demanded, because half of what gets pasted
+ * in has none. Columns beyond address and name are kept as merge fields, so an
+ * export carrying a plan or a city can be used in a subject line without
+ * anybody having to reshape the file first.
  */
 export function parseMemberList(text: string): MemberInput[] {
-  return text
-    .split(/[\r\n]+/)
+  const rows = text
+    .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      const [address, ...rest] = line.split(",");
-      return { address: address ?? "", name: rest.join(",").trim() || null };
-    });
+    .map(splitRow);
+
+  if (rows.length === 0) return [];
+
+  const header = rows[0] ? readHeader(rows[0]) : null;
+  const body = header ? rows.slice(1) : rows;
+
+  return body.map((cells) => {
+    if (!header) {
+      return { address: cells[0] ?? "", name: cells.slice(1).join(", ").trim() || null };
+    }
+
+    const fields: Record<string, string> = {};
+    for (let i = 0; i < cells.length; i += 1) {
+      if (i === header.address || i === header.name) continue;
+      const label = header.labels[i]?.trim();
+      const value = cells[i]?.trim();
+      if (label && value) fields[label] = value;
+    }
+
+    return {
+      address: cells[header.address] ?? "",
+      name: (header.name === -1 ? null : cells[header.name]?.trim()) || null,
+      fields,
+    };
+  });
 }
 
 export async function setMemberStatus(

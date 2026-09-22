@@ -27,6 +27,28 @@ shown next to them.
 This matters on the day somebody asks why you are emailing them. "We do not
 record that" is a bad answer, and under GDPR it is the wrong one.
 
+### Uploading a file
+
+Drop a CSV on the **Add people** dialog, or pick one. It is read in your
+browser and its contents put in the box, so you can see what you are about to
+add before anything is written.
+
+Three shapes are understood:
+
+| The file | What happens |
+| --- | --- |
+| One address per line | Each becomes a person with no name |
+| `ada@example.com, Ada Lovelace` | The part after the comma becomes the name |
+| A CSV with a header row | Columns named `email` and `name` are found wherever they sit |
+
+Quoted fields are handled, so `"Lovelace, Ada",ada@example.com` is a name and
+an address rather than three broken columns — which is what every export from
+every other tool looks like.
+
+Any **other** column in a file with a header is kept as a merge field, so an
+export carrying a plan or a city can be used in a subject line without
+reshaping the file first.
+
 ::: tip Re-importing is safe
 Somebody already on the list is left exactly as they are. Importing last
 month's file again will **not** resubscribe anybody who has left since — which
