@@ -1,9 +1,14 @@
 # Campaigns
 
-**Settings → Lists** and **Settings → Broadcasts.**
+**Campaigns**, the second view of the app.
 
 One message, written once, sent to everybody on a list. Switched off by
-default — turn **Campaigns** on in [Settings → Features](/guide/features).
+default — turn **Campaigns** on in [Settings → Features](/guide/features), and
+a switcher appears at the top of the sidebar to move between your mail and
+your campaigns.
+
+An instance with **only** Campaigns on has no mail view at all, and opens
+straight onto the campaigns overview.
 
 ## Lists are not your contacts
 

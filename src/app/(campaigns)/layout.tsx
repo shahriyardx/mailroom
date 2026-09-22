@@ -2,6 +2,7 @@ import { Toaster } from "@/components/kit";
 import { CampaignsShell } from "@/components/mail/campaigns-shell";
 import { ThemeSync } from "@/components/mail/theme-sync";
 import { requireAccess } from "@/server/access";
+import { CAPABILITIES, can } from "@/server/permissions";
 import { getAppearance } from "@/server/preferences";
 import { needsSetup, workspaceSettings } from "@/server/workspace";
 import { notFound, redirect } from "next/navigation";
@@ -15,12 +16,16 @@ export default async function CampaignsLayout({ children }: { children: React.Re
   if (!settings.campaignsEnabled) notFound();
 
   const look = await getAppearance(access.userId);
+  const allowed = Object.keys(CAPABILITIES).filter((capability) =>
+    can(access, capability as keyof typeof CAPABILITIES),
+  );
 
   return (
     <>
       <ThemeSync theme={look.theme} />
       <CampaignsShell
         user={{ name: access.name ?? access.email, email: access.email }}
+        allowed={allowed}
         showSwitcher={settings.inboxEnabled}
         title="Campaigns"
       >

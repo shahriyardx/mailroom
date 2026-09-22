@@ -23,6 +23,8 @@ invitation. No public sign-up.
 - **Subdomains for free** — a subdomain of a verified domain needs no records
 - **Worker deployed from the app** — no `wrangler`
 - **Forwarding** — off until you set it up, then a copy of inbound mail sent on, per instance, per domain or per mailbox
+- **Campaigns** — lists, broadcasts and one-click unsubscribe, as a second view you switch into
+- **First-run setup** — three questions and a live checklist, instead of an empty inbox
 - **Delivery reporting** — delivered, bounced, complained, automatic suppression
 - **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`

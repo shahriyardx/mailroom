@@ -3,7 +3,21 @@
 import { Avatar, IconButton, Sheet, SheetContent, SheetTitle, Wordmark } from "@/components/kit";
 import { ViewSwitcher } from "@/components/mail/view-switcher";
 import { cn } from "@/lib/utils";
-import { Gauge, ListChecks, Megaphone, Menu, Settings } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
+import {
+  Activity,
+  FileText,
+  Gauge,
+  Globe,
+  KeyRound,
+  ListChecks,
+  Megaphone,
+  Menu,
+  ScrollText,
+  Settings,
+  ShieldOff,
+  Webhook,
+} from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
@@ -16,19 +30,71 @@ import { useEffect, useState } from "react";
  * levels down under a gear icon says it is an afterthought.
  */
 
-const ITEMS = [
-  { href: "/campaigns", label: "Overview", icon: Gauge },
-  { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
-  { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
+interface Item {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  /** Hidden unless the person holds this capability. */
+  needs?: string;
+}
+
+/*
+ * Two groups, because they behave differently.
+ *
+ * The first is the campaigns view itself. The second is the screens a sender
+ * needs constantly — where mail comes from, what happened to it, who may call
+ * the API — which live in settings and are shared with the inbox side. They
+ * are listed here rather than left three clicks away behind a gear, because
+ * somebody sending a broadcast checks their domain and their logs far more
+ * often than they change a password.
+ */
+const GROUPS: { title?: string; items: Item[] }[] = [
+  {
+    items: [
+      { href: "/campaigns", label: "Overview", icon: Gauge },
+      { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
+      { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
+      {
+        href: "/settings/templates",
+        label: "Templates",
+        icon: FileText,
+        needs: "rules:manage",
+      },
+    ],
+  },
+  {
+    title: "Sending",
+    items: [
+      { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+      { href: "/settings/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
+      {
+        href: "/settings/reporting",
+        label: "Delivery",
+        icon: Activity,
+        needs: "domain:manage",
+      },
+      {
+        href: "/settings/blocked",
+        label: "Blocked",
+        icon: ShieldOff,
+        needs: "rules:manage",
+      },
+      { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
+      { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
+    ],
+  },
 ];
 
 export function CampaignsShell({
   user,
+  allowed,
   showSwitcher,
   title,
   children,
 }: {
   user: { name: string; email: string };
+  /** The capabilities this person holds; anything else is not offered. */
+  allowed: string[];
   /** Only when the inbox is switched on too — otherwise there is nowhere to go. */
   showSwitcher: boolean;
   title: string;
@@ -52,31 +118,45 @@ export function CampaignsShell({
         </div>
       ) : null}
 
-      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5">
-        <ul className="space-y-0.5">
-          {ITEMS.map((item) => {
-            const active =
-              item.href === "/campaigns"
-                ? pathname === "/campaigns"
-                : pathname.startsWith(item.href);
-            return (
-              <li key={item.href}>
-                <Link
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors [&_svg]:size-4",
-                    active
-                      ? "bg-card font-medium text-foreground shadow-sm"
-                      : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
-                  )}
-                >
-                  <item.icon />
-                  {item.label}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
+      <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-2.5 pb-3">
+        {GROUPS.map((group) => {
+          const items = group.items.filter((item) => !item.needs || allowed.includes(item.needs));
+          if (items.length === 0) return null;
+
+          return (
+            <div key={group.title ?? "top"}>
+              {group.title ? (
+                <p className="mb-1 px-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+                  {group.title}
+                </p>
+              ) : null}
+              <ul className="space-y-0.5">
+                {items.map((item) => {
+                  const active =
+                    item.href === "/campaigns"
+                      ? pathname === "/campaigns"
+                      : pathname.startsWith(item.href);
+                  return (
+                    <li key={item.href}>
+                      <Link
+                        href={item.href}
+                        className={cn(
+                          "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors [&_svg]:size-4",
+                          active
+                            ? "bg-card font-medium text-foreground shadow-sm"
+                            : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
+                        )}
+                      >
+                        <item.icon />
+                        {item.label}
+                      </Link>
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          );
+        })}
       </nav>
 
       <div className="shrink-0 border-t border-border p-2.5">
