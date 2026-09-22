@@ -2,6 +2,7 @@ import "server-only";
 
 import { db } from "@/db";
 import { type Template, template } from "@/db/schema";
+import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { SLUG_PATTERN, TemplateError, renderTemplateParts, slugify } from "@/lib/template";
 import { newId } from "@/lib/utils";
 import { and, asc, eq, ne } from "drizzle-orm";
@@ -54,6 +55,21 @@ export interface TemplateInput {
   subject?: string;
   html?: string | null;
   text?: string | null;
+  /** Set by the builder. Whatever it holds decides `html` and `text`. */
+  design?: EmailDesign | null;
+}
+
+/**
+ * A design wins over whatever HTML came with it.
+ *
+ * The builder cannot send a design and a body that disagree, and neither can
+ * anything else: the body is compiled here, once, on the way in. The HTML
+ * column stays the thing sending reads, so a template written by hand or by
+ * the API carries no design and is unaffected.
+ */
+function compiled(input: Partial<TemplateInput>) {
+  if (!input.design) return { html: input.html, text: input.text };
+  return { html: renderDesign(input.design), text: designToText(input.design) };
 }
 
 export class TemplateConflict extends Error {
@@ -89,6 +105,7 @@ export async function createTemplate(orgId: string, input: TemplateInput, userId
   const clash = await findTemplate(orgId, slug);
   if (clash) throw new TemplateConflict(slug);
 
+  const body = compiled(input);
   const id = newId("tpl");
   const [row] = await db
     .insert(template)
@@ -99,8 +116,9 @@ export async function createTemplate(orgId: string, input: TemplateInput, userId
       slug,
       description: input.description?.trim() || null,
       subject: input.subject ?? "",
-      html: input.html || null,
-      text: input.text || null,
+      html: body.html || null,
+      text: body.text || null,
+      design: input.design ?? null,
       createdBy: userId ?? null,
     })
     .returning();
@@ -132,6 +150,8 @@ export async function updateTemplate(orgId: string, id: string, input: Partial<T
     if (clash) throw new TemplateConflict(slug);
   }
 
+  const body = compiled(input);
+
   const [row] = await db
     .update(template)
     .set({
@@ -140,8 +160,9 @@ export async function updateTemplate(orgId: string, id: string, input: Partial<T
       description:
         input.description === undefined ? existing.description : input.description?.trim() || null,
       subject: input.subject === undefined ? existing.subject : input.subject,
-      html: input.html === undefined ? existing.html : input.html || null,
-      text: input.text === undefined ? existing.text : input.text || null,
+      html: body.html === undefined ? existing.html : body.html || null,
+      text: body.text === undefined ? existing.text : body.text || null,
+      design: input.design === undefined ? existing.design : input.design,
       updatedAt: new Date(),
     })
     .where(eq(template.id, existing.id))

@@ -225,6 +225,13 @@
       "when": 1789976470306,
       "tag": "0031_campaigns",
       "breakpoints": true
+    },
+    {
+      "idx": 32,
+      "version": "7",
+      "when": 1789976530306,
+      "tag": "0032_template_design",
+      "breakpoints": true
     }
   ]
 }

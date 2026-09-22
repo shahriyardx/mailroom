@@ -1,0 +1,1663 @@
+"use client";
+
+import {
+  Button,
+  ConfirmDialog,
+  IconButton,
+  Input,
+  Note,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Skeleton,
+  Tabs,
+  TabsList,
+  TabsTrigger,
+  Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/kit";
+import type { Template } from "@/db/schema";
+import {
+  type Align,
+  type Block,
+  type BlockKind,
+  type BlockStyle,
+  type EmailDesign,
+  type EmailTheme,
+  FONTS,
+  HEADING_DEFAULTS,
+  type Padding,
+  designToText,
+  emptyDesign,
+  newBlock,
+  readDesign,
+  renderDesign,
+} from "@/lib/email-blocks";
+import { slugify, templateVariables } from "@/lib/template";
+import { useSubmit } from "@/lib/use-submit";
+import { cn, newId } from "@/lib/utils";
+import { createTemplateAction, deleteTemplateAction, updateTemplateAction } from "@/server/actions";
+import {
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ArrowLeft,
+  ChevronDown,
+  ChevronUp,
+  Code2,
+  Columns2,
+  Copy,
+  CornerDownRight,
+  Eye,
+  FileCode2,
+  GripVertical,
+  Heading as HeadingIcon,
+  Image as ImageIcon,
+  Link2,
+  Minus,
+  MousePointerClick,
+  Plus,
+  Quote as QuoteIcon,
+  Trash2,
+  Type,
+  UnfoldVertical,
+  UserMinus,
+} from "lucide-react";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
+import { EmailFrame } from "./email-frame";
+import { RichEditor } from "./rich-editor";
+
+/**
+ * The template builder: a palette, a canvas and an inspector.
+ *
+ * The canvas draws each block in React rather than in the iframe the email
+ * will actually arrive in, because a block has to be clickable to be edited
+ * and nothing inside an iframe is. The styles here stay deliberately close to
+ * the ones {@link renderDesign} writes, and Preview shows the real compiled
+ * HTML — so the approximation is never the last word on how something looks.
+ */
+
+const CodeEditor = dynamic(() => import("./code-editor").then((module) => module.CodeEditor), {
+  ssr: false,
+  loading: () => <Skeleton className="h-[420px] rounded-[10px]" />,
+});
+
+const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: typeof Type }[] }[] =
+  [
+    {
+      group: "Content",
+      items: [
+        { kind: "heading", label: "Heading", icon: HeadingIcon },
+        { kind: "text", label: "Text", icon: Type },
+        { kind: "quote", label: "Quote", icon: QuoteIcon },
+        { kind: "code", label: "Code", icon: Code2 },
+        { kind: "image", label: "Image", icon: ImageIcon },
+      ],
+    },
+    {
+      group: "Layout",
+      items: [
+        { kind: "button", label: "Button", icon: MousePointerClick },
+        { kind: "columns", label: "Columns", icon: Columns2 },
+        { kind: "divider", label: "Divider", icon: Minus },
+        { kind: "spacer", label: "Spacer", icon: UnfoldVertical },
+      ],
+    },
+    {
+      group: "Mailing",
+      items: [
+        { kind: "social", label: "Social links", icon: Link2 },
+        { kind: "footer", label: "Unsubscribe", icon: UserMinus },
+        { kind: "html", label: "Raw HTML", icon: FileCode2 },
+      ],
+    },
+  ];
+
+const LABELS: Record<BlockKind, string> = {
+  heading: "Heading",
+  text: "Text",
+  button: "Button",
+  image: "Image",
+  divider: "Divider",
+  spacer: "Spacer",
+  columns: "Columns",
+  quote: "Quote",
+  code: "Code",
+  social: "Social links",
+  footer: "Unsubscribe footer",
+  html: "Raw HTML",
+};
+
+interface Details {
+  name: string;
+  slug: string;
+  description: string;
+  subject: string;
+}
+
+export function TemplateBuilder({
+  template,
+  basePath,
+}: {
+  template: Template | null;
+  basePath: string;
+}) {
+  const router = useRouter();
+  const [busy, submit] = useSubmit();
+
+  const [details, setDetails] = useState<Details>({
+    name: template?.name ?? "",
+    slug: template?.slug ?? "",
+    description: template?.description ?? "",
+    subject: template?.subject ?? "",
+  });
+
+  const [design, setDesign] = useState<EmailDesign>(
+    () => readDesign(template?.design) ?? emptyDesign(),
+  );
+  const [html, setHtml] = useState(template?.html ?? "");
+
+  // A template that arrived as pasted HTML opens in the HTML pane: dropping it
+  // onto an empty canvas would look like the builder had eaten it.
+  const [mode, setMode] = useState<"design" | "html">(
+    template && !template.design && template.html ? "html" : "design",
+  );
+
+  const [selected, setSelected] = useState<string | null>(null);
+  const [tab, setTab] = useState<"block" | "page" | "details">("details");
+  const [previewing, setPreviewing] = useState(false);
+  const [removing, setRemoving] = useState(false);
+
+  const block = design.blocks.find((entry) => entry.id === selected) ?? null;
+
+  const compiled = useMemo(
+    () => (mode === "design" ? renderDesign(design) : html),
+    [mode, design, html],
+  );
+
+  // The subject carries variables as often as the body does.
+  const variables = useMemo(
+    () => templateVariables(details.subject, compiled),
+    [details.subject, compiled],
+  );
+
+  function patch(id: string, changes: Partial<Block>) {
+    setDesign((current) => ({
+      ...current,
+      blocks: current.blocks.map((entry) =>
+        entry.id === id ? ({ ...entry, ...changes } as Block) : entry,
+      ),
+    }));
+  }
+
+  function style(id: string, changes: Partial<BlockStyle>) {
+    setDesign((current) => ({
+      ...current,
+      blocks: current.blocks.map((entry) =>
+        entry.id === id ? ({ ...entry, style: { ...entry.style, ...changes } } as Block) : entry,
+      ),
+    }));
+  }
+
+  function add(kind: BlockKind, at?: number) {
+    const fresh = newBlock(kind, newId("blk"));
+    setDesign((current) => {
+      const blocks = [...current.blocks];
+      blocks.splice(at ?? blocks.length, 0, fresh);
+      return { ...current, blocks };
+    });
+    setSelected(fresh.id);
+    setTab("block");
+  }
+
+  function move(id: string, by: number) {
+    setDesign((current) => {
+      const index = current.blocks.findIndex((entry) => entry.id === id);
+      const next = index + by;
+      if (index < 0 || next < 0 || next >= current.blocks.length) return current;
+      const blocks = [...current.blocks];
+      const [moved] = blocks.splice(index, 1);
+      blocks.splice(next, 0, moved!);
+      return { ...current, blocks };
+    });
+  }
+
+  function reorder(from: number, to: number) {
+    setDesign((current) => {
+      if (from === to || from < 0 || to < 0) return current;
+      const blocks = [...current.blocks];
+      const [moved] = blocks.splice(from, 1);
+      blocks.splice(to > from ? to - 1 : to, 0, moved!);
+      return { ...current, blocks };
+    });
+  }
+
+  function duplicate(id: string) {
+    setDesign((current) => {
+      const index = current.blocks.findIndex((entry) => entry.id === id);
+      if (index < 0) return current;
+      const copy = { ...current.blocks[index]!, id: newId("blk") };
+      const blocks = [...current.blocks];
+      blocks.splice(index + 1, 0, copy);
+      return { ...current, blocks };
+    });
+  }
+
+  function remove(id: string) {
+    setDesign((current) => ({
+      ...current,
+      blocks: current.blocks.filter((entry) => entry.id !== id),
+    }));
+    setSelected((current) => (current === id ? null : current));
+  }
+
+  function save() {
+    const name = details.name.trim();
+    if (!name) {
+      toast.error("A template needs a name");
+      setTab("details");
+      return;
+    }
+
+    const payload = {
+      name,
+      slug: details.slug.trim() || slugify(name),
+      description: details.description,
+      subject: details.subject,
+      // Only one of the two goes: a design compiles to the body on the server,
+      // and clearing it is how a template becomes hand-written HTML.
+      ...(mode === "design"
+        ? { design }
+        : { design: null, html, text: template?.text ?? undefined }),
+    };
+
+    submit(async () => {
+      try {
+        if (template) {
+          await updateTemplateAction(template.id, payload);
+          toast.success("Template saved");
+          router.refresh();
+        } else {
+          const created = await createTemplateAction(payload);
+          toast.success("Template created");
+          router.replace(`${basePath}/${created.id}`);
+        }
+      } catch (error) {
+        toast.error(error instanceof Error ? error.message : "Could not save the template");
+      }
+    });
+  }
+
+  return (
+    /* The whole frame. Three panes that scroll independently, so the palette
+       and the inspector stay put while a long email is read through. */
+    <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
+      {/* -- the bar ------------------------------------------------------- */}
+      <header className="flex h-14 shrink-0 items-center gap-3 border-border border-b px-4">
+        <Button variant="ghost" size="sm" asChild>
+          <Link href={basePath}>
+            <ArrowLeft />
+            Templates
+          </Link>
+        </Button>
+
+        <span className="h-5 w-px bg-border" />
+
+        <Input
+          value={details.name}
+          onChange={(event) => {
+            const name = event.target.value;
+            setDetails((current) => ({
+              ...current,
+              name,
+              // The slug follows the name until somebody gives it one of its
+              // own, and never again: a program is holding onto it.
+              slug:
+                template || current.slug !== slugify(current.name) ? current.slug : slugify(name),
+            }));
+          }}
+          placeholder="Untitled template"
+          aria-label="Template name"
+          className="h-8 w-60 border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:bg-card focus:border-border"
+        />
+
+        <div className="ml-auto flex items-center gap-2">
+          <Tabs value={mode} onValueChange={(value) => setMode(value as "design" | "html")}>
+            <TabsList variant="segmented">
+              <TabsTrigger value="design">Builder</TabsTrigger>
+              <TabsTrigger value="html">HTML</TabsTrigger>
+            </TabsList>
+          </Tabs>
+
+          <Button
+            variant={previewing ? "solid" : "outline"}
+            size="sm"
+            pill
+            onClick={() => setPreviewing((current) => !current)}
+          >
+            <Eye />
+            Preview
+          </Button>
+
+          {template && (
+            <IconButton label="Delete template" size="sm" onClick={() => setRemoving(true)}>
+              <Trash2 className="size-4" />
+            </IconButton>
+          )}
+
+          <Button variant="solid" size="sm" pill onClick={save} disabled={busy}>
+            {busy ? "Saving…" : template ? "Save" : "Create"}
+          </Button>
+        </div>
+      </header>
+
+      {/* -- palette, canvas, inspector ------------------------------------ */}
+      <div className="flex min-h-0 flex-1">
+        {mode === "design" && !previewing && (
+          <aside className="w-[188px] shrink-0 overflow-y-auto border-border border-r bg-card py-3">
+            {PALETTE.map((section) => (
+              <div key={section.group} className="mb-3 px-2">
+                <p className="eyebrow mb-1 px-2">{section.group}</p>
+                {section.items.map((item) => (
+                  <button
+                    key={item.kind}
+                    type="button"
+                    onClick={() => add(item.kind)}
+                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground transition-colors hover:bg-accent"
+                  >
+                    <item.icon className="size-4 text-muted-foreground" />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </aside>
+        )}
+
+        <div className="min-w-0 flex-1 overflow-y-auto bg-muted/30 px-6 py-6">
+          {previewing ? (
+            <div className="mx-auto max-w-[760px] overflow-hidden rounded-xl border border-border bg-card">
+              <div className="border-border border-b px-4 py-2.5 text-[13px]">
+                <span className="text-muted-foreground">Subject: </span>
+                {details.subject || <span className="text-muted-foreground">(none)</span>}
+              </div>
+              <EmailFrame
+                html={compiled || null}
+                text={mode === "design" ? designToText(design) : (template?.text ?? null)}
+                imagesAllowed
+              />
+            </div>
+          ) : mode === "html" ? (
+            <div className="mx-auto max-w-[900px] space-y-3">
+              <Note>
+                Written by hand. Switching back to Builder and saving replaces this with the blocks
+                on the canvas.
+              </Note>
+              <CodeEditor value={html} onChange={setHtml} minRows={24} />
+            </div>
+          ) : (
+            <Canvas
+              design={design}
+              selected={selected}
+              subject={details.subject}
+              onSubject={(value) => setDetails((current) => ({ ...current, subject: value }))}
+              onSelect={(id) => {
+                setSelected(id);
+                setTab("block");
+              }}
+              onPatch={patch}
+              onMove={move}
+              onReorder={reorder}
+              onDuplicate={duplicate}
+              onRemove={remove}
+              onAdd={add}
+            />
+          )}
+        </div>
+
+        {!previewing && (
+          <aside className="flex w-[304px] shrink-0 flex-col border-border border-l bg-card">
+            <div className="shrink-0 px-3 pt-3">
+              <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}>
+                <TabsList variant="segmented" className="w-full">
+                  <TabsTrigger value="block" className="flex-1">
+                    Block
+                  </TabsTrigger>
+                  <TabsTrigger value="page" className="flex-1">
+                    Page
+                  </TabsTrigger>
+                  <TabsTrigger value="details" className="flex-1">
+                    Details
+                  </TabsTrigger>
+                </TabsList>
+              </Tabs>
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto">
+              {tab === "block" &&
+                (block ? (
+                  <Inspector
+                    block={block}
+                    onPatch={(changes) => patch(block.id, changes)}
+                    onStyle={(changes) => style(block.id, changes)}
+                  />
+                ) : (
+                  <p className="p-4 text-[12.5px] leading-relaxed text-muted-foreground">
+                    Nothing selected. Click a block on the canvas to edit it, or add one from the
+                    left.
+                  </p>
+                ))}
+
+              {tab === "page" && (
+                <PageStyle
+                  theme={design.theme}
+                  onChange={(changes) =>
+                    setDesign((current) => ({
+                      ...current,
+                      theme: { ...current.theme, ...changes },
+                    }))
+                  }
+                />
+              )}
+
+              {tab === "details" && (
+                <DetailsForm
+                  details={details}
+                  onChange={(changes) => setDetails((current) => ({ ...current, ...changes }))}
+                  variables={variables}
+                  locked={Boolean(template)}
+                />
+              )}
+            </div>
+          </aside>
+        )}
+      </div>
+
+      <ConfirmDialog
+        open={removing}
+        onOpenChange={setRemoving}
+        title="Delete this template?"
+        description={template ? `${template.name} (${template.slug})` : undefined}
+        consequences="Any send that names this template starts failing with a 404. Mail already sent from it is unaffected."
+        confirmLabel="Delete template"
+        onConfirm={async () => {
+          if (!template) return;
+          await deleteTemplateAction(template.id);
+          toast.success("Template deleted");
+          router.push(basePath);
+        }}
+      />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The canvas                                                                 */
+/* -------------------------------------------------------------------------- */
+
+function Canvas({
+  design,
+  selected,
+  subject,
+  onSubject,
+  onSelect,
+  onPatch,
+  onMove,
+  onReorder,
+  onDuplicate,
+  onRemove,
+  onAdd,
+}: {
+  design: EmailDesign;
+  selected: string | null;
+  subject: string;
+  onSubject: (value: string) => void;
+  onSelect: (id: string) => void;
+  onPatch: (id: string, changes: Partial<Block>) => void;
+  onMove: (id: string, by: number) => void;
+  onReorder: (from: number, to: number) => void;
+  onDuplicate: (id: string) => void;
+  onRemove: (id: string) => void;
+  onAdd: (kind: BlockKind) => void;
+}) {
+  const theme = design.theme;
+  const dragging = useRef<number | null>(null);
+  const [over, setOver] = useState<number | null>(null);
+
+  return (
+    <div className="mx-auto w-full" style={{ maxWidth: theme.width + 120 }}>
+      <Input
+        value={subject}
+        onChange={(event) => onSubject(event.target.value)}
+        placeholder="Subject line"
+        aria-label="Subject"
+        className="mb-5 h-10 text-[14px]"
+      />
+
+      <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: theme.background }}>
+        <div
+          className="mx-auto overflow-hidden"
+          style={{
+            width: theme.width,
+            maxWidth: "100%",
+            backgroundColor: theme.surface,
+            borderRadius: theme.radius,
+            fontFamily: theme.font,
+          }}
+        >
+          {design.blocks.length === 0 ? (
+            <div className="px-8 py-16 text-center">
+              <p className="text-[13px] text-muted-foreground">
+                Nothing here yet. Add a block to start.
+              </p>
+              <div className="mt-4 flex flex-wrap justify-center gap-1.5">
+                {PALETTE[0]!.items.slice(0, 3).map((item) => (
+                  <Button
+                    key={item.kind}
+                    variant="outline"
+                    size="sm"
+                    pill
+                    onClick={() => onAdd(item.kind)}
+                  >
+                    <item.icon />
+                    {item.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            design.blocks.map((block, index) => (
+              <div
+                key={block.id}
+                draggable
+                onDragStart={() => {
+                  dragging.current = index;
+                }}
+                onDragEnd={() => {
+                  dragging.current = null;
+                  setOver(null);
+                }}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  const box = event.currentTarget.getBoundingClientRect();
+                  setOver(event.clientY < box.top + box.height / 2 ? index : index + 1);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  if (dragging.current !== null && over !== null) onReorder(dragging.current, over);
+                  dragging.current = null;
+                  setOver(null);
+                }}
+                onFocus={() => onSelect(block.id)}
+                onClick={() => onSelect(block.id)}
+                onKeyDown={(event) => {
+                  if (event.key === "Enter") onSelect(block.id);
+                }}
+                // Not a button: it is draggable and holds inputs of its own.
+                // Focus selects it, so the keyboard still reaches every block.
+                // biome-ignore lint/a11y/noNoninteractiveTabindex: a canvas block is selectable by design
+                tabIndex={0}
+                className={cn(
+                  "group relative cursor-default outline-none",
+                  "before:pointer-events-none before:absolute before:inset-0 before:z-10 before:transition-colors",
+                  selected === block.id
+                    ? "before:border-2 before:border-primary"
+                    : "hover:before:border hover:before:border-primary/40",
+                  over === index && "shadow-[inset_0_2px_0_0_var(--color-primary)]",
+                  over === index + 1 && "shadow-[inset_0_-2px_0_0_var(--color-primary)]",
+                )}
+              >
+                <BlockView
+                  block={block}
+                  theme={theme}
+                  onPatch={(changes) => onPatch(block.id, changes)}
+                />
+
+                {/* The name of the thing you are about to change, where you
+                    are about to change it. */}
+                <span
+                  className={cn(
+                    "-top-px pointer-events-none absolute left-0 z-20 rounded-br-md bg-primary px-1.5 py-0.5 font-medium text-[10px] text-primary-foreground uppercase tracking-wide",
+                    selected === block.id ? "block" : "hidden",
+                  )}
+                >
+                  {LABELS[block.type]}
+                </span>
+
+                <div className="absolute top-1.5 right-1.5 z-20 hidden items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-focus-within:flex group-hover:flex">
+                  <span className="flex size-6 cursor-grab items-center justify-center text-muted-foreground">
+                    <GripVertical className="size-3.5" />
+                  </span>
+                  <Handle label="Move up" onClick={() => onMove(block.id, -1)}>
+                    <ChevronUp className="size-3.5" />
+                  </Handle>
+                  <Handle label="Move down" onClick={() => onMove(block.id, 1)}>
+                    <ChevronDown className="size-3.5" />
+                  </Handle>
+                  <Handle label="Duplicate" onClick={() => onDuplicate(block.id)}>
+                    <Copy className="size-3.5" />
+                  </Handle>
+                  <Handle label="Delete" onClick={() => onRemove(block.id)} destructive>
+                    <Trash2 className="size-3.5" />
+                  </Handle>
+                </div>
+              </div>
+            ))
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function Handle({
+  label,
+  onClick,
+  destructive,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  destructive?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <button
+          type="button"
+          aria-label={label}
+          onClick={(event) => {
+            event.stopPropagation();
+            onClick();
+          }}
+          className={cn(
+            "flex size-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground",
+            destructive && "hover:bg-destructive/10 hover:text-destructive",
+          )}
+        >
+          {children}
+        </button>
+      </TooltipTrigger>
+      <TooltipContent>{label}</TooltipContent>
+    </Tooltip>
+  );
+}
+
+/** The padding, background and border a block's cell is drawn with. */
+function boxOf(block: Block): React.CSSProperties {
+  const style = block.style ?? {};
+  const padding = style.padding ?? [0, 32, 16, 32];
+  return {
+    padding: padding.map((value) => `${value}px`).join(" "),
+    backgroundColor: style.background,
+    border:
+      style.border && style.border.width > 0
+        ? `${style.border.width}px solid ${style.border.color}`
+        : undefined,
+    borderRadius: style.border?.radius ? `${style.border.radius}px` : undefined,
+  };
+}
+
+/** The type rules a block's copy is drawn with. */
+function typeOf(
+  block: Block,
+  theme: EmailTheme,
+  fallback: { size: number; weight: number },
+): React.CSSProperties {
+  const style = block.style ?? {};
+  return {
+    fontSize: style.fontSize ?? fallback.size,
+    lineHeight: (style.lineHeight ?? 155) / 100,
+    fontWeight: style.weight ?? fallback.weight,
+    color: style.color ?? theme.text,
+    letterSpacing: style.letterSpacing ? `${style.letterSpacing}px` : undefined,
+  };
+}
+
+/** One block, drawn about the way the compiled email will draw it. */
+function BlockView({
+  block,
+  theme,
+  onPatch,
+}: {
+  block: Block;
+  theme: EmailTheme;
+  onPatch: (changes: Partial<Block>) => void;
+}) {
+  const box = boxOf(block);
+  const stop = (event: React.SyntheticEvent) => event.stopPropagation();
+
+  switch (block.type) {
+    case "heading":
+      return (
+        <div style={box}>
+          {/* Edited where it sits: retyping a headline in a side panel and
+              watching it appear somewhere else is the thing people dislike
+              about builders. */}
+          <input
+            value={block.text}
+            onChange={(event) => onPatch({ text: event.target.value })}
+            onClick={stop}
+            className="w-full border-0 bg-transparent p-0 outline-none"
+            style={{
+              ...typeOf(block, theme, HEADING_DEFAULTS[block.level] ?? HEADING_DEFAULTS[2]),
+              textAlign: block.align,
+            }}
+          />
+        </div>
+      );
+
+    case "text":
+      return (
+        <div style={box} onClick={stop} onKeyDown={stop}>
+          <div
+            style={{ ...typeOf(block, theme, { size: 15, weight: 400 }), textAlign: block.align }}
+            className="[&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+          >
+            <RichEditor
+              value={block.html}
+              onChange={(html) => onPatch({ html })}
+              placeholder="Write something…"
+              className="-mx-2"
+            />
+          </div>
+        </div>
+      );
+
+    case "button":
+      return (
+        <div style={{ ...box, textAlign: block.align }}>
+          <span
+            style={{
+              display: block.fullWidth ? "block" : "inline-block",
+              padding: "12px 22px",
+              backgroundColor: block.fill,
+              borderRadius: block.radius,
+              ...typeOf(block, theme, { size: 15, weight: 600 }),
+              color: block.style?.color ?? "#ffffff",
+            }}
+          >
+            {block.text || "Button"}
+          </span>
+        </div>
+      );
+
+    case "image":
+      return (
+        <div style={{ ...box, textAlign: block.align }}>
+          {block.src ? (
+            // The canvas mirrors an email, where next/image does not exist.
+            <img
+              src={block.src}
+              alt={block.alt}
+              style={{
+                width: `${block.width}%`,
+                borderRadius: block.radius,
+                display: "inline-block",
+                height: "auto",
+              }}
+            />
+          ) : (
+            <div className="flex h-24 items-center justify-center gap-2 rounded-lg border border-border border-dashed text-[12.5px] text-muted-foreground">
+              <ImageIcon className="size-4" />
+              Add an image URL on the right
+            </div>
+          )}
+        </div>
+      );
+
+    case "divider":
+      return (
+        <div style={box}>
+          <div style={{ borderTop: `${block.thickness}px solid ${block.color}` }} />
+        </div>
+      );
+
+    case "spacer":
+      return (
+        <div
+          className="flex items-center justify-center border-border/60 border-y border-dashed text-[10.5px] text-muted-foreground/70"
+          style={{ height: block.size }}
+        >
+          {block.size}px
+        </div>
+      );
+
+    case "columns":
+      return (
+        <div style={{ ...box, display: "flex", gap: block.gap }} onClick={stop} onKeyDown={stop}>
+          {block.columns.map((column, index) => (
+            <div
+              key={`${block.id}-${index}`}
+              className="min-w-0 flex-1 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
+              style={typeOf(block, theme, { size: 15, weight: 400 })}
+            >
+              <RichEditor
+                value={column.html}
+                onChange={(html) =>
+                  onPatch({
+                    columns: block.columns.map((entry, at) => (at === index ? { html } : entry)),
+                  })
+                }
+                placeholder="Column…"
+                className="-mx-2"
+              />
+            </div>
+          ))}
+        </div>
+      );
+
+    case "quote":
+      return (
+        <div style={box} onClick={stop} onKeyDown={stop}>
+          <div
+            style={{
+              borderLeft: `3px solid ${block.accent}`,
+              paddingLeft: 14,
+              fontStyle: "italic",
+            }}
+          >
+            <div style={typeOf(block, theme, { size: 15, weight: 400 })}>
+              <RichEditor
+                value={block.html}
+                onChange={(html) => onPatch({ html })}
+                placeholder="Something worth repeating…"
+                className="-mx-2"
+              />
+            </div>
+          </div>
+        </div>
+      );
+
+    case "code":
+      return (
+        <div style={box}>
+          <pre className="overflow-x-auto rounded-lg bg-muted px-3.5 py-3 font-mono text-[13px] text-foreground">
+            {block.code}
+          </pre>
+        </div>
+      );
+
+    case "social":
+      return (
+        <div style={{ ...box, textAlign: block.align }}>
+          <div style={typeOf(block, theme, { size: 13, weight: 500 })}>
+            {block.links.map((link) => (
+              <span
+                key={link.label}
+                style={{ margin: "0 8px", color: block.style?.color ?? theme.link }}
+              >
+                {link.label}
+              </span>
+            ))}
+          </div>
+        </div>
+      );
+
+    case "footer":
+      return (
+        <div style={{ ...box, textAlign: block.align }}>
+          <div style={typeOf(block, theme, { size: 12, weight: 400 })}>
+            {block.text}
+            <br />
+            <span className="underline">{block.unsubscribeLabel}</span>
+          </div>
+        </div>
+      );
+
+    case "html":
+      return (
+        <div style={box}>
+          <div className="rounded-lg border border-border border-dashed bg-muted/50 px-3 py-2 font-mono text-[11.5px] text-muted-foreground">
+            Raw HTML — shown as written in Preview
+          </div>
+        </div>
+      );
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* The inspector                                                              */
+/* -------------------------------------------------------------------------- */
+
+/** A titled group of controls, closed until it is wanted. */
+function Section({
+  title,
+  children,
+  open = true,
+}: {
+  title: string;
+  children: React.ReactNode;
+  open?: boolean;
+}) {
+  const [shown, setShown] = useState(open);
+
+  return (
+    <div className="border-border border-b">
+      <button
+        type="button"
+        onClick={() => setShown((current) => !current)}
+        className="flex w-full items-center justify-between px-4 py-2.5 text-[12.5px] font-medium hover:bg-accent/50"
+      >
+        {title}
+        {shown ? (
+          <Minus className="size-3.5 text-muted-foreground" />
+        ) : (
+          <Plus className="size-3.5 text-muted-foreground" />
+        )}
+      </button>
+      {shown && <div className="space-y-2 px-4 pt-0.5 pb-3.5">{children}</div>}
+    </div>
+  );
+}
+
+/** Label on the left, control on the right — the shape of every row here. */
+function Row({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-center gap-2">
+      <span className="w-[86px] shrink-0 text-[12px] text-muted-foreground">{label}</span>
+      <div className="min-w-0 flex-1">{children}</div>
+    </div>
+  );
+}
+
+function NumberField({
+  value,
+  onChange,
+  unit = "px",
+  placeholder,
+}: {
+  value: number | undefined;
+  onChange: (value: number | undefined) => void;
+  unit?: string;
+  placeholder?: string;
+}) {
+  return (
+    <div className="relative">
+      <Input
+        type="number"
+        value={value ?? ""}
+        placeholder={placeholder}
+        onChange={(event) =>
+          onChange(event.target.value === "" ? undefined : Number(event.target.value))
+        }
+        className="h-8 pr-8 text-[12.5px] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+      />
+      <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5 text-[11px] text-muted-foreground">
+        {unit}
+      </span>
+    </div>
+  );
+}
+
+function Swatch({
+  value,
+  onChange,
+  fallback = "#000000",
+}: {
+  value: string | undefined;
+  onChange: (value: string) => void;
+  fallback?: string;
+}) {
+  return (
+    <div className="flex h-8 items-center gap-2 rounded-lg border border-border bg-card pl-1.5">
+      <input
+        type="color"
+        value={value ?? fallback}
+        onChange={(event) => onChange(event.target.value)}
+        aria-label="Colour"
+        className="size-5 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
+      />
+      <input
+        value={value ?? ""}
+        placeholder={fallback}
+        onChange={(event) => onChange(event.target.value)}
+        className="min-w-0 flex-1 border-0 bg-transparent pr-2 font-mono text-[12px] outline-none"
+      />
+    </div>
+  );
+}
+
+function AlignPicker({ value, onChange }: { value: Align; onChange: (value: Align) => void }) {
+  const options: { value: Align; icon: typeof AlignLeft; label: string }[] = [
+    { value: "left", icon: AlignLeft, label: "Left" },
+    { value: "center", icon: AlignCenter, label: "Centre" },
+    { value: "right", icon: AlignRight, label: "Right" },
+  ];
+
+  return (
+    <div className="flex h-8 gap-0.5 rounded-lg bg-muted p-0.5">
+      {options.map((option) => (
+        <button
+          key={option.value}
+          type="button"
+          aria-label={option.label}
+          aria-pressed={value === option.value}
+          onClick={() => onChange(option.value)}
+          className={cn(
+            "flex flex-1 items-center justify-center rounded-[6px] transition-colors",
+            value === option.value
+              ? "bg-card text-foreground shadow-raise"
+              : "text-muted-foreground hover:text-foreground",
+          )}
+        >
+          <option.icon className="size-3.5" />
+        </button>
+      ))}
+    </div>
+  );
+}
+
+const SIDES = ["Top", "Right", "Bottom", "Left"] as const;
+
+/**
+ * Padding, either as one number or as four.
+ *
+ * Linked by default because that is what most blocks want, and because four
+ * boxes where one would do is how an inspector starts feeling like a form.
+ */
+function PaddingField({
+  value,
+  onChange,
+}: {
+  value: Padding | undefined;
+  onChange: (value: Padding) => void;
+}) {
+  const padding = value ?? [0, 32, 16, 32];
+  const same = padding.every((entry) => entry === padding[0]);
+  const [linked, setLinked] = useState(same);
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center gap-2">
+        <span className="w-[86px] shrink-0 text-[12px] text-muted-foreground">Padding</span>
+        <div className="min-w-0 flex-1">
+          {linked ? (
+            <NumberField
+              value={padding[0]}
+              onChange={(entry) => onChange([entry ?? 0, entry ?? 0, entry ?? 0, entry ?? 0])}
+            />
+          ) : (
+            <div className="grid grid-cols-2 gap-1.5">
+              {SIDES.map((side, index) => (
+                <NumberField
+                  key={side}
+                  value={padding[index]}
+                  placeholder={side}
+                  onChange={(entry) => {
+                    const next = [...padding] as Padding;
+                    next[index] = entry ?? 0;
+                    onChange(next);
+                  }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+        <button
+          type="button"
+          aria-label={linked ? "Set each side" : "Set every side at once"}
+          aria-pressed={!linked}
+          onClick={() => setLinked((current) => !current)}
+          className={cn(
+            "flex size-8 shrink-0 items-center justify-center rounded-lg border border-border transition-colors",
+            linked ? "text-muted-foreground hover:bg-accent" : "bg-accent text-foreground",
+          )}
+        >
+          <CornerDownRight className="size-3.5" />
+        </button>
+      </div>
+      {!linked && (
+        <p className="pl-[94px] text-[11px] text-muted-foreground">Top, right, bottom, left.</p>
+      )}
+    </div>
+  );
+}
+
+function Inspector({
+  block,
+  onPatch,
+  onStyle,
+}: {
+  block: Block;
+  onPatch: (changes: Partial<Block>) => void;
+  onStyle: (changes: Partial<BlockStyle>) => void;
+}) {
+  const style = block.style ?? {};
+
+  /** Every block gets these; only the content section differs. */
+  const shared = (
+    <>
+      <Section title="Typography" open={false}>
+        <Row label="Colour">
+          <Swatch value={style.color} onChange={(color) => onStyle({ color })} />
+        </Row>
+        <Row label="Font size">
+          <NumberField
+            value={style.fontSize}
+            placeholder="auto"
+            onChange={(fontSize) => onStyle({ fontSize })}
+          />
+        </Row>
+        <Row label="Line height">
+          <NumberField
+            value={style.lineHeight}
+            unit="%"
+            placeholder="155"
+            onChange={(lineHeight) => onStyle({ lineHeight })}
+          />
+        </Row>
+        <Row label="Letter space">
+          <NumberField
+            value={style.letterSpacing}
+            placeholder="0"
+            onChange={(letterSpacing) => onStyle({ letterSpacing })}
+          />
+        </Row>
+        <Row label="Weight">
+          <Select
+            value={String(style.weight ?? "")}
+            onValueChange={(value) => onStyle({ weight: value ? Number(value) : undefined })}
+          >
+            <SelectTrigger className="h-8 text-[12.5px]">
+              <SelectValue placeholder="Auto" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="400">Regular</SelectItem>
+              <SelectItem value="500">Medium</SelectItem>
+              <SelectItem value="600">Semibold</SelectItem>
+              <SelectItem value="700">Bold</SelectItem>
+            </SelectContent>
+          </Select>
+        </Row>
+      </Section>
+
+      <Section title="Spacing" open={false}>
+        <PaddingField value={style.padding} onChange={(padding) => onStyle({ padding })} />
+      </Section>
+
+      <Section title="Background & border" open={false}>
+        <Row label="Background">
+          <Swatch
+            value={style.background}
+            fallback="transparent"
+            onChange={(background) => onStyle({ background })}
+          />
+        </Row>
+        <Row label="Border">
+          <NumberField
+            value={style.border?.width}
+            placeholder="0"
+            onChange={(width) =>
+              onStyle({
+                border: { color: "#e4e4e7", radius: 0, ...style.border, width: width ?? 0 },
+              })
+            }
+          />
+        </Row>
+        <Row label="Border colour">
+          <Swatch
+            value={style.border?.color}
+            fallback="#e4e4e7"
+            onChange={(color) =>
+              onStyle({ border: { width: 1, radius: 0, ...style.border, color } })
+            }
+          />
+        </Row>
+        <Row label="Corners">
+          <NumberField
+            value={style.border?.radius}
+            placeholder="0"
+            onChange={(radius) =>
+              onStyle({
+                border: { width: 0, color: "#e4e4e7", ...style.border, radius: radius ?? 0 },
+              })
+            }
+          />
+        </Row>
+      </Section>
+    </>
+  );
+
+  return (
+    <div>
+      <p className="px-4 pt-3 pb-1 font-medium text-[13px]">{LABELS[block.type]}</p>
+
+      <Section title="Content">
+        {block.type === "heading" && (
+          <>
+            <Row label="Text">
+              <Input
+                value={block.text}
+                onChange={(event) => onPatch({ text: event.target.value })}
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+            <Row label="Level">
+              <Select
+                value={String(block.level)}
+                onValueChange={(value) => onPatch({ level: Number(value) as 1 | 2 | 3 })}
+              >
+                <SelectTrigger className="h-8 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">Title</SelectItem>
+                  <SelectItem value="2">Heading</SelectItem>
+                  <SelectItem value="3">Subheading</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+          </>
+        )}
+
+        {block.type === "text" && (
+          <>
+            <Note>Edit the words on the canvas — the toolbar there has bold, links and lists.</Note>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+          </>
+        )}
+
+        {block.type === "button" && (
+          <>
+            <Row label="Label">
+              <Input
+                value={block.text}
+                onChange={(event) => onPatch({ text: event.target.value })}
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+            <Row label="Link">
+              <Input
+                value={block.href}
+                onChange={(event) => onPatch({ href: event.target.value })}
+                placeholder="https:// or {{ url }}"
+                className="h-8 font-mono text-[12px]"
+              />
+            </Row>
+            <Row label="Fill">
+              <Swatch value={block.fill} onChange={(fill) => onPatch({ fill })} />
+            </Row>
+            <Row label="Corners">
+              <NumberField
+                value={block.radius}
+                onChange={(radius) => onPatch({ radius: radius ?? 0 })}
+              />
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+            <Row label="Full width">
+              <input
+                type="checkbox"
+                checked={block.fullWidth}
+                onChange={(event) => onPatch({ fullWidth: event.target.checked })}
+                className="size-4 accent-primary"
+              />
+            </Row>
+          </>
+        )}
+
+        {block.type === "image" && (
+          <>
+            <Row label="URL">
+              <Input
+                value={block.src}
+                onChange={(event) => onPatch({ src: event.target.value })}
+                placeholder="https://"
+                className="h-8 font-mono text-[12px]"
+              />
+            </Row>
+            <Row label="Alt text">
+              <Input
+                value={block.alt}
+                onChange={(event) => onPatch({ alt: event.target.value })}
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+            <Row label="Links to">
+              <Input
+                value={block.href}
+                onChange={(event) => onPatch({ href: event.target.value })}
+                placeholder="optional"
+                className="h-8 font-mono text-[12px]"
+              />
+            </Row>
+            <Row label="Width">
+              <NumberField
+                value={block.width}
+                unit="%"
+                onChange={(width) => onPatch({ width: width ?? 100 })}
+              />
+            </Row>
+            <Row label="Corners">
+              <NumberField
+                value={block.radius}
+                onChange={(radius) => onPatch({ radius: radius ?? 0 })}
+              />
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+            <Note>Hosted somewhere public — a mail client cannot see your disk.</Note>
+          </>
+        )}
+
+        {block.type === "divider" && (
+          <>
+            <Row label="Colour">
+              <Swatch value={block.color} onChange={(color) => onPatch({ color })} />
+            </Row>
+            <Row label="Thickness">
+              <NumberField
+                value={block.thickness}
+                onChange={(thickness) => onPatch({ thickness: thickness ?? 1 })}
+              />
+            </Row>
+          </>
+        )}
+
+        {block.type === "spacer" && (
+          <Row label="Height">
+            <NumberField value={block.size} onChange={(size) => onPatch({ size: size ?? 24 })} />
+          </Row>
+        )}
+
+        {block.type === "columns" && (
+          <>
+            <Row label="Columns">
+              <Select
+                value={String(block.columns.length)}
+                onValueChange={(value) => {
+                  const count = Number(value);
+                  const columns = Array.from({ length: count }, (_, index) => ({
+                    html: block.columns[index]?.html ?? "Column.",
+                  }));
+                  onPatch({ columns });
+                }}
+              >
+                <SelectTrigger className="h-8 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2">Two</SelectItem>
+                  <SelectItem value="3">Three</SelectItem>
+                  <SelectItem value="4">Four</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row label="Gap">
+              <NumberField value={block.gap} onChange={(gap) => onPatch({ gap: gap ?? 20 })} />
+            </Row>
+            <Note>They stack on a phone in the clients that allow it.</Note>
+          </>
+        )}
+
+        {block.type === "quote" && (
+          <Row label="Bar colour">
+            <Swatch value={block.accent} onChange={(accent) => onPatch({ accent })} />
+          </Row>
+        )}
+
+        {block.type === "code" && (
+          <Textarea
+            value={block.code}
+            onChange={(event) => onPatch({ code: event.target.value })}
+            rows={6}
+            className="font-mono text-[12px]"
+          />
+        )}
+
+        {block.type === "social" && (
+          <>
+            {block.links.map((link, index) => (
+              <div key={`${block.id}-${index}`} className="flex items-center gap-1.5">
+                <Input
+                  value={link.label}
+                  onChange={(event) =>
+                    onPatch({
+                      links: block.links.map((entry, at) =>
+                        at === index ? { ...entry, label: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  placeholder="Label"
+                  className="h-8 w-[88px] text-[12.5px]"
+                />
+                <Input
+                  value={link.href}
+                  onChange={(event) =>
+                    onPatch({
+                      links: block.links.map((entry, at) =>
+                        at === index ? { ...entry, href: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  placeholder="https://"
+                  className="h-8 min-w-0 flex-1 font-mono text-[12px]"
+                />
+                <IconButton
+                  variant="danger"
+                  size="sm"
+                  label="Remove link"
+                  onClick={() =>
+                    onPatch({ links: block.links.filter((_entry, at) => at !== index) })
+                  }
+                >
+                  <Trash2 className="size-3.5" />
+                </IconButton>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              pill
+              onClick={() => onPatch({ links: [...block.links, { label: "", href: "" }] })}
+            >
+              <Plus />
+              Add link
+            </Button>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+          </>
+        )}
+
+        {block.type === "footer" && (
+          <>
+            <Textarea
+              value={block.text}
+              onChange={(event) => onPatch({ text: event.target.value })}
+              rows={3}
+              className="text-[12.5px]"
+            />
+            <Row label="Link text">
+              <Input
+                value={block.unsubscribeLabel}
+                onChange={(event) => onPatch({ unsubscribeLabel: event.target.value })}
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+            <Row label="Link">
+              <Input
+                value={block.unsubscribeHref}
+                onChange={(event) => onPatch({ unsubscribeHref: event.target.value })}
+                className="h-8 font-mono text-[12px]"
+              />
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+            <Note>
+              Broadcasts fill <code className="font-mono">{"{{ unsubscribe_url }}"}</code> in for
+              each recipient.
+            </Note>
+          </>
+        )}
+
+        {block.type === "html" && (
+          <>
+            <Textarea
+              value={block.html}
+              onChange={(event) => onPatch({ html: event.target.value })}
+              rows={8}
+              className="font-mono text-[12px]"
+            />
+            <Note>Passed through untouched. Whatever it does, it does in somebody's inbox.</Note>
+          </>
+        )}
+      </Section>
+
+      {shared}
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The page, and the template itself                                          */
+/* -------------------------------------------------------------------------- */
+
+function PageStyle({
+  theme,
+  onChange,
+}: {
+  theme: EmailTheme;
+  onChange: (changes: Partial<EmailTheme>) => void;
+}) {
+  return (
+    <div>
+      <Section title="Page">
+        <Row label="Background">
+          <Swatch value={theme.background} onChange={(background) => onChange({ background })} />
+        </Row>
+        <Row label="Card">
+          <Swatch value={theme.surface} onChange={(surface) => onChange({ surface })} />
+        </Row>
+        <Row label="Width">
+          <NumberField
+            value={theme.width}
+            onChange={(width) => onChange({ width: width ?? 600 })}
+          />
+        </Row>
+        <Row label="Corners">
+          <NumberField
+            value={theme.radius}
+            onChange={(radius) => onChange({ radius: radius ?? 0 })}
+          />
+        </Row>
+        <Note>600px is the width every client agrees on. Outlook squares the corners off.</Note>
+      </Section>
+
+      <Section title="Type">
+        <Row label="Font">
+          <Select value={theme.font} onValueChange={(font) => onChange({ font })}>
+            <SelectTrigger className="h-8 text-[12.5px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FONTS.map((font) => (
+                <SelectItem key={font.label} value={font.value}>
+                  {font.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Row>
+        <Row label="Text">
+          <Swatch value={theme.text} onChange={(text) => onChange({ text })} />
+        </Row>
+        <Row label="Links">
+          <Swatch value={theme.link} onChange={(link) => onChange({ link })} />
+        </Row>
+        <Note>A web font will not load in most clients, so these are the ones that are there.</Note>
+      </Section>
+    </div>
+  );
+}
+
+function DetailsForm({
+  details,
+  onChange,
+  variables,
+  locked,
+}: {
+  details: Details;
+  onChange: (changes: Partial<Details>) => void;
+  variables: string[];
+  locked: boolean;
+}) {
+  return (
+    <div>
+      <Section title="Template">
+        <Row label="Name">
+          <Input
+            value={details.name}
+            onChange={(event) => onChange({ name: event.target.value })}
+            className="h-8 text-[12.5px]"
+          />
+        </Row>
+        <Row label="Slug">
+          <Input
+            value={details.slug}
+            onChange={(event) => onChange({ slug: slugify(event.target.value) })}
+            className="h-8 font-mono text-[12px]"
+          />
+        </Row>
+        <Note>
+          {locked
+            ? "The slug is what your code passes. Changing it breaks anything already sending by the old one."
+            : "The slug is what your code will pass when it sends this."}
+        </Note>
+        <Row label="Subject">
+          <Input
+            value={details.subject}
+            onChange={(event) => onChange({ subject: event.target.value })}
+            placeholder="Welcome, {{ name }}"
+            className="h-8 text-[12.5px]"
+          />
+        </Row>
+        <Textarea
+          value={details.description}
+          onChange={(event) => onChange({ description: event.target.value })}
+          rows={3}
+          placeholder="What this is for, for whoever comes after you."
+          className="text-[12.5px]"
+        />
+      </Section>
+
+      <Section title="Variables">
+        {variables.length === 0 ? (
+          <p className="text-[12px] leading-relaxed text-muted-foreground">
+            None yet. Type <code className="font-mono">{"{{ name }}"}</code> anywhere in the subject
+            or the body and it is filled in when you send.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {variables.map((name) => (
+              <code
+                key={name}
+                className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px] text-muted-foreground"
+              >
+                {name}
+              </code>
+            ))}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}

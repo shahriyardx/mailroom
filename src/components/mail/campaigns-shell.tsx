@@ -30,6 +30,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { isFullBleed } from "@/lib/full-bleed";
 import { rememberView } from "@/lib/last-view";
 
 /**
@@ -212,13 +213,19 @@ export function CampaignsShell({
           </IconButton>
         </header>
 
-        <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[1100px] px-5 pt-4 pb-10 sm:px-8 md:pt-8">
-            {/* Panels rendered under here are application panels, including
-                the shared screens this view borrows from settings. */}
-            <SectionProvider kind="app">{children}</SectionProvider>
-          </div>
-        </main>
+        {/* Panels rendered under here are application panels, including the
+            shared screens this view borrows from settings. */}
+        <SectionProvider kind="app">
+          {isFullBleed(pathname) ? (
+            <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+          ) : (
+            <main className="min-h-0 flex-1 overflow-y-auto">
+              <div className="mx-auto w-full max-w-[1100px] px-5 pt-4 pb-10 sm:px-8 md:pt-8">
+                {children}
+              </div>
+            </main>
+          )}
+        </SectionProvider>
       </div>
     </div>
   );

@@ -1,3 +1,4 @@
+import type { EmailDesign } from "@/lib/email-blocks";
 import { relations, sql } from "drizzle-orm";
 import {
   boolean,
@@ -1031,6 +1032,13 @@ export const template = pgTable(
     subject: text("subject").notNull().default(""),
     html: text("html"),
     text: text("text"),
+    /**
+     * The blocks the builder edits, when the template was built rather than
+     * pasted. `html` stays the source of truth for sending — it is generated
+     * from this on every save — so a template written straight in HTML, or by
+     * the API, needs no design at all and still works.
+     */
+    design: jsonb("design").$type<EmailDesign>(),
     createdBy: text("created_by").references(() => user.id, { onDelete: "set null" }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

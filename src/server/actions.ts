@@ -18,6 +18,7 @@ import {
 } from "@/db/schema";
 import { generateApiKey, isKeyMode } from "@/lib/api-key";
 import { WILDCARD, isScope } from "@/lib/api-scopes";
+import { readDesign } from "@/lib/email-blocks";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { parseSchedule } from "@/lib/schedule";
 import { newId } from "@/lib/utils";
@@ -1267,6 +1268,12 @@ const templateSchema = z.object({
   subject: z.string().default(""),
   html: z.string().optional(),
   text: z.string().optional(),
+  // Checked rather than trusted: the client is where the design comes from,
+  // and readDesign drops anything that is not a block this release knows.
+  design: z
+    .unknown()
+    .nullish()
+    .transform((value) => (value === null || value === undefined ? value : readDesign(value))),
 });
 
 export async function createTemplateAction(raw: z.input<typeof templateSchema>) {

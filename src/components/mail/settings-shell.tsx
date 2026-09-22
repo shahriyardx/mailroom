@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, IconButton, Sheet, SheetContent, SheetTitle, Wordmark } from "@/components/kit";
+import { isFullBleed } from "@/lib/full-bleed";
 import { type View, wayOut } from "@/lib/last-view";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -221,11 +222,15 @@ export function SettingsShell({
           </h1>
         </header>
 
-        <div className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-6xl divide-y divide-border px-5 pb-16 sm:px-7">
-            {children}
+        {isFullBleed(pathname) ? (
+          <div className="flex min-h-0 flex-1 flex-col">{children}</div>
+        ) : (
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            <div className="mx-auto max-w-6xl divide-y divide-border px-5 pb-16 sm:px-7">
+              {children}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
