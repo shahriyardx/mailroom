@@ -21,6 +21,7 @@ import {
   restoreThreadsAction,
   setReadAction,
   setStarAction,
+  setThreadsLabelAction,
 } from "@/server/actions";
 import {
   Archive,
@@ -38,6 +39,7 @@ import {
   ShieldOff,
   Star,
   Trash2,
+  X,
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
@@ -233,16 +235,18 @@ export function ThreadView({
             starts at the edge, not indented to meet the sender's name: a
             title belongs to the whole conversation, not to the first message
             in it. */}
-        <div className="mb-5">
+        {/* The labels run on from the title rather than under it, and drop
+            to a line of their own only when there is no room left beside it. */}
+        <div className="mb-5 flex flex-wrap items-center gap-x-3 gap-y-2">
           <h1 className="font-display text-[22px] font-semibold leading-snug tracking-[-0.02em]">
             {thread.subject || "(no subject)"}
           </h1>
           {thread.labels.length > 0 && (
-            <ul className="mt-2 flex flex-wrap gap-1.5">
+            <ul className="flex flex-wrap gap-1.5">
               {thread.labels.map((entry) => (
                 <li
                   key={entry.labelId}
-                  className="flex items-center gap-1.5 rounded-full bg-muted px-2 py-0.5 text-[11.5px]"
+                  className="group/label flex items-center gap-1.5 rounded-full bg-muted py-0.5 pr-1 pl-2 text-[11.5px]"
                 >
                   <span
                     className="size-2 rounded-full"
@@ -250,6 +254,18 @@ export function ThreadView({
                     aria-hidden
                   />
                   {entry.label.name}
+                  {/* Taking a label off is a menu away, which is a long way
+                      round for something already named on the screen. */}
+                  <button
+                    type="button"
+                    aria-label={`Remove ${entry.label.name}`}
+                    onClick={() =>
+                      run(() => setThreadsLabelAction([thread.id], entry.labelId, false))
+                    }
+                    className="grid size-4 place-items-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/label:opacity-100 focus-visible:opacity-100"
+                  >
+                    <X className="size-3" />
+                  </button>
                 </li>
               ))}
             </ul>
