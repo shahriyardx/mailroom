@@ -1,6 +1,6 @@
 "use client";
 
-import { Button, List, ListRow, Panel, Switch } from "@/components/kit";
+import { Badge, BlankSlate, Button, List, ListRow, Panel, Switch } from "@/components/kit";
 import {
   currentSubscription,
   permissionState,
@@ -8,13 +8,22 @@ import {
   subscribe,
   unsubscribe,
 } from "@/lib/push-client";
+import { cn } from "@/lib/utils";
 import {
   subscribeToPushAction,
   testPushAction,
   unsubscribeEverywhereAction,
   unsubscribeFromPushAction,
 } from "@/server/actions";
-import { BellRing, Laptop, TriangleAlert } from "lucide-react";
+import {
+  Bell,
+  BellOff,
+  BellRing,
+  Inbox,
+  Laptop,
+  MousePointerClick,
+  TriangleAlert,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -120,23 +129,41 @@ export function NotificationsPanel({ publicKey, browsers }: Props) {
           <Warning>This browser cannot show push notifications.</Warning>
         ) : null}
 
-        <div className="rounded-xl border border-border bg-card">
-          <div className="flex items-start justify-between gap-4 p-4">
-            <div className="min-w-0">
-              <div className="text-[13.5px] font-medium">Notify me on this browser</div>
-              <p className="mt-0.5 text-[12.5px] text-muted-foreground">
+        <div className="overflow-hidden rounded-xl border border-border bg-card">
+          <div className="flex items-start gap-3.5 p-4">
+            <span
+              className={cn(
+                "grid size-9 shrink-0 place-items-center rounded-full transition [&_svg]:size-[18px]",
+                on
+                  ? "bg-primary-soft text-primary-soft-foreground"
+                  : "bg-muted text-muted-foreground",
+              )}
+            >
+              {on ? <Bell /> : <BellOff />}
+            </span>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-2">
+                <span className="text-[13.5px] font-medium">Notify me on this browser</span>
+                <Badge size="sm" tone={on ? "ok" : "neutral"}>
+                  {on ? "On" : "Off"}
+                </Badge>
+              </div>
+              <p className="mt-0.5 text-[12.5px] leading-relaxed text-muted-foreground">
                 {on
-                  ? "Mail arriving in a mailbox you can read will be announced here."
-                  : "The browser will ask for permission the first time."}
+                  ? "Mail arriving in a mailbox you can read will be announced here, even with Mailroom closed."
+                  : "The browser will ask for permission the first time. Nothing is sent until you allow it."}
               </p>
               {permission === "denied" ? (
-                <p className="mt-1 text-[12.5px] text-warn">
+                <p className="mt-1.5 text-[12.5px] text-warn">
                   Notifications are blocked for this site. Allow them in the browser's own site
                   settings first — this switch cannot override that.
                 </p>
               ) : null}
             </div>
+
             <Switch
+              className="mt-1"
               checked={on}
               disabled={!usable || working || permission === "denied"}
               onCheckedChange={(next) => void (next ? turnOn() : turnOff())}
@@ -145,7 +172,7 @@ export function NotificationsPanel({ publicKey, browsers }: Props) {
           </div>
 
           {on ? (
-            <div className="flex flex-wrap items-center gap-2 border-t border-border px-4 py-3">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-2 border-t border-border bg-muted/30 px-4 py-3">
               <Button
                 variant="outline"
                 size="sm"
@@ -166,17 +193,36 @@ export function NotificationsPanel({ publicKey, browsers }: Props) {
                 Send a test
               </Button>
               <span className="text-[12px] text-muted-foreground">
-                Nothing arrives? The operating system can hide notifications too.
+                Nothing arrives? The operating system can be hiding them too.
               </span>
             </div>
           ) : null}
         </div>
+
+        {/* Three things worth knowing before switching it on, and the reason
+            this page is not a lone toggle in an empty rectangle. */}
+        <dl className="mt-3 grid gap-3 sm:grid-cols-3">
+          <Fact icon={<Laptop />} term="One browser at a time">
+            The permission belongs to this browser. Turning it on here says nothing about your
+            phone.
+          </Fact>
+          <Fact icon={<Inbox />} term="Only your own mail">
+            Inbound mail, in mailboxes you are allowed to read. Nothing you send, nothing you have
+            no grant on.
+          </Fact>
+          <Fact icon={<MousePointerClick />} term="Opens the conversation">
+            The notice names the sender and the subject. Clicking it opens that thread, reusing a
+            window if one is open.
+          </Fact>
+        </dl>
       </Panel>
 
-      {browsers.length > 0 ? (
+      {/* Shown even when it holds nothing. A page whose second half appears
+          only once you have used the first half reads as half-built. */}
+      {configured && support !== "unsupported" && support !== "insecure" ? (
         <Panel
           title="Devices"
-          meta={browsers.length}
+          meta={browsers.length > 0 ? browsers.length : undefined}
           description="Every browser signed in as you that is set up to be notified."
           action={
             browsers.length > 1 ? (
@@ -199,6 +245,14 @@ export function NotificationsPanel({ publicKey, browsers }: Props) {
             ) : undefined
           }
         >
+          {browsers.length === 0 ? (
+            <BlankSlate
+              icon={<Laptop />}
+              title="No device is being notified"
+              hint="Turn the switch above on, and this browser appears here."
+            />
+          ) : null}
+
           <List>
             {mine && browsers.some((entry) => entry.endpoint === mine) ? (
               <Device
@@ -268,6 +322,27 @@ function Device({
         Remove
       </Button>
     </ListRow>
+  );
+}
+
+/** One line about how this behaves, so the page explains itself. */
+function Fact({
+  icon,
+  term,
+  children,
+}: {
+  icon: React.ReactNode;
+  term: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-xl border border-border bg-card/60 p-3.5">
+      <dt className="flex items-center gap-2 text-[12.5px] font-medium">
+        <span className="text-muted-foreground [&_svg]:size-[15px]">{icon}</span>
+        {term}
+      </dt>
+      <dd className="mt-1 text-[12px] leading-relaxed text-muted-foreground">{children}</dd>
+    </div>
   );
 }
 
