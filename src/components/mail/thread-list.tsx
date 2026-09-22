@@ -31,7 +31,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useState, useTransition } from "react";
+import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { LabelMenu } from "./label-menu";
 
 /** What each folder says when it has nothing in it. */
@@ -91,6 +91,11 @@ interface Props {
   /** Compact drops the preview line and tightens the rows. */
   density?: "comfortable" | "compact";
   /**
+   * True for a view a conversation can drop out of merely by being read, which
+   * is the Unread filter. Rows that leave it are held where they are.
+   */
+  holdRead?: boolean;
+  /**
    * True when the list has the whole screen rather than a column beside the
    * conversation. With that much width a row fits on one line, which is what
    * every full-width mail list does.
@@ -112,12 +117,40 @@ export function ThreadList({
   labels,
   density = "comfortable",
   wide = false,
+  holdRead = false,
 }: Props) {
   const compact = density === "compact";
   const router = useRouter();
   const [purging, setPurging] = useState<ThreadListItem | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [pending, startTransition] = useTransition();
+
+  /**
+   * Opening a conversation in the Unread filter marks it read, which takes it
+   * out of the list under the pointer — and takes everything below it up a
+   * row, so the next thing clicked is not the thing that was aimed at. The
+   * rows that have been read stay where they are, greyed, until the view is
+   * loaded again.
+   */
+  const held = useRef<{ view: string; rows: ThreadListItem[] }>({ view: "", rows: [] });
+  const view = `${baseHref}?${listQuery}`;
+
+  const shown = useMemo(() => {
+    if (!holdRead) return items;
+    if (held.current.view !== view) held.current = { view, rows: [] };
+
+    const live = new Set(items.map((item) => item.id));
+    const carried = held.current.rows
+      .filter((row) => !live.has(row.id))
+      // It is only still here because it was read, so it says so.
+      .map((row) => ({ ...row, unreadCount: 0 }));
+
+    const merged = [...items, ...carried].sort(
+      (a, b) => b.lastMessageAt.getTime() - a.lastMessageAt.getTime(),
+    );
+    held.current.rows = merged;
+    return merged;
+  }, [items, holdRead, view]);
 
   const hrefFor = (threadId: string) =>
     `${baseHref}?${listQuery ? `${listQuery}&` : ""}t=${threadId}`;
@@ -132,7 +165,15 @@ export function ThreadList({
   // biome-ignore lint/correctness/useExhaustiveDependencies: clear the selection when the view changes
   useEffect(() => setSelected(new Set()), [folder, items.length]);
 
-  function run(action: () => Promise<unknown>) {
+  /**
+   * `touched` names the conversations an action moves or destroys. They are
+   * let go of, so a held row does not outlive the thing it stands for.
+   */
+  function run(action: () => Promise<unknown>, touched?: string[]) {
+    if (touched?.length) {
+      const gone = new Set(touched);
+      held.current.rows = held.current.rows.filter((row) => !gone.has(row.id));
+    }
     startTransition(async () => {
       await action();
       setSelected(new Set());
@@ -142,7 +183,7 @@ export function ThreadList({
 
   const ids = [...selected];
   const hasSelection = selected.size > 0;
-  const allSelected = items.length > 0 && selected.size === items.length;
+  const allSelected = shown.length > 0 && selected.size === shown.length;
 
   /** One conversation. Pulled out so the sections can each map it. */
   function row(item: ThreadListItem) {
@@ -359,13 +400,16 @@ export function ThreadList({
             <Star className={cn(item.isStarred && "fill-warn text-warn")} />
           </RowAction>
           {folder === "trash" ? (
-            <RowAction label="Put back" onClick={() => run(() => restoreThreadsAction([item.id]))}>
+            <RowAction
+              label="Put back"
+              onClick={() => run(() => restoreThreadsAction([item.id]), [item.id])}
+            >
               <ArchiveRestore />
             </RowAction>
           ) : (
             <RowAction
               label="Archive"
-              onClick={() => run(() => moveThreadsAction([item.id], "archive"))}
+              onClick={() => run(() => moveThreadsAction([item.id], "archive"), [item.id])}
             >
               <Archive />
             </RowAction>
@@ -384,7 +428,7 @@ export function ThreadList({
             destructive
             onClick={() => {
               if (folder === "trash") setPurging(item);
-              else run(() => deleteThreadsAction([item.id]));
+              else run(() => deleteThreadsAction([item.id]), [item.id]);
             }}
           >
             <Trash2 />
@@ -424,7 +468,7 @@ export function ThreadList({
         <Checkbox
           checked={allSelected}
           onCheckedChange={() =>
-            setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
+            setSelected(allSelected ? new Set() : new Set(shown.map((item) => item.id)))
           }
           aria-label="Select all"
           className="mr-2 shrink-0"
@@ -450,7 +494,7 @@ export function ThreadList({
           <BulkAction
             label="Move to inbox"
             disabled={!hasSelection}
-            onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
+            onClick={() => run(() => moveThreadsAction(ids, "inbox"), ids)}
           >
             <ArchiveRestore />
           </BulkAction>
@@ -458,7 +502,7 @@ export function ThreadList({
           <BulkAction
             label="Archive"
             disabled={!hasSelection}
-            onClick={() => run(() => moveThreadsAction(ids, "archive"))}
+            onClick={() => run(() => moveThreadsAction(ids, "archive"), ids)}
           >
             <Archive />
           </BulkAction>
@@ -466,7 +510,7 @@ export function ThreadList({
         <BulkAction
           label="Report spam"
           disabled={!hasSelection}
-          onClick={() => run(() => moveThreadsAction(ids, "spam"))}
+          onClick={() => run(() => moveThreadsAction(ids, "spam"), ids)}
         >
           <ShieldAlert />
         </BulkAction>
@@ -475,7 +519,7 @@ export function ThreadList({
           label="Delete"
           destructive
           disabled={!hasSelection}
-          onClick={() => run(() => deleteThreadsAction(ids))}
+          onClick={() => run(() => deleteThreadsAction(ids), ids)}
         >
           <Trash2 />
         </BulkAction>
@@ -487,15 +531,15 @@ export function ThreadList({
       </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto pb-3">
-        {items.length === 0 && <EmptyFolder folder={folder} />}
+        {shown.length === 0 && <EmptyFolder folder={folder} />}
 
-        {items.map(row)}
+        {shown.map(row)}
 
         {/* Paging used to go one way, so a reader who pressed it twice had no
             route back but the browser's own. The range says where they are:
             a cursor is a position in an ordering, and nothing about it is
             visible from the rows themselves. */}
-        {items.length > 0 && (
+        {shown.length > 0 && (
           <li className="flex items-center gap-3 px-4 pt-3">
             <span className="text-[11.5px] text-muted-foreground tabular-nums">
               {offset + 1}–{offset + items.length} of {total}

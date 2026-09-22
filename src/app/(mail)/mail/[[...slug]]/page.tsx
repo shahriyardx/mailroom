@@ -124,6 +124,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           labels={labels}
           density={look.density}
           wide={look.readingLayout === "stacked"}
+          holdRead={query.unread === "1" && supportsUnreadFilter(folder)}
         />
       }
     >
