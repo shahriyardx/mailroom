@@ -66,7 +66,11 @@ export function LogTable({ rows, direction, keys, nextCursor }: Props) {
 
   return (
     <div className="space-y-4">
-      <div className="flex flex-wrap items-center gap-2">
+      {/* The narrow filters ride up beside the tabs: each is the size of a tab
+          and there is an empty row's worth of space next to them otherwise.
+          Search keeps a line of its own, where it can have the width a subject
+          line needs. */}
+      <div className="flex flex-wrap items-center justify-between gap-2">
         <Tabs value={direction} onValueChange={(value) => set({ direction: value })}>
           <TabsList>
             <TabsTrigger value="sending">
@@ -79,89 +83,92 @@ export function LogTable({ rows, direction, keys, nextCursor }: Props) {
             </TabsTrigger>
           </TabsList>
         </Tabs>
-      </div>
 
-      <div className="flex flex-wrap items-center gap-2">
-        <form
-          className="relative min-w-0 flex-1 md:max-w-xs"
-          onSubmit={(event) => {
-            event.preventDefault();
-            set({ q: query });
-          }}
-        >
-          <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Address, subject or SES id"
-            aria-label="Search the log"
-            className="pl-9"
-          />
-        </form>
+        <div className="flex flex-wrap items-center gap-2">
+          <Select
+            value={params.get("days") ?? "15"}
+            onValueChange={(value) => set({ days: value })}
+          >
+            <SelectTrigger className="w-auto min-w-[9.5rem]" aria-label="Date range">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {DAY_RANGES.map((range) => (
+                <SelectItem key={range.value} value={range.value}>
+                  {range.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
 
-        <Select value={params.get("days") ?? "15"} onValueChange={(value) => set({ days: value })}>
-          <SelectTrigger className="w-auto min-w-[9.5rem]" aria-label="Date range">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {DAY_RANGES.map((range) => (
-              <SelectItem key={range.value} value={range.value}>
-                {range.label}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-
-        {direction === "sending" && (
-          <>
-            <Select
-              value={params.get("status") ?? "all"}
-              onValueChange={(value) => set({ status: value === "all" ? null : value })}
-            >
-              <SelectTrigger className="w-auto min-w-[8.5rem]" aria-label="Status">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="all">All statuses</SelectItem>
-                {SENDING_STATUSES.map((status) => (
-                  <SelectItem key={status} value={status}>
-                    {status}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-
-            {keys.length > 0 && (
+          {direction === "sending" && (
+            <>
               <Select
-                value={params.get("key") ?? "all"}
-                onValueChange={(value) => set({ key: value === "all" ? null : value })}
+                value={params.get("status") ?? "all"}
+                onValueChange={(value) => set({ status: value === "all" ? null : value })}
               >
-                <SelectTrigger className="w-auto min-w-[9rem]" aria-label="API key">
+                <SelectTrigger className="w-auto min-w-[8.5rem]" aria-label="Status">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">All API keys</SelectItem>
-                  {keys.map((key) => (
-                    <SelectItem key={key.id} value={key.id}>
-                      {key.name}
-                      {key.mode === "test" ? " (test)" : ""}
+                  <SelectItem value="all">All statuses</SelectItem>
+                  {SENDING_STATUSES.map((status) => (
+                    <SelectItem key={status} value={status}>
+                      {status}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
-            )}
 
-            <Button
-              variant={params.get("test") === "1" ? "solid" : "outline"}
-              size="sm"
-              pill
-              onClick={() => set({ test: params.get("test") === "1" ? null : "1" })}
-            >
-              Test sends
-            </Button>
-          </>
-        )}
+              {keys.length > 0 && (
+                <Select
+                  value={params.get("key") ?? "all"}
+                  onValueChange={(value) => set({ key: value === "all" ? null : value })}
+                >
+                  <SelectTrigger className="w-auto min-w-[9rem]" aria-label="API key">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All API keys</SelectItem>
+                    {keys.map((key) => (
+                      <SelectItem key={key.id} value={key.id}>
+                        {key.name}
+                        {key.mode === "test" ? " (test)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+
+              <Button
+                variant={params.get("test") === "1" ? "solid" : "outline"}
+                size="sm"
+                pill
+                onClick={() => set({ test: params.get("test") === "1" ? null : "1" })}
+              >
+                Test sends
+              </Button>
+            </>
+          )}
+        </div>
       </div>
+
+      <form
+        className="relative"
+        onSubmit={(event) => {
+          event.preventDefault();
+          set({ q: query });
+        }}
+      >
+        <Search className="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          value={query}
+          onChange={(event) => setQuery(event.target.value)}
+          placeholder="Address, subject or SES id"
+          aria-label="Search the log"
+          className="pl-9"
+        />
+      </form>
 
       {rows.length === 0 ? (
         <BlankSlate
