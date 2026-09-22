@@ -97,47 +97,64 @@ export function Panel({
    */
   const app = section === "app";
 
-  return (
-    <section
-      data-slot="panel"
-      className={cn(
-        app
-          ? "mb-4 rounded-2xl border border-border bg-card px-5 py-4 last:mb-0"
-          : "py-7 first:pt-6",
-        className,
-      )}
-      {...props}
-    >
-      <div className={cn("flex items-start gap-3", app ? "mb-3.5" : "mb-4")}>
-        <div className="min-w-0 flex-1">
-          <h2
-            className={cn(
-              "flex items-center gap-2 font-semibold",
-              app
-                ? "font-display text-[20px] leading-none tracking-[-0.025em]"
-                : "text-[14.5px] tracking-[-0.01em]",
-            )}
-          >
-            {title}
-            {meta && (
-              <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] font-medium text-muted-foreground tabular-nums">
-                {meta}
-              </span>
-            )}
-          </h2>
-          {description && (
-            <p
+  const heading = (
+    <div className={cn("flex items-start gap-3", app ? "mb-3.5" : "mb-4")}>
+      <div className="min-w-0 flex-1">
+        <h2
+          className={cn(
+            "flex items-center gap-2 font-semibold",
+            app
+              ? "font-display text-[22px] leading-none tracking-[-0.025em]"
+              : "text-[14.5px] tracking-[-0.01em]",
+          )}
+        >
+          {title}
+          {meta && (
+            <span
               className={cn(
-                "leading-relaxed text-muted-foreground",
-                app ? "mt-1.5 text-[12.5px]" : "mt-0.5 text-[12.5px]",
+                "rounded-full bg-muted px-1.5 py-0.5 font-medium text-muted-foreground tabular-nums",
+                app ? "font-sans text-[11.5px]" : "text-[11px]",
               )}
             >
-              {description}
-            </p>
+              {meta}
+            </span>
           )}
-        </div>
-        {action && <div className="-mt-1 shrink-0">{action}</div>}
+        </h2>
+        {description && (
+          <p
+            className={cn(
+              "leading-relaxed text-muted-foreground",
+              app ? "mt-1.5 text-[12.5px]" : "mt-0.5 text-[12.5px]",
+            )}
+          >
+            {description}
+          </p>
+        )}
       </div>
+      {action && <div className={cn("shrink-0", app ? "" : "-mt-1")}>{action}</div>}
+    </div>
+  );
+
+  /*
+   * On an application screen the heading sits above the surface, not inside
+   * it — the same shape as the screens written for this view, so a borrowed
+   * one does not announce that it was borrowed. The content keeps a gutter of
+   * its own because list rows are written to take it from their container.
+   */
+  if (app) {
+    return (
+      <section data-slot="panel" className={cn("mb-7 last:mb-0", className)} {...props}>
+        {heading}
+        <div className="overflow-hidden rounded-2xl border border-border bg-card px-4">
+          {children}
+        </div>
+      </section>
+    );
+  }
+
+  return (
+    <section data-slot="panel" className={cn("py-7 first:pt-6", className)} {...props}>
+      {heading}
       {children}
     </section>
   );
