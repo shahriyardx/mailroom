@@ -23,6 +23,9 @@ interface Props {
  * collapsed to a fixed guess. Scripts stay off, which is what actually matters:
  * no `allow-scripts` means nothing in the message can execute.
  */
+/** When to look again after a frame loads, in milliseconds. */
+const SETTLE = [0, 120, 400, 1200];
+
 export function EmailFrame({ html, text, inlineImages, sender, imagesAllowed = false }: Props) {
   const [showImages, setShowImages] = useState(imagesAllowed);
   const [showQuote, setShowQuote] = useState(false);
@@ -198,6 +201,7 @@ function Frame({
     if (!frame) return;
 
     let observer: ResizeObserver | undefined;
+    const timers: number[] = [];
 
     const onLoad = () => {
       measure();
@@ -207,14 +211,29 @@ function Frame({
           // Images and late layout changes resize the body; follow them.
           observer = new ResizeObserver(measure);
           observer.observe(doc.body);
+          // The body's own box can stay put while what is inside it moves, so
+          // watch the page as well as the body.
+          observer.observe(doc.documentElement);
         }
         for (const image of doc?.images ?? []) {
           image.addEventListener("load", measure, { once: true });
           image.addEventListener("error", measure, { once: true });
         }
+
+        /**
+         * A measurement is only as good as the layout it was taken from, and
+         * the layout is not final at load: a web font arrives and every line
+         * changes height, a pane finishes an animation and the text rewraps.
+         * Each of those has left a frame a hundred pixels short with a
+         * scrollbar over the rest, so the answer is checked again as the page
+         * settles rather than trusted the first time.
+         */
+        doc?.fonts?.ready.then(measure).catch(() => {});
       } catch {
         // Nothing to observe on an opaque origin.
       }
+
+      for (const delay of SETTLE) timers.push(window.setTimeout(measure, delay));
     };
 
     frame.addEventListener("load", onLoad);
@@ -236,6 +255,7 @@ function Frame({
       frame.removeEventListener("load", onLoad);
       observer?.disconnect();
       outer?.disconnect();
+      for (const timer of timers) clearTimeout(timer);
     };
   }, [measure]);
 

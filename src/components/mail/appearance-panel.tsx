@@ -1,6 +1,6 @@
 "use client";
 
-import { List, ListRow, Panel, Switch } from "@/components/kit";
+import { Panel } from "@/components/kit";
 import { cn } from "@/lib/utils";
 import { saveAppearanceAction } from "@/server/actions";
 import type { Appearance } from "@/server/preferences";
@@ -88,24 +88,6 @@ export function AppearancePanel({ initial }: { initial: Appearance }) {
             },
           ]}
         />
-      </Panel>
-
-      <Panel title="Sidebar" description="How the navigation starts on every screen.">
-        <List>
-          <ListRow>
-            <span className="min-w-0 flex-1">
-              <span className="block text-[13px] font-medium">Start collapsed</span>
-              <span className="block text-[12px] text-muted-foreground">
-                Folders as icons, with their names on hover.
-              </span>
-            </span>
-            <Switch
-              checked={value.navCollapsed}
-              onCheckedChange={(navCollapsed) => set({ navCollapsed })}
-              aria-label="Start collapsed"
-            />
-          </ListRow>
-        </List>
       </Panel>
     </>
   );

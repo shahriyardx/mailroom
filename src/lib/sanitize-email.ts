@@ -321,6 +321,13 @@ export function prepareEmailHtml(
 }
 
 export const EMAIL_FRAME_STYLES = `
+  /*
+   * The frame is sized to its contents, so a scrollbar inside it is never
+   * right: it means the measurement is a little behind the layout, and what
+   * it offers to scroll is a line of nothing. The page it sits on scrolls.
+   */
+  html { scrollbar-width: none; }
+  html::-webkit-scrollbar { width: 0; height: 0; }
   :root { color-scheme: light; }
   :root.dark { color-scheme: dark; }
   body {
