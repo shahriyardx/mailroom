@@ -22,6 +22,7 @@ invitation. No public sign-up.
 - **Domains managed from the app** — add, get DNS records, watch it verify
 - **Subdomains for free** — a subdomain of a verified domain needs no records
 - **Worker deployed from the app** — no `wrangler`
+- **Forwarding** — a copy of inbound mail sent on, per instance, per domain or per mailbox
 - **Delivery reporting** — delivered, bounced, complained, automatic suppression
 - **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
@@ -99,7 +100,6 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET=mail-attachments
 
-FORWARD_TO=                  # optional, legacy: Settings -> Forwarding is the managed version
 UPDATE_CHECK=                # set to off to stop the sidebar asking GitHub for releases
 ```
 
@@ -200,8 +200,9 @@ Paste the token, press **Deploy worker**, then **Receive mail here** on each
 domain.
 
 > Turning a zone on replaces its MX records with Cloudflare's. Anything
-> receiving mail on that domain today stops. Set up forwarding first for a copy
-> to keep reaching your old inbox.
+> receiving mail on that domain today stops. Set up
+> [forwarding](https://mailroom-docs.shahriyar.dev/guide/forwarding) first for a
+> copy to keep reaching your old inbox.
 
 ## 7. Make a mailbox
 

@@ -235,9 +235,9 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
 
         {view.fromEnvironment.length > 0 ? (
           <Note className="mt-3">
-            <code className="font-mono">FORWARD_TO</code> in this instance's environment also copies
-            everything to {view.fromEnvironment.join(", ")}. That one is set in a file, so it cannot
-            be changed here and the switches below do not stop it.
+            This instance is also configured to copy everything to {view.fromEnvironment.join(", ")}
+            . That one is set outside Mailroom, so it cannot be changed here and the switches below
+            do not stop it.
           </Note>
         ) : null}
       </Panel>

@@ -26,6 +26,8 @@ features:
     details: Invite colleagues, give each an owner, admin or member role, and grant mailboxes one at a time or a team at a time. A member sees only what you give them.
   - title: Domains managed from the app
     details: Add a domain, copy its DNS records, watch it verify. A subdomain of a domain you already verified needs no records at all.
+  - title: Forwarding without a redeploy
+    details: Send a copy of inbound mail on to an address outside Mailroom — for the whole instance, one domain or one mailbox. Rules apply to the very next message.
   - title: A complete API
     details: Twenty-eight endpoints covering sending, reading, filing and replying — with scoped keys, cursor pagination and idempotent sends.
   - title: Signed webhooks

@@ -94,7 +94,7 @@ redeploy, and no window where the worker and the dashboard disagree.
 ::: warning Redeploy the worker once
 This only works with a worker built after forwarding was added. If you are
 upgrading, press **Deploy worker** on Settings → Inbound worker once. Until you
-do, the old worker keeps using `FORWARD_TO` and ignores this page.
+do, the old worker ignores this page.
 :::
 
 ## Mail to an address nobody owns
@@ -105,18 +105,6 @@ a retired address still reaches somebody instead of bouncing.
 
 If nothing matches, the message is rejected with `550 5.1.1 No such recipient
 here`, exactly as before.
-
-## `FORWARD_TO`
-
-The environment variable still works, and still copies everything everywhere.
-It was the only way to forward before this page existed and an instance
-upgrading should not quietly stop.
-
-It is listed on the page so it is not a mystery, but it cannot be changed from
-there, and **Skip wider rules** does not stop it — a switch in a database has
-no business overriding a decision made in a deploy file. Move it here when you
-get the chance: empty `FORWARD_TO`, restart, and add the same address as an
-instance-wide rule.
 
 ## What is not forwarded
 
