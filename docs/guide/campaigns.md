@@ -27,6 +27,53 @@ shown next to them.
 This matters on the day somebody asks why you are emailing them. "We do not
 record that" is a bad answer, and under GDPR it is the wrong one.
 
+## How people get on a list
+
+Four ways, and each records where the person came from.
+
+| | |
+| --- | --- |
+| **By hand** | Paste addresses into the Add people dialog |
+| **A CSV** | Drop a file on the same dialog |
+| **Your own signup form** | `POST /api/v1/lists/:id/members` from your site's backend |
+| **Someone else's system** | The same call, from whatever already knows about your users |
+
+### The subscribe API
+
+```sh
+curl -X POST https://your-instance/api/v1/lists/lst_123/members \
+  -H "Authorization: Bearer mk_live_..." \
+  -H "Content-Type: application/json" \
+  -d '{"address":"ada@example.com","name":"Ada","consent_source":"footer signup form"}'
+```
+
+`consent_source` is **required**. It is the answer to "why am I getting this",
+and a field you cannot forget to fill in is worth more than a field you can.
+
+The reply says what happened to that person, because a signup form has to show
+them something:
+
+| `status` | Meaning |
+| --- | --- |
+| `subscribed` | New, and now on the list |
+| `already` | They were already subscribed; nothing changed |
+| `resubscribed` | They had left and have now signed up again |
+
+A `409` means the address hard-bounced or reported a previous message. It is
+**not** resubscribed by a form submission — the address is broken or its owner
+reported you, and writing there again costs the deliverability of everybody
+else on the list.
+
+The key needs the `lists:write` scope. `DELETE` on the same path with
+`{"address":"…"}` takes somebody off, and `GET /api/v1/lists` lists your lists.
+
+::: warning There is no public, keyless signup endpoint
+Every call needs an API key, so a form on your website posts to **your own
+backend**, which then calls this. A keyless endpoint anybody could find would
+be filled with junk addresses within a week, and junk addresses are what get a
+sender blocked.
+:::
+
 ### Uploading a file
 
 Drop a CSV on the **Add people** dialog, or pick one. It is read in your

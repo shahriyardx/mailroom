@@ -27,6 +27,8 @@ export const SCOPES = [
   "webhooks:read",
   "webhooks:write",
   "stats:read",
+  "lists:read",
+  "lists:write",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];
@@ -47,6 +49,7 @@ const IMPLIES: Partial<Record<Scope, Scope[]>> = {
   "webhooks:write": ["webhooks:read"],
   "templates:write": ["templates:read"],
   "emails:send": ["emails:read"],
+  "lists:write": ["lists:read"],
 };
 
 /** Everything a list of scopes grants, including what each one implies. */

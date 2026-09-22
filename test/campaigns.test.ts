@@ -277,3 +277,87 @@ describe("reading a file somebody uploaded", () => {
     assert.equal(people.length, 2);
   });
 });
+
+describe("subscribing from a signup form", () => {
+  it("adds somebody new", async () => {
+    const { subscribe } = await import("@/server/campaigns");
+    const listId = await aList();
+    const result = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+
+    assert.equal(result.status, "subscribed");
+  });
+
+  it("says so when they are already on it", async () => {
+    const { subscribe } = await import("@/server/campaigns");
+    const listId = await aList();
+    await subscribe(account.orgId, listId, { address: "ada@example.com" }, "signup form");
+    const again = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+
+    assert.equal(again.status, "already");
+  });
+
+  it("lets somebody who left sign up again", async () => {
+    const { membersView, setMemberStatus, subscribe } = await import("@/server/campaigns");
+    // The one thing that should undo an unsubscribe is the person themselves
+    // asking again. An import must never do it; this must.
+    const listId = await aList();
+    await subscribe(account.orgId, listId, { address: "ada@example.com" }, "signup form");
+
+    const [row] = await membersView(account.orgId, listId);
+    assert.ok(row);
+    await setMemberStatus(account.orgId, row.id, "unsubscribed");
+
+    const again = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+    assert.equal(again.status, "resubscribed");
+
+    const [after_] = await membersView(account.orgId, listId);
+    assert.equal(after_?.status, "subscribed");
+  });
+
+  it("refuses to resubscribe an address that bounced", async () => {
+    const { db } = await import("@/db");
+    const { listMember } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { membersView, subscribe } = await import("@/server/campaigns");
+
+    // A broken address or somebody who reported us is not undone by a form
+    // submission: writing there again costs everybody else's deliverability.
+    const listId = await aList();
+    await subscribe(account.orgId, listId, { address: "ada@example.com" }, "signup form");
+    const [row] = await membersView(account.orgId, listId);
+    assert.ok(row);
+    await db.update(listMember).set({ status: "bounced" }).where(eq(listMember.id, row.id));
+
+    const again = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+    assert.equal(again.status, "blocked");
+  });
+
+  it("refuses an address that is not one", async () => {
+    const { subscribe } = await import("@/server/campaigns");
+    const listId = await aList();
+    await assert.rejects(
+      () => subscribe(account.orgId, listId, { address: "nope" }, "signup form"),
+      /not an email/,
+    );
+  });
+});

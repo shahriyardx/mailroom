@@ -584,3 +584,103 @@ export async function campaignsOverview(orgId: string): Promise<CampaignsOvervie
     recent: broadcasts.slice(0, 5),
   };
 }
+
+/* -------------------------------------------------------------------------- */
+/* Subscribing from somewhere else                                            */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * One person, from a signup form or somebody else's system.
+ *
+ * Separate from `addMembers` because the answer differs. An import wants
+ * counts and does not care which addresses were already there; a signup form
+ * is one person pressing a button and needs to know what happened to them.
+ *
+ * Somebody who unsubscribed and then signs up again is resubscribed here, and
+ * only here. That is a deliberate act by the person themselves, which is the
+ * one thing that should undo their own unsubscribe — an import never does.
+ */
+export async function subscribe(
+  orgId: string,
+  listId: string,
+  input: { address: string; name?: string | null; fields?: Record<string, string> },
+  consentSource: string,
+) {
+  const address = input.address.trim().toLowerCase();
+  if (!EMAIL.test(address)) throw new Error("That is not an email address");
+
+  const list = await db.query.mailingList.findFirst({
+    where: and(eq(mailingList.id, listId), eq(mailingList.organizationId, orgId)),
+    columns: { id: true },
+  });
+  if (!list) throw new Error("No such list");
+
+  const existing = await db.query.listMember.findFirst({
+    where: and(eq(listMember.listId, listId), eq(listMember.address, address)),
+  });
+
+  const now = new Date();
+
+  if (existing) {
+    if (existing.status === "subscribed") {
+      return { id: existing.id, status: "already" as const };
+    }
+
+    /*
+     * A hard bounce or a spam complaint is not undone by a form submission.
+     * The address is broken or its owner reported us, and sending there again
+     * costs the sending reputation of everybody else on the list.
+     */
+    if (existing.status !== "unsubscribed") {
+      return { id: existing.id, status: "blocked" as const };
+    }
+
+    await db
+      .update(listMember)
+      .set({
+        status: "subscribed",
+        unsubscribedAt: null,
+        consentAt: now,
+        consentSource,
+        ...(input.name ? { name: input.name.trim() } : {}),
+      })
+      .where(eq(listMember.id, existing.id));
+
+    return { id: existing.id, status: "resubscribed" as const };
+  }
+
+  const id = newId("lsm");
+  await db.insert(listMember).values({
+    id,
+    organizationId: orgId,
+    listId,
+    address,
+    name: input.name?.trim() || null,
+    fields: input.fields ?? {},
+    consentSource,
+    consentAt: now,
+  });
+
+  return { id, status: "subscribed" as const };
+}
+
+/** Taking somebody off a list by address, for a client that has no member id. */
+export async function unsubscribeAddress(orgId: string, listId: string, rawAddress: string) {
+  const address = rawAddress.trim().toLowerCase();
+  const row = await db.query.listMember.findFirst({
+    where: and(
+      eq(listMember.organizationId, orgId),
+      eq(listMember.listId, listId),
+      eq(listMember.address, address),
+    ),
+  });
+  if (!row) return null;
+
+  if (row.status === "subscribed") {
+    await db
+      .update(listMember)
+      .set({ status: "unsubscribed", unsubscribedAt: new Date() })
+      .where(eq(listMember.id, row.id));
+  }
+  return { id: row.id };
+}
