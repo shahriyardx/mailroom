@@ -1,22 +1,8 @@
-import Screen, { dynamic as inherited } from "@/app/(mail)/settings/blocked/page";
-import { PageHeader } from "@/components/mail/page-frame";
-
 /*
- * The same screen as its settings twin, under a page heading and inside the
- * campaigns shell. The search and paging state lives in the query string, so
- * it is handed straight through.
+ * The same screen as Settings → blocked, inside the campaigns shell.
+ *
+ * Imported rather than copied: one page, two routes, no second copy to drift.
+ * No page heading of its own — the screen already opens with one, and two
+ * headings saying the same thing is the vertical space this view has least of.
  */
-export const dynamic = inherited;
-
-export default async function Page({
-  searchParams,
-}: {
-  searchParams: Promise<Record<string, string | string[] | undefined>>;
-}) {
-  return (
-    <>
-      <PageHeader title="Blocked addresses" />
-      <Screen searchParams={searchParams} />
-    </>
-  );
-}
+export { default, dynamic } from "@/app/(mail)/settings/blocked/page";

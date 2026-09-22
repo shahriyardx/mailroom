@@ -102,19 +102,19 @@ export function Panel({
       data-slot="panel"
       className={cn(
         app
-          ? "mb-4 rounded-2xl border border-border bg-card px-5 py-5 last:mb-0"
+          ? "mb-4 rounded-2xl border border-border bg-card px-5 py-4 last:mb-0"
           : "py-7 first:pt-6",
         className,
       )}
       {...props}
     >
-      <div className={cn("flex items-start gap-3", app ? "mb-4" : "mb-4")}>
+      <div className={cn("flex items-start gap-3", app ? "mb-3.5" : "mb-4")}>
         <div className="min-w-0 flex-1">
           <h2
             className={cn(
               "flex items-center gap-2 font-semibold",
               app
-                ? "font-display text-[17px] tracking-[-0.02em]"
+                ? "font-display text-[20px] leading-none tracking-[-0.025em]"
                 : "text-[14.5px] tracking-[-0.01em]",
             )}
           >
@@ -128,8 +128,8 @@ export function Panel({
           {description && (
             <p
               className={cn(
-                "mt-0.5 leading-relaxed text-muted-foreground",
-                app ? "text-[13px]" : "text-[12.5px]",
+                "leading-relaxed text-muted-foreground",
+                app ? "mt-1.5 text-[12.5px]" : "mt-0.5 text-[12.5px]",
               )}
             >
               {description}

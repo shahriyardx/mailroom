@@ -1,19 +1,8 @@
-import Screen, { dynamic as inherited } from "@/app/(mail)/settings/domains/page";
-import { PageHeader } from "@/components/mail/page-frame";
-
 /*
- * The same screen as its settings twin, under a page heading and inside the
- * campaigns shell. Somebody sending broadcasts reaches for this constantly,
- * and being thrown into the other half of the app to look at it loses their
- * place. The screen itself is imported, not copied.
+ * The same screen as Settings → domains, inside the campaigns shell.
+ *
+ * Imported rather than copied: one page, two routes, no second copy to drift.
+ * No page heading of its own — the screen already opens with one, and two
+ * headings saying the same thing is the vertical space this view has least of.
  */
-export const dynamic = inherited;
-
-export default async function Page() {
-  return (
-    <>
-      <PageHeader title="Domains" />
-      <Screen />
-    </>
-  );
-}
+export { default, dynamic } from "@/app/(mail)/settings/domains/page";

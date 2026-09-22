@@ -123,7 +123,7 @@ export function SetupWizard({ state }: { state: SetupState }) {
             </div>
 
             <div className="mt-6 flex justify-end">
-              <Button disabled={busy} onClick={saveUse}>
+              <Button variant="solid" disabled={busy} onClick={saveUse}>
                 Continue
                 <ArrowRight />
               </Button>
@@ -149,7 +149,7 @@ export function SetupWizard({ state }: { state: SetupState }) {
                 <ArrowLeft />
                 Back
               </Button>
-              <Button disabled={busy} onClick={saveBrand}>
+              <Button variant="solid" disabled={busy} onClick={saveBrand}>
                 Continue
                 <ArrowRight />
               </Button>
@@ -187,7 +187,7 @@ export function SetupWizard({ state }: { state: SetupState }) {
                     ? "All done"
                     : `${state.remaining} left — you can finish anyway`}
                 </span>
-                <Button disabled={busy} onClick={finish}>
+                <Button variant="solid" disabled={busy} onClick={finish}>
                   Finish setup
                 </Button>
               </div>

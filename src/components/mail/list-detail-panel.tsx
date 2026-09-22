@@ -95,7 +95,7 @@ export function ListDetailPanel({
   }
 
   const add = (
-    <Button onClick={() => setAdding(true)}>
+    <Button variant="solid" onClick={() => setAdding(true)}>
       <UserPlus />
       Add people
     </Button>
@@ -339,7 +339,12 @@ export function ListDetailPanel({
             <Button variant="ghost" disabled={busy} onClick={() => setAdding(false)}>
               Cancel
             </Button>
-            <Button type="submit" form="add-people" disabled={busy || !paste.trim()}>
+            <Button
+              variant="solid"
+              type="submit"
+              form="add-people"
+              disabled={busy || !paste.trim()}
+            >
               Add to list
             </Button>
           </DialogFooter>

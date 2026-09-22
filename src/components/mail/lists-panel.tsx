@@ -43,7 +43,7 @@ export function ListsPanel({ lists }: { lists: ListSummary[] }) {
   }, [lists, query]);
 
   const create = (
-    <Button onClick={() => setOpen(true)}>
+    <Button variant="solid" onClick={() => setOpen(true)}>
       <Plus />
       Create list
     </Button>
@@ -141,7 +141,7 @@ export function ListsPanel({ lists }: { lists: ListSummary[] }) {
             <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" form="new-list" disabled={busy || !name.trim()}>
+            <Button variant="solid" type="submit" form="new-list" disabled={busy || !name.trim()}>
               Create list
             </Button>
           </DialogFooter>

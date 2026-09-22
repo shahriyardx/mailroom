@@ -95,7 +95,7 @@ export function BroadcastsPanel({
   }
 
   const create = (
-    <Button disabled={!ready} onClick={() => setOpen(true)}>
+    <Button variant="solid" disabled={!ready} onClick={() => setOpen(true)}>
       <Plus />
       Create broadcast
     </Button>
@@ -196,6 +196,7 @@ export function BroadcastsPanel({
 
               {entry.status === "draft" ? (
                 <Button
+                  variant="solid"
                   size="sm"
                   disabled={busy}
                   title="Sends to everyone subscribed to that list. This cannot be undone."
@@ -319,7 +320,12 @@ export function BroadcastsPanel({
             <Button variant="ghost" disabled={busy} onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" form="new-broadcast" disabled={busy || !subject.trim()}>
+            <Button
+              variant="solid"
+              type="submit"
+              form="new-broadcast"
+              disabled={busy || !subject.trim()}
+            >
               Save as draft
             </Button>
           </DialogFooter>
