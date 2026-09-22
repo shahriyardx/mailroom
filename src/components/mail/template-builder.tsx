@@ -48,6 +48,8 @@ import {
   AlignLeft,
   AlignRight,
   ArrowLeft,
+  Blocks,
+  Check,
   ChevronDown,
   ChevronUp,
   Code2,
@@ -176,11 +178,21 @@ export function TemplateBuilder({
   );
   const [html, setHtml] = useState(template?.html ?? "");
 
-  // A template that arrived as pasted HTML opens in the HTML pane: dropping it
-  // onto an empty canvas would look like the builder had eaten it.
-  const [mode, setMode] = useState<"design" | "html">(
-    template && !template.design && template.html ? "html" : "design",
+  /*
+   * The builder is the document; the HTML is what it compiles to. They are
+   * one thing seen two ways, not two things kept in step — nothing parses
+   * arbitrary email HTML back into blocks, so a two-way tab would quietly
+   * throw away whichever side was edited second.
+   *
+   * The exception is a template that was written by hand or posted through
+   * the API. It has no blocks to show, so it stays hand-written until
+   * somebody says otherwise, and the builder is what is switched off.
+   */
+  const [handwritten, setHandwritten] = useState(
+    Boolean(template && !template.design && template.html),
   );
+  const [pane, setPane] = useState<"design" | "html">(handwritten ? "html" : "design");
+  const [converting, setConverting] = useState(false);
 
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"block" | "page" | "details">("details");
@@ -190,8 +202,8 @@ export function TemplateBuilder({
   const block = design.blocks.find((entry) => entry.id === selected) ?? null;
 
   const compiled = useMemo(
-    () => (mode === "design" ? renderDesign(design) : html),
-    [mode, design, html],
+    () => (handwritten ? html : renderDesign(design)),
+    [handwritten, design, html],
   );
 
   // The subject carries variables as often as the body does.
@@ -285,9 +297,7 @@ export function TemplateBuilder({
       subject: details.subject,
       // Only one of the two goes: a design compiles to the body on the server,
       // and clearing it is how a template becomes hand-written HTML.
-      ...(mode === "design"
-        ? { design }
-        : { design: null, html, text: template?.text ?? undefined }),
+      ...(handwritten ? { design: null, html, text: template?.text ?? undefined } : { design }),
     };
 
     submit(async () => {
@@ -341,9 +351,11 @@ export function TemplateBuilder({
         />
 
         <div className="ml-auto flex items-center gap-2">
-          <Tabs value={mode} onValueChange={(value) => setMode(value as "design" | "html")}>
+          <Tabs value={pane} onValueChange={(value) => setPane(value as "design" | "html")}>
             <TabsList variant="segmented">
-              <TabsTrigger value="design">Builder</TabsTrigger>
+              <TabsTrigger value="design" disabled={handwritten}>
+                Builder
+              </TabsTrigger>
               <TabsTrigger value="html">HTML</TabsTrigger>
             </TabsList>
           </Tabs>
@@ -372,7 +384,7 @@ export function TemplateBuilder({
 
       {/* -- palette, canvas, inspector ------------------------------------ */}
       <div className="flex min-h-0 flex-1">
-        {mode === "design" && !previewing && (
+        {pane === "design" && !previewing && (
           <aside className="w-[188px] shrink-0 overflow-y-auto border-border border-r bg-card py-3">
             {PALETTE.map((section) => (
               <div key={section.group} className="mb-3 px-2">
@@ -411,18 +423,21 @@ export function TemplateBuilder({
               </div>
               <EmailFrame
                 html={compiled || null}
-                text={mode === "design" ? designToText(design) : (template?.text ?? null)}
+                text={handwritten ? (template?.text ?? null) : designToText(design)}
                 imagesAllowed
               />
             </div>
-          ) : mode === "html" ? (
-            <div className="mx-auto max-w-[900px] space-y-3">
-              <Note>
-                Written by hand. Switching back to Builder and saving replaces this with the blocks
-                on the canvas.
-              </Note>
-              <CodeEditor value={html} onChange={setHtml} minRows={24} />
-            </div>
+          ) : pane === "html" ? (
+            <HtmlPane
+              handwritten={handwritten}
+              html={handwritten ? html : compiled}
+              onChange={setHtml}
+              onTakeOver={() => {
+                setHtml(compiled);
+                setHandwritten(true);
+              }}
+              onRebuild={() => setConverting(true)}
+            />
           ) : (
             <Canvas
               design={design}
@@ -506,6 +521,20 @@ export function TemplateBuilder({
       </div>
 
       <ConfirmDialog
+        open={converting}
+        onOpenChange={setConverting}
+        title="Build this one instead?"
+        description="This template is hand-written HTML."
+        consequences="Nothing reads email HTML back into blocks, so the canvas starts empty and this HTML is replaced the next time you save. Copy it somewhere first if you want it."
+        confirmLabel="Start building"
+        onConfirm={() => {
+          setHandwritten(false);
+          setPane("design");
+          setConverting(false);
+        }}
+      />
+
+      <ConfirmDialog
         open={removing}
         onOpenChange={setRemoving}
         title="Delete this template?"
@@ -519,6 +548,87 @@ export function TemplateBuilder({
           router.push(basePath);
         }}
       />
+    </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* The HTML                                                                   */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * What the builder compiles to, or the HTML somebody wrote themselves.
+ *
+ * Read-only in the first case on purpose. An editable copy of generated
+ * output is a promise the builder cannot keep: the next change on the canvas
+ * overwrites it, and nothing here can read the edit back into blocks.
+ */
+function HtmlPane({
+  handwritten,
+  html,
+  onChange,
+  onTakeOver,
+  onRebuild,
+}: {
+  handwritten: boolean;
+  html: string;
+  onChange: (value: string) => void;
+  onTakeOver: () => void;
+  onRebuild: () => void;
+}) {
+  const [copied, setCopied] = useState(false);
+
+  return (
+    <div className="mx-auto max-w-[900px] space-y-3">
+      <div className="flex flex-wrap items-center gap-2">
+        <Note className="min-w-0 flex-1">
+          {handwritten
+            ? "Written by hand. The builder is switched off for this template."
+            : "Compiled from the canvas, and rewritten every time it changes."}
+        </Note>
+
+        {handwritten ? (
+          <Button variant="outline" size="sm" pill onClick={onRebuild}>
+            <Blocks />
+            Build it instead
+          </Button>
+        ) : (
+          <>
+            <Button
+              variant="ghost"
+              size="sm"
+              pill
+              onClick={() => {
+                void navigator.clipboard.writeText(html);
+                setCopied(true);
+                window.setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check /> : <Copy />}
+              {copied ? "Copied" : "Copy"}
+            </Button>
+            <Button variant="outline" size="sm" pill onClick={onTakeOver}>
+              <Code2 />
+              Take it over
+            </Button>
+          </>
+        )}
+      </div>
+
+      {handwritten ? (
+        <CodeEditor value={html} onChange={onChange} minRows={24} />
+      ) : (
+        <pre className="overflow-x-auto rounded-xl border border-border bg-card p-4 font-mono text-[12px] leading-relaxed">
+          {html}
+        </pre>
+      )}
+
+      {!handwritten && (
+        <Note>
+          Taking it over copies this HTML into an editor and leaves the builder behind — nothing
+          reads email HTML back into blocks, so it is a one-way door.
+        </Note>
+      )}
     </div>
   );
 }
