@@ -24,14 +24,20 @@ import {
   type View,
 } from "@/lib/types";
 import {
+  Archive,
   ExternalLink,
   Inbox,
+  MailOpen,
   Mailbox as MailboxIcon,
   Maximize2,
   Plug,
   RefreshCw,
   Search,
+  Send,
   Settings,
+  ShieldAlert,
+  Star,
+  Trash2,
   X,
 } from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -290,82 +296,91 @@ export function App({ inTab }: { inTab: boolean }) {
     return <Connect />;
   }
 
-  const list = (
-    <div className="flex h-full min-h-0 flex-col">
-      <ViewTabs view={view} onChange={setView} />
-
-      <div className="min-h-0 flex-1 overflow-y-auto">
-        {loading ? (
-          <div>
-            <RowSkeleton />
-            <RowSkeleton />
-            <RowSkeleton />
-            <RowSkeleton />
-          </div>
-        ) : error ? (
-          <EmptyState
-            title="That did not work"
-            body={error}
-            action={
-              <Button size="sm" variant="outline" onClick={() => void load()}>
-                Try again
-              </Button>
-            }
-          />
-        ) : watchesNothing(settings) ? (
-          /* Not the same as an empty inbox, and saying "all caught up" here
+  /*
+   * The rows on their own, with no navigation attached.
+   *
+   * The popup wears a row of pills above them and the tab wears a rail beside
+   * them, and neither layout should have to own a second copy of the list.
+   */
+  const rows = (
+    <div className="min-h-0 flex-1 overflow-y-auto">
+      {loading ? (
+        <div>
+          <RowSkeleton />
+          <RowSkeleton />
+          <RowSkeleton />
+          <RowSkeleton />
+        </div>
+      ) : error ? (
+        <EmptyState
+          title="That did not work"
+          body={error}
+          action={
+            <Button size="sm" variant="outline" onClick={() => void load()}>
+              Try again
+            </Button>
+          }
+        />
+      ) : watchesNothing(settings) ? (
+        /* Not the same as an empty inbox, and saying "all caught up" here
              would be telling somebody their mail is read when it is hidden. */
-          <EmptyState
-            icon={<MailboxIcon />}
-            title="No mailboxes picked"
-            body="Nothing is being watched, so there is nothing to show."
-            action={
+        <EmptyState
+          icon={<MailboxIcon />}
+          title="No mailboxes picked"
+          body="Nothing is being watched, so there is nothing to show."
+          action={
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => void browser.runtime.openOptionsPage()}
+            >
+              Pick mailboxes
+            </Button>
+          }
+        />
+      ) : threads.length === 0 ? (
+        <EmptyState
+          icon={<Inbox />}
+          title={term ? "Nothing matched" : `No mail in ${VIEW_LABEL[view].toLowerCase()}`}
+          body={term ? "Try a different search." : "You are all caught up."}
+        />
+      ) : (
+        <>
+          {threads.map((thread) => (
+            <ThreadRow
+              key={thread.id}
+              thread={thread}
+              view={view}
+              selected={thread.id === openId}
+              onOpen={() => void openThread(thread.id)}
+              onStar={() => void patch(thread.id, { is_starred: !thread.is_starred })}
+              onArchive={() => void patch(thread.id, { folder: "archive" })}
+              onTrash={() => void trash(thread.id)}
+            />
+          ))}
+
+          {cursor ? (
+            <div className="p-3">
               <Button
                 size="sm"
                 variant="outline"
-                onClick={() => void browser.runtime.openOptionsPage()}
+                className="w-full"
+                busy={loadingMore}
+                onClick={() => void loadMore()}
               >
-                Pick mailboxes
+                Load more
               </Button>
-            }
-          />
-        ) : threads.length === 0 ? (
-          <EmptyState
-            icon={<Inbox />}
-            title={term ? "Nothing matched" : `No mail in ${VIEW_LABEL[view].toLowerCase()}`}
-            body={term ? "Try a different search." : "You are all caught up."}
-          />
-        ) : (
-          <>
-            {threads.map((thread) => (
-              <ThreadRow
-                key={thread.id}
-                thread={thread}
-                view={view}
-                selected={thread.id === openId}
-                onOpen={() => void openThread(thread.id)}
-                onStar={() => void patch(thread.id, { is_starred: !thread.is_starred })}
-                onArchive={() => void patch(thread.id, { folder: "archive" })}
-                onTrash={() => void trash(thread.id)}
-              />
-            ))}
+            </div>
+          ) : null}
+        </>
+      )}
+    </div>
+  );
 
-            {cursor ? (
-              <div className="p-3">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="w-full"
-                  busy={loadingMore}
-                  onClick={() => void loadMore()}
-                >
-                  Load more
-                </Button>
-              </div>
-            ) : null}
-          </>
-        )}
-      </div>
+  const list = (
+    <div className="flex h-full min-h-0 flex-col">
+      <ViewTabs view={view} onChange={setView} />
+      {rows}
     </div>
   );
 
@@ -379,10 +394,56 @@ export function App({ inTab }: { inTab: boolean }) {
       dark={dark}
       showBack={!wide}
       onBack={closeThread}
+      roomy={wide}
       onPatch={(changes) => openId && void patch(openId, changes)}
       onTrash={() => openId && void trash(openId)}
     />
   );
+
+  /*
+   * The roomy layout: a rail of places, a column of conversations, and the
+   * one being read. Not the popup stretched sideways — at this width the row
+   * of pills is a hairline of clipped text and the header is a crowded strip
+   * of icons a metre from the thing they act on.
+   */
+  if (wide) {
+    return (
+      <div className="flex h-full bg-background">
+        <Rail
+          view={view}
+          onChange={(next) => {
+            setView(next);
+            closeThread();
+          }}
+          onOpenApp={() => openTab(`${settings.baseUrl}/mail/all/inbox`)}
+        />
+
+        <div className="flex min-w-0 flex-1 flex-col">
+          <TopBar
+            view={view}
+            search={search}
+            onSearch={setSearch}
+            loading={loading}
+            onRefresh={() => {
+              void load();
+              refreshBadge();
+            }}
+            mailboxes={mailboxes}
+            watchAll={settings.watchAll}
+            chosen={settings.mailboxIds}
+            onChoose={(choice) => void update(choice)}
+          />
+
+          <div className="flex min-h-0 flex-1">
+            <div className="flex w-[380px] shrink-0 flex-col border-r border-border xl:w-[420px]">
+              {rows}
+            </div>
+            <div className="min-w-0 flex-1 bg-card/40">{reading}</div>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex h-full flex-col bg-background">
@@ -405,16 +466,7 @@ export function App({ inTab }: { inTab: boolean }) {
       />
 
       <div className="min-h-0 flex-1">
-        {wide ? (
-          <div className="flex h-full min-h-0">
-            <div className="w-[392px] shrink-0 border-r border-border">{list}</div>
-            <div className="min-w-0 flex-1">{reading}</div>
-          </div>
-        ) : openId ? (
-          <div className="h-full animate-fade-in">{reading}</div>
-        ) : (
-          list
-        )}
+        {openId ? <div className="h-full animate-fade-in">{reading}</div> : list}
       </div>
     </div>
   );
@@ -522,6 +574,161 @@ function Header({
           </div>
         </>
       )}
+    </header>
+  );
+}
+
+/* -------------------------------------------------------------- the tab rail */
+
+const VIEW_ICON: Record<View, React.ReactNode> = {
+  inbox: <Inbox />,
+  unread: <MailOpen />,
+  starred: <Star />,
+  sent: <Send />,
+  archive: <Archive />,
+  spam: <ShieldAlert />,
+  trash: <Trash2 />,
+};
+
+/**
+ * Where you can go, down the left.
+ *
+ * The same seven places the popup shows as pills, given room to be a list
+ * with names and icons. A rail is also where a full-window mail client puts
+ * them, so it needs no learning.
+ */
+function Rail({
+  view,
+  onChange,
+  onOpenApp,
+}: {
+  view: View;
+  onChange: (value: View) => void;
+  onOpenApp: () => void;
+}) {
+  return (
+    <nav className="flex w-[216px] shrink-0 flex-col border-r border-border bg-rail">
+      <div className="flex h-12 shrink-0 items-center gap-2 px-4">
+        <span className="text-[14px] font-semibold tracking-[-0.01em]">Mailroom</span>
+      </div>
+
+      <div className="min-h-0 flex-1 space-y-0.5 overflow-y-auto px-2 py-1">
+        {VIEWS.map((entry) => (
+          <button
+            key={entry}
+            type="button"
+            onClick={() => onChange(entry)}
+            className={cx(
+              "flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[13px] font-medium transition [&_svg]:size-4 [&_svg]:shrink-0",
+              entry === view
+                ? "bg-primary-soft text-primary-soft-foreground"
+                : "text-rail-foreground hover:bg-accent hover:text-foreground",
+            )}
+          >
+            {VIEW_ICON[entry]}
+            {VIEW_LABEL[entry]}
+          </button>
+        ))}
+      </div>
+
+      <div className="shrink-0 space-y-0.5 border-t border-border px-2 py-2">
+        <RailAction icon={<ExternalLink />} label="Open Mailroom" onClick={onOpenApp} />
+        <RailAction
+          icon={<Settings />}
+          label="Settings"
+          onClick={() => void browser.runtime.openOptionsPage()}
+        />
+      </div>
+    </nav>
+  );
+}
+
+function RailAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-[7px] text-[12.5px] font-medium text-muted-foreground transition hover:bg-accent hover:text-foreground [&_svg]:size-4 [&_svg]:shrink-0"
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
+/**
+ * The bar above both columns: where you are, and how to search it.
+ *
+ * Search is a real box here rather than the popup's icon that swaps the
+ * header out. There is width for it, and a hidden search in a window this
+ * size is a search nobody finds.
+ */
+function TopBar({
+  view,
+  search,
+  onSearch,
+  loading,
+  onRefresh,
+  mailboxes,
+  watchAll,
+  chosen,
+  onChoose,
+}: {
+  view: View;
+  search: string;
+  onSearch: (value: string) => void;
+  loading: boolean;
+  onRefresh: () => void;
+  mailboxes: ApiMailbox[];
+  watchAll: boolean;
+  chosen: string[];
+  onChoose: (choice: { watchAll: boolean; mailboxIds?: string[] }) => void;
+}) {
+  return (
+    <header className="flex h-12 shrink-0 items-center gap-3 border-b border-border px-3">
+      <h1 className="text-[14px] font-semibold tracking-[-0.01em]">{VIEW_LABEL[view]}</h1>
+
+      {mailboxes.length > 1 ? (
+        <MailboxPicker
+          mailboxes={mailboxes}
+          watchAll={watchAll}
+          chosen={chosen}
+          onChoose={onChoose}
+        />
+      ) : null}
+
+      <label className="ml-auto flex h-8 w-full max-w-[380px] items-center gap-2 rounded-lg border border-border bg-card px-2.5 focus-within:border-ring">
+        <Search className="size-4 shrink-0 text-muted-foreground" />
+        <input
+          value={search}
+          onChange={(event) => onSearch(event.target.value)}
+          onKeyDown={(event) => event.key === "Escape" && onSearch("")}
+          placeholder="Search mail"
+          className="h-full min-w-0 flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground"
+        />
+        {search ? (
+          <button
+            type="button"
+            aria-label="Clear search"
+            onClick={() => onSearch("")}
+            className="shrink-0 text-muted-foreground transition hover:text-foreground"
+          >
+            <X className="size-3.5" />
+          </button>
+        ) : null}
+      </label>
+
+      <IconButton label="Refresh" onClick={onRefresh}>
+        <RefreshCw className={cx(loading && "animate-spin")} />
+      </IconButton>
     </header>
   );
 }

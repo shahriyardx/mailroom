@@ -45,6 +45,14 @@ interface Props {
   onTrash: () => void;
   /** Whether the back arrow is worth drawing; in two panes it is not. */
   showBack: boolean;
+  /**
+   * Whether there is a whole window to fill rather than 400 pixels.
+   *
+   * Only changes how wide the text is allowed to run: a line of body copy
+   * stretched across a desktop monitor is unreadable, so it is capped and
+   * centred instead.
+   */
+  roomy?: boolean;
 }
 
 export function ThreadView({
@@ -58,8 +66,11 @@ export function ThreadView({
   onPatch,
   onTrash,
   showBack,
+  roomy = false,
 }: Props) {
   const folder = VIEW_FOLDER[view];
+  /** The column everything in here lines up to. */
+  const column = roomy ? "mx-auto w-full max-w-[860px]" : "w-full";
 
   if (loading && !thread) {
     return (
@@ -85,8 +96,14 @@ export function ThreadView({
 
   if (!thread) {
     return (
-      <div className="flex h-full items-center justify-center px-8 text-center text-[12.5px] text-muted-foreground">
-        Pick a conversation to read it here.
+      <div className="flex h-full flex-col items-center justify-center gap-3 px-8 text-center">
+        <div className="flex size-12 items-center justify-center rounded-full bg-muted text-muted-foreground">
+          <MailOpen className="size-5" />
+        </div>
+        <div className="text-[14px] font-semibold">Nothing open</div>
+        <p className="max-w-[280px] text-[12.5px] leading-relaxed text-muted-foreground">
+          Pick a conversation on the left and it will be read here.
+        </p>
       </div>
     );
   }
@@ -97,61 +114,63 @@ export function ThreadView({
   return (
     <div className="flex h-full min-h-0 flex-col">
       {/* toolbar */}
-      <div className="flex shrink-0 items-center gap-0.5 border-b border-border bg-card px-2 py-1.5">
-        {showBack ? (
-          <IconButton label="Back" onClick={onBack}>
-            <ArrowLeft />
-          </IconButton>
-        ) : null}
+      <div className="shrink-0 border-b border-border bg-card px-2 py-1.5">
+        <div className={cx("flex items-center gap-0.5", column, roomy && "px-2")}>
+          {showBack ? (
+            <IconButton label="Back" onClick={onBack}>
+              <ArrowLeft />
+            </IconButton>
+          ) : null}
 
-        <IconButton
-          label={thread.is_starred ? "Remove star" : "Star"}
-          active={thread.is_starred}
-          onClick={() => onPatch({ is_starred: !thread.is_starred })}
-        >
-          <Star className={thread.is_starred ? "fill-warn text-warn" : undefined} />
-        </IconButton>
-
-        <IconButton
-          label={unread ? "Mark as read" : "Mark as unread"}
-          onClick={() => onPatch({ is_read: unread })}
-        >
-          {unread ? <MailOpen /> : <Mail />}
-        </IconButton>
-
-        <IconButton label="Archive" onClick={() => onPatch({ folder: "archive" })}>
-          <Archive />
-        </IconButton>
-
-        <IconButton label="Mark as spam" onClick={() => onPatch({ folder: "spam" })}>
-          <ShieldAlert />
-        </IconButton>
-
-        <IconButton label="Delete" tone="danger" onClick={onTrash}>
-          <Trash2 />
-        </IconButton>
-
-        <div className="ml-auto flex items-center gap-1">
           <IconButton
-            label="Open in Mailroom"
-            onClick={() => openTab(threadUrl(settings, thread, folder))}
+            label={thread.is_starred ? "Remove star" : "Star"}
+            active={thread.is_starred}
+            onClick={() => onPatch({ is_starred: !thread.is_starred })}
           >
-            <ExternalLink />
+            <Star className={thread.is_starred ? "fill-warn text-warn" : undefined} />
           </IconButton>
-          <Button
-            size="sm"
-            pill
-            onClick={() => openTab(replyUrl(settings, thread, folder, "reply"))}
+
+          <IconButton
+            label={unread ? "Mark as read" : "Mark as unread"}
+            onClick={() => onPatch({ is_read: unread })}
           >
-            <Reply />
-            Reply
-          </Button>
+            {unread ? <MailOpen /> : <Mail />}
+          </IconButton>
+
+          <IconButton label="Archive" onClick={() => onPatch({ folder: "archive" })}>
+            <Archive />
+          </IconButton>
+
+          <IconButton label="Mark as spam" onClick={() => onPatch({ folder: "spam" })}>
+            <ShieldAlert />
+          </IconButton>
+
+          <IconButton label="Delete" tone="danger" onClick={onTrash}>
+            <Trash2 />
+          </IconButton>
+
+          <div className="ml-auto flex items-center gap-1">
+            <IconButton
+              label="Open in Mailroom"
+              onClick={() => openTab(threadUrl(settings, thread, folder))}
+            >
+              <ExternalLink />
+            </IconButton>
+            <Button
+              size="sm"
+              pill
+              onClick={() => openTab(replyUrl(settings, thread, folder, "reply"))}
+            >
+              <Reply />
+              Reply
+            </Button>
+          </div>
         </div>
       </div>
 
       {/* the conversation */}
       <div className="min-h-0 flex-1 overflow-y-auto">
-        <div className="px-4 pb-6 pt-4">
+        <div className={cx("px-4 pb-6 pt-4", column, roomy && "px-6 pt-6")}>
           <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
             <h1 className="text-[16px] font-semibold leading-tight tracking-[-0.015em]">
               {thread.subject?.trim() || "(no subject)"}
