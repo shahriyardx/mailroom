@@ -30,6 +30,7 @@ import {
   Skeleton,
   StatusPill,
   Switch,
+  useSection,
 } from "@/components/kit";
 import type { ApiKey, Mailbox } from "@/db/schema";
 import {
@@ -110,6 +111,7 @@ function reachOf(entry: ApiKey): Reach | null {
 }
 
 export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
+  const app = useSection() === "app";
   const [creating, setCreating] = useState(false);
   const router = useRouter();
   const [pending, start] = useTransition();
@@ -160,7 +162,15 @@ export function ApiKeyPanel({ keys, mailboxes, domains, appUrl }: Props) {
         />
       ) : (
         <>
-          <div className="flex items-center gap-3 border-border border-b pb-1.5 text-[11.5px] text-muted-foreground">
+          {/* A legend for the columns below. On an application screen the list
+              is a card, and a hairline over the top of it would read as a rule
+              that belongs to nothing. */}
+          <div
+            className={cn(
+              "flex items-center gap-3 text-[11.5px] text-muted-foreground",
+              app ? "px-4 pb-2" : "border-border border-b pb-1.5",
+            )}
+          >
             <span className="min-w-0 flex-1">Key</span>
             <span className="hidden w-44 shrink-0 sm:block">Can reach</span>
             <span className="hidden w-20 shrink-0 md:block">Last used</span>

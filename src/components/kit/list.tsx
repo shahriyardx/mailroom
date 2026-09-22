@@ -1,17 +1,42 @@
+"use client";
+
 import type * as React from "react";
 
 import { cn } from "@/lib/utils";
+import { useSection } from "./section";
 
-/** A list of records: hairlines between them, nothing around them. */
+/**
+ * A list of records.
+ *
+ * On a settings screen: hairlines between the rows and nothing around them,
+ * because the page already reads as one column of sections. On an application
+ * screen the same list is a card — the shape every screen written for that
+ * view uses, so a borrowed one does not arrive looking unfinished. The rows
+ * take their side gutter from whichever of the two they are in.
+ */
 export function List({ className, ...props }: React.ComponentProps<"div">) {
-  return <div data-slot="list" className={cn("divide-y divide-border", className)} {...props} />;
+  const app = useSection() === "app";
+
+  return (
+    <div
+      data-slot="list"
+      className={cn(
+        "divide-y divide-border",
+        app && "overflow-hidden rounded-2xl border border-border bg-card",
+        className,
+      )}
+      {...props}
+    />
+  );
 }
 
 export function ListRow({ className, ...props }: React.ComponentProps<"div">) {
+  const app = useSection() === "app";
+
   return (
     <div
       data-slot="list-row"
-      className={cn("flex items-center gap-3 py-3", className)}
+      className={cn("flex items-center gap-3 py-3", app && "px-4", className)}
       {...props}
     />
   );
@@ -19,10 +44,12 @@ export function ListRow({ className, ...props }: React.ComponentProps<"div">) {
 
 /** What a list says when it holds nothing. A sentence, not a shout. */
 export function ListEmpty({ className, ...props }: React.ComponentProps<"p">) {
+  const app = useSection() === "app";
+
   return (
     <p
       data-slot="list-empty"
-      className={cn("py-5 text-[12.5px] text-muted-foreground", className)}
+      className={cn("py-5 text-[12.5px] text-muted-foreground", app && "px-4", className)}
       {...props}
     />
   );

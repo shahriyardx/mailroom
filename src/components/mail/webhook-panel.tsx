@@ -5,13 +5,17 @@ import {
   Button,
   ConfirmDialog,
   Count,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
   Field,
-  Fieldset,
-  FieldsetActions,
   IconButton,
   Input,
   List,
@@ -49,6 +53,7 @@ import {
   Check,
   Copy,
   MoreHorizontal,
+  Plus,
   Power,
   PowerOff,
   RefreshCw,
@@ -110,6 +115,18 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
   const [scope, setScope] = useState(EVERYTHING);
   const [fresh, setFresh] = useState<{ id: string; secret: string } | null>(null);
   const [removing, setRemoving] = useState<Webhook | null>(null);
+  // The tab is held rather than left to Radix so that the button for adding an
+  // endpoint can leave with the list it belongs to.
+  const [tab, setTab] = useState("endpoints");
+  const [adding, setAdding] = useState(false);
+
+  function resetDraft() {
+    setUrl("");
+    setDescription("");
+    setScope(EVERYTHING);
+    setAll(true);
+    setEvents([]);
+  }
 
   function toggleEvent(event: string) {
     setAll(false);
@@ -151,17 +168,26 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
         }}
       />
 
-      <Tabs defaultValue="endpoints">
-        <TabsList>
-          <TabsTrigger value="endpoints">
-            Endpoints
-            <Count value={webhooks.filter((hook) => hook.enabled).length} />
-          </TabsTrigger>
-          <TabsTrigger value="deliveries">
-            Deliveries
-            <Count value={deliveries.length} />
-          </TabsTrigger>
-        </TabsList>
+      <Tabs value={tab} onValueChange={setTab}>
+        <div className="flex items-center justify-between gap-3">
+          <TabsList>
+            <TabsTrigger value="endpoints">
+              Endpoints
+              <Count value={webhooks.filter((hook) => hook.enabled).length} />
+            </TabsTrigger>
+            <TabsTrigger value="deliveries">
+              Deliveries
+              <Count value={deliveries.length} />
+            </TabsTrigger>
+          </TabsList>
+
+          {tab === "endpoints" && (
+            <Button variant="solid" size="sm" pill onClick={() => setAdding(true)}>
+              <Plus />
+              New endpoint
+            </Button>
+          )}
+        </div>
 
         <TabsContent value="endpoints" className="mt-4">
           {fresh && <FreshSecret secret={fresh.secret} />}
@@ -170,7 +196,7 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
             <BlankSlate
               icon={<WebhookIcon />}
               title="No endpoints yet"
-              hint="Add a URL below and this instance will post a signed JSON body to it every time something happens to your mail."
+              hint="Add a URL and this instance will post a signed JSON body to it every time something happens to your mail."
             />
           ) : (
             <List>
@@ -286,7 +312,73 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
             </List>
           )}
 
-          <Fieldset title="Add an endpoint">
+          <Verification />
+        </TabsContent>
+
+        <TabsContent value="deliveries" className="mt-4">
+          {/* The panel description covers the endpoints; this half needs its
+              own line, and lost the one it had when it stopped being a panel. */}
+          <Note className="mb-3">
+            Every attempt made at every endpoint, newest first, with what came back.
+          </Note>
+          {deliveries.length === 0 ? (
+            <BlankSlate
+              icon={<WebhookIcon />}
+              title="Nothing sent yet"
+              hint="Attempts show up here as soon as an endpoint is called."
+            />
+          ) : (
+            <List>
+              {deliveries.map((entry) => (
+                <ListRow key={entry.id}>
+                  <StatusPill state={entry.succeeded ? "ok" : "bad"}>
+                    {entry.statusCode ?? "—"}
+                  </StatusPill>
+                  <div className="min-w-0 flex-1">
+                    <p className="truncate font-mono text-[12px]">{entry.event}</p>
+                    {entry.error && (
+                      <p className="truncate text-[11.5px] text-destructive">{entry.error}</p>
+                    )}
+                  </div>
+                  <span className="hidden w-16 shrink-0 text-right text-[11.5px] text-muted-foreground sm:block">
+                    {entry.attempt > 1 ? `try ${entry.attempt}` : ""}
+                  </span>
+                  <span className="w-16 shrink-0 text-right text-[11.5px] text-muted-foreground">
+                    {entry.durationMs === null ? "" : `${entry.durationMs} ms`}
+                  </span>
+                  <span className="w-28 shrink-0 text-right text-[11.5px] text-muted-foreground">
+                    {entry.createdAt.toLocaleString(undefined, {
+                      month: "short",
+                      day: "numeric",
+                      hour: "2-digit",
+                      minute: "2-digit",
+                    })}
+                  </span>
+                </ListRow>
+              ))}
+            </List>
+          )}
+        </TabsContent>
+      </Tabs>
+
+      {/* Six decisions taken once. Under the list they doubled the length of
+          the page for everybody who had already made their endpoints. */}
+      <Dialog
+        open={adding}
+        onOpenChange={(open) => {
+          setAdding(open);
+          if (!open) resetDraft();
+        }}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Add an endpoint</DialogTitle>
+            <DialogDescription>
+              The signing secret is shown once, when the endpoint is made.
+            </DialogDescription>
+          </DialogHeader>
+
+          <div className="max-h-[60vh] overflow-y-auto px-1">
             <div className="grid gap-4 sm:grid-cols-2">
               <Field label="URL" htmlFor="hook-url" hint="Must be https.">
                 <Input
@@ -393,87 +485,44 @@ export function WebhookPanel({ webhooks, deliveries, mailboxes, domains }: Props
                 </div>
               </div>
             </div>
+          </div>
 
-            <FieldsetActions note="The signing secret is shown once when the endpoint is made.">
-              <Button
-                variant="solid"
-                pill
-                loading={saving}
-                disabled={!url.trim() || saving || (!all && events.length === 0)}
-                onClick={() =>
-                  submit(async () => {
-                    const result = await createWebhookAction({
-                      url: url.trim(),
-                      description: description.trim() || undefined,
-                      events: all ? ["*"] : events,
-                      ...scopeParts(scope),
-                    });
-                    if (!result.ok) {
-                      toast.error(result.error);
-                      return;
-                    }
-                    setFresh({ id: result.id, secret: result.secret });
-                    setUrl("");
-                    setDescription("");
-                    setScope(EVERYTHING);
-                    toast.success("Endpoint added");
-                    router.refresh();
-                  })
-                }
-              >
-                Add endpoint
-              </Button>
-            </FieldsetActions>
-          </Fieldset>
-
-          <Verification />
-        </TabsContent>
-
-        <TabsContent value="deliveries" className="mt-4">
-          {/* The panel description covers the endpoints; this half needs its
-              own line, and lost the one it had when it stopped being a panel. */}
-          <Note className="mb-3">
-            Every attempt made at every endpoint, newest first, with what came back.
-          </Note>
-          {deliveries.length === 0 ? (
-            <BlankSlate
-              icon={<WebhookIcon />}
-              title="Nothing sent yet"
-              hint="Attempts show up here as soon as an endpoint is called."
-            />
-          ) : (
-            <List>
-              {deliveries.map((entry) => (
-                <ListRow key={entry.id}>
-                  <StatusPill state={entry.succeeded ? "ok" : "bad"}>
-                    {entry.statusCode ?? "—"}
-                  </StatusPill>
-                  <div className="min-w-0 flex-1">
-                    <p className="truncate font-mono text-[12px]">{entry.event}</p>
-                    {entry.error && (
-                      <p className="truncate text-[11.5px] text-destructive">{entry.error}</p>
-                    )}
-                  </div>
-                  <span className="hidden w-16 shrink-0 text-right text-[11.5px] text-muted-foreground sm:block">
-                    {entry.attempt > 1 ? `try ${entry.attempt}` : ""}
-                  </span>
-                  <span className="w-16 shrink-0 text-right text-[11.5px] text-muted-foreground">
-                    {entry.durationMs === null ? "" : `${entry.durationMs} ms`}
-                  </span>
-                  <span className="w-28 shrink-0 text-right text-[11.5px] text-muted-foreground">
-                    {entry.createdAt.toLocaleString(undefined, {
-                      month: "short",
-                      day: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}
-                  </span>
-                </ListRow>
-              ))}
-            </List>
-          )}
-        </TabsContent>
-      </Tabs>
+          <DialogFooter>
+            <Button variant="ghost" pill onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button
+              variant="solid"
+              pill
+              loading={saving}
+              disabled={!url.trim() || saving || (!all && events.length === 0)}
+              onClick={() =>
+                submit(async () => {
+                  const result = await createWebhookAction({
+                    url: url.trim(),
+                    description: description.trim() || undefined,
+                    events: all ? ["*"] : events,
+                    ...scopeParts(scope),
+                  });
+                  if (!result.ok) {
+                    toast.error(result.error);
+                    return;
+                  }
+                  // The secret lands on the panel behind this, which is the
+                  // only place it is ever shown.
+                  setFresh({ id: result.id, secret: result.secret });
+                  setAdding(false);
+                  resetDraft();
+                  toast.success("Endpoint added");
+                  router.refresh();
+                })
+              }
+            >
+              Add endpoint
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Panel>
   );
 }
