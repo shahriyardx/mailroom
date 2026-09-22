@@ -7,10 +7,18 @@ import { label, member } from "@/db/schema";
 import { requireAccess } from "@/server/access";
 import { sendableMailboxesFor } from "@/server/mailboxes";
 import { getAppearance } from "@/server/preferences";
+import { needsSetup } from "@/server/workspace";
 import { eq } from "drizzle-orm";
+import { redirect } from "next/navigation";
 
 export default async function MailLayout({ children }: { children: React.ReactNode }) {
   const access = await requireAccess();
+
+  // A fresh instance has nothing in it, and an empty inbox with no hint of
+  // what to press is where somebody decides this was a mistake. The wizard is
+  // stamped once and never asks again.
+  if (await needsSetup(access.orgId)) redirect("/setup");
+
   // The composer offers only what this person can actually send as.
   const mailboxes = await sendableMailboxesFor(access);
 

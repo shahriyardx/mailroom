@@ -1411,3 +1411,15 @@ export async function setWorkspaceBrandAction(patch: {
     return failure(error, "That could not be saved");
   }
 }
+
+export async function finishSetupAction() {
+  const access = await requireAccess();
+  assertCan(access, "instance:manage");
+  try {
+    await saveWorkspaceSettings(access.orgId, { setupCompleted: true });
+    revalidatePath("/", "layout");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That could not be saved");
+  }
+}
