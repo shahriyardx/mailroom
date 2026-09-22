@@ -15,7 +15,9 @@ import {
   Globe,
   Inbox,
   KeyRound,
+  ListChecks,
   Mail,
+  Megaphone,
   Menu,
   Palette,
   ScrollText,
@@ -23,6 +25,7 @@ import {
   ShieldOff,
   SlidersHorizontal,
   Tag,
+  ToggleRight,
   User,
   Users,
   UsersRound,
@@ -38,6 +41,12 @@ interface NavItem {
   icon: LucideIcon;
   /** Hidden unless the person holds this capability. */
   needs?: string;
+  /**
+   * Hidden unless that half of the product is switched on. Absent means the
+   * item belongs to both — domains, templates and the email log are read by
+   * a marketing instance as much as by a mailbox one.
+   */
+  feature?: "inbox" | "campaigns";
   /** Leaves the app. Never highlights, and opens in its own tab. */
   external?: boolean;
 }
@@ -59,7 +68,13 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
         icon: Activity,
         needs: "domain:manage",
       },
-      { href: "/settings/mailboxes", label: "Mailboxes", icon: Mail, needs: "mailbox:settings" },
+      {
+        href: "/settings/mailboxes",
+        label: "Mailboxes",
+        icon: Mail,
+        needs: "mailbox:settings",
+        feature: "inbox",
+      },
       { href: "/settings/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
       { href: "/settings/logs", label: "Email log", icon: ScrollText, needs: "mail:read" },
       {
@@ -73,15 +88,53 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
   {
     title: "Receiving",
     items: [
-      { href: "/settings/inbound", label: "Inbound worker", icon: Inbox, needs: "inbound:manage" },
-      { href: "/settings/forwarding", label: "Forwarding", icon: Forward, needs: "inbound:manage" },
+      {
+        href: "/settings/inbound",
+        label: "Inbound worker",
+        icon: Inbox,
+        needs: "inbound:manage",
+        feature: "inbox",
+      },
+      {
+        href: "/settings/forwarding",
+        label: "Forwarding",
+        icon: Forward,
+        needs: "inbound:manage",
+        feature: "inbox",
+      },
       {
         href: "/settings/filters",
         label: "Filters",
         icon: SlidersHorizontal,
         needs: "rules:manage",
+        feature: "inbox",
       },
-      { href: "/settings/labels", label: "Labels", icon: Tag, needs: "rules:manage" },
+      {
+        href: "/settings/labels",
+        label: "Labels",
+        icon: Tag,
+        needs: "rules:manage",
+        feature: "inbox",
+      },
+    ],
+  },
+  {
+    title: "Campaigns",
+    items: [
+      {
+        href: "/settings/lists",
+        label: "Lists",
+        icon: ListChecks,
+        needs: "rules:manage",
+        feature: "campaigns",
+      },
+      {
+        href: "/settings/broadcasts",
+        label: "Broadcasts",
+        icon: Megaphone,
+        needs: "mail:send",
+        feature: "campaigns",
+      },
     ],
   },
   {
@@ -92,6 +145,12 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/settings/access", label: "Access", icon: ShieldCheck, needs: "access:manage" },
       { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
       { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
+      {
+        href: "/settings/features",
+        label: "Features",
+        icon: ToggleRight,
+        needs: "instance:manage",
+      },
       { href: "/settings/account", label: "Account", icon: User },
       { href: "/settings/notifications", label: "Notifications", icon: Bell },
       { href: "/settings/appearance", label: "Appearance", icon: Palette },
@@ -110,11 +169,14 @@ const ALL = GROUPS.flatMap((group) => group.items);
 export function SettingsShell({
   user,
   allowed,
+  features,
   children,
 }: {
   user: { name: string; email: string };
   /** The capabilities this person holds; anything else is not offered. */
   allowed: string[];
+  /** Which halves of the product this instance has switched on. */
+  features: { inbox: boolean; campaigns: boolean };
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -129,7 +191,10 @@ export function SettingsShell({
 
   const groups = GROUPS.map((group) => ({
     ...group,
-    items: group.items.filter((item) => !item.needs || allowed.includes(item.needs)),
+    items: group.items.filter(
+      (item) =>
+        (!item.needs || allowed.includes(item.needs)) && (!item.feature || features[item.feature]),
+    ),
   })).filter((group) => group.items.length > 0);
 
   const nav = <SettingsNavPanel pathname={pathname} user={user} groups={groups} />;

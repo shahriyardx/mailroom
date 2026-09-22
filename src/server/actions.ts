@@ -46,6 +46,7 @@ import { assertCan, can } from "@/server/permissions";
 import { type Appearance, saveAppearance } from "@/server/preferences";
 import { forgetBrowser, forgetEveryBrowser, pushToUsers, rememberBrowser } from "@/server/push";
 import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
+import { saveWorkspaceSettings } from "@/server/workspace";
 import type { EventType } from "@aws-sdk/client-sesv2";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -1373,4 +1374,40 @@ export async function setForwardOffAction(width: Width, off: boolean) {
   await setForwardOff(access.orgId, width, off);
   revalidatePath("/settings/forwarding");
   return { ok: true as const };
+}
+
+/* -------------------------------------------------------------------------- */
+/* What this instance is for                                                  */
+/* -------------------------------------------------------------------------- */
+
+export async function setWorkspaceFeaturesAction(patch: {
+  inboxEnabled?: boolean;
+  campaignsEnabled?: boolean;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "instance:manage");
+  try {
+    await saveWorkspaceSettings(access.orgId, patch);
+    // Every settings page builds its navigation from this.
+    revalidatePath("/settings", "layout");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That could not be saved");
+  }
+}
+
+export async function setWorkspaceBrandAction(patch: {
+  brandName?: string | null;
+  brandLogo?: string | null;
+  brandAccent?: string | null;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "instance:manage");
+  try {
+    await saveWorkspaceSettings(access.orgId, patch);
+    revalidatePath("/settings", "layout");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That could not be saved");
+  }
 }
