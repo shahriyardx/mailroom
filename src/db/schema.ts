@@ -1038,3 +1038,21 @@ export type SendJob = typeof sendJob.$inferSelect;
 export type SendJobStatus = (typeof sendJobStatusEnum.enumValues)[number];
 export type DeliveryStatus = (typeof deliveryStatusEnum.enumValues)[number];
 export type Template = typeof template.$inferSelect;
+
+/**
+ * How one person likes the app to look. Kept per user rather than per member,
+ * so the same choices follow them into every organisation and onto every
+ * device they sign in from.
+ */
+export const preference = pgTable("preference", {
+  userId: text("user_id")
+    .primaryKey()
+    .references(() => user.id, { onDelete: "cascade" }),
+  /** "system" follows the device; the other two override it. */
+  theme: text("theme").$type<"system" | "light" | "dark">().notNull().default("dark"),
+  density: text("density").$type<"comfortable" | "compact">().notNull().default("comfortable"),
+  /** Side by side, or one thing at a time with a way back. */
+  readingLayout: text("reading_layout").$type<"split" | "stacked">().notNull().default("split"),
+  navCollapsed: boolean("nav_collapsed").notNull().default(false),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});

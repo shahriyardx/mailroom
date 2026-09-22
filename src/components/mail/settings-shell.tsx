@@ -15,6 +15,7 @@ import {
   KeyRound,
   Mail,
   Menu,
+  Palette,
   ScrollText,
   ShieldCheck,
   ShieldOff,
@@ -89,6 +90,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
       { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
       { href: "/settings/account", label: "Account", icon: User },
+      { href: "/settings/appearance", label: "Appearance", icon: Palette },
       {
         href: "https://mailroom-docs.shahriyar.dev",
         label: "Documentation",

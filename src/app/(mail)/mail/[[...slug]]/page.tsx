@@ -10,6 +10,7 @@ import { creatableDomainIds, readableMailboxIds } from "@/server/grants";
 import { imageChoices as imageChoicesFor } from "@/server/image-trust";
 import { listMailboxesFor } from "@/server/mailboxes";
 import { can } from "@/server/permissions";
+import { getAppearance } from "@/server/preferences";
 import { settingsLanding } from "@/server/settings-landing";
 import { getThreadDetail, listThreads } from "@/server/threads";
 import { eq } from "drizzle-orm";
@@ -34,7 +35,11 @@ export default async function MailPage({ params, searchParams }: PageProps) {
   const { slug } = await params;
   // Read here rather than in the shell, so the sidebar is the width it was
   // left at from the first paint.
-  const railed = (await cookies()).get(RAIL_COOKIE)?.value === "1";
+  const cookieRail = (await cookies()).get(RAIL_COOKIE)?.value;
+  const look = await getAppearance(access.userId);
+  // The cookie is this device's own answer; the saved row is what a device
+  // that has never been here should start with.
+  const railed = cookieRail ? cookieRail === "1" : look.navCollapsed;
   const query = await searchParams;
   const { scope, folder } = parseRoute(slug);
 
@@ -101,6 +106,8 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       canAddMailbox={mayAddMailbox}
       settingsHref={settingsHref}
       initialRailed={railed}
+      readingLayout={look.readingLayout}
+      backHref={backHref}
       openSubject={detail?.subject || undefined}
       threadOpen={Boolean(detail)}
       list={
@@ -116,6 +123,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           prevCursor={prevCursor}
           showMailbox={scope.kind !== "mailbox"}
           labels={labels}
+          density={look.density}
         />
       }
     >

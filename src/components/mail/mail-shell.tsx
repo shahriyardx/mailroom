@@ -30,9 +30,10 @@ import {
   scopeKey,
 } from "@/lib/scope";
 import { cn, colorOf } from "@/lib/utils";
-import { emptyTrashAction } from "@/server/actions";
+import { emptyTrashAction, saveAppearanceAction } from "@/server/actions";
 import {
   Archive,
+  ArrowLeft,
   ChevronRight,
   FileText,
   Globe,
@@ -89,6 +90,8 @@ interface Props {
   openSubject?: string;
   /** True when a conversation is open, which takes over the screen on mobile. */
   threadOpen?: boolean;
+  /** The list this conversation was opened from, for the way back. */
+  backHref?: string;
   /** Whether to offer the first address. A 404 for anyone who may not add one. */
   canAddMailbox?: boolean;
   /** The settings screen this reader may open, resolved so the gear does not
@@ -97,6 +100,11 @@ interface Props {
   /** How the sidebar was left last time, read from a cookie so the first
    * paint is already the right width. */
   initialRailed?: boolean;
+  /**
+   * Side by side, or one thing at a time. Stacked gives the whole width to
+   * whichever of the two you are looking at, the way a phone always has.
+   */
+  readingLayout?: "split" | "stacked";
 }
 
 export function MailShell({
@@ -109,9 +117,11 @@ export function MailShell({
   children,
   openSubject,
   threadOpen = false,
+  backHref,
   canAddMailbox = false,
   settingsHref = "/settings",
   initialRailed = false,
+  readingLayout = "split",
 }: Props) {
   const pathname = usePathname();
   const params = useSearchParams();
@@ -127,13 +137,32 @@ export function MailShell({
    * a wide sidebar that snaps narrow once the script runs.
    */
   const [railed, setRailed] = useState(initialRailed);
+
+  /**
+   * Moving between folders replaces this whole subtree, and the payload that
+   * replaces it may have been prefetched before the sidebar was collapsed. The
+   * cookie is the one thing that is never stale, so it has the last word once
+   * the page is up.
+   */
+  useEffect(() => {
+    const saved = document.cookie.match(/(?:^|;\s*)mailroom\.rail=([01])/);
+    if (saved) setRailed(saved[1] === "1");
+    // First visit on this device: seed the mirror from what was saved.
+    else if (initialRailed)
+      document.cookie = `${RAIL_COOKIE}=1; path=/; max-age=31536000; samesite=lax`;
+  }, [initialRailed]);
+
+  /** Whether the two panes take turns instead of sitting side by side. */
+  const stacked = readingLayout === "stacked";
+
   const toggleRail = useCallback(() => {
-    setRailed((value) => {
-      const next = !value;
-      document.cookie = `${RAIL_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
-      return next;
-    });
-  }, []);
+    const next = !railed;
+    setRailed(next);
+    // Written twice on purpose: the cookie so the next paint is right away,
+    // the row so the choice is there on another device.
+    document.cookie = `${RAIL_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+    void saveAppearanceAction({ navCollapsed: next });
+  }, [railed]);
 
   useEffect(() => {
     let cancelled = false;
@@ -306,8 +335,15 @@ export function MailShell({
           <div className="flex min-h-0 flex-1">
             <section
               className={cn(
-                "w-full min-w-0 flex-col lg:flex lg:w-[24.5rem] lg:shrink-0 lg:border-r lg:border-border xl:w-[26.5rem]",
-                threadOpen ? "hidden" : "flex",
+                "w-full min-w-0 flex-col",
+                stacked
+                  ? threadOpen
+                    ? "hidden"
+                    : "flex"
+                  : [
+                      "lg:flex lg:w-[24.5rem] lg:shrink-0 lg:border-r lg:border-border xl:w-[26.5rem]",
+                      threadOpen ? "hidden" : "flex",
+                    ],
               )}
             >
               {/* The list starts here. An All/Unread switch sat above it, and
@@ -318,11 +354,32 @@ export function MailShell({
             </section>
 
             <section
-              className={cn("min-w-0 flex-1 flex-col lg:flex", threadOpen ? "flex" : "hidden")}
+              className={cn(
+                "min-w-0 flex-1 flex-col",
+                stacked
+                  ? threadOpen
+                    ? "flex"
+                    : "hidden"
+                  : ["lg:flex", threadOpen ? "flex" : "hidden"],
+              )}
             >
               {openSubject && (
-                <div className="flex h-10 shrink-0 items-center border-b border-border px-4 lg:hidden">
-                  <p className="truncate text-[12.5px] text-muted-foreground">{openSubject}</p>
+                <div
+                  className={cn(
+                    "flex h-10 shrink-0 items-center gap-1.5 border-b border-border px-2",
+                    !stacked && "lg:hidden",
+                  )}
+                >
+                  {backHref && (
+                    <IconButton size="sm" label="Back to the list" asChild>
+                      <Link href={backHref}>
+                        <ArrowLeft />
+                      </Link>
+                    </IconButton>
+                  )}
+                  <p className="min-w-0 truncate text-[12.5px] text-muted-foreground">
+                    {openSubject}
+                  </p>
                 </div>
               )}
               <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
@@ -407,12 +464,11 @@ function NavPanel({
       {/* Nothing to write from, nothing to offer. */}
       {composer.canWrite && (
         <div className="px-3 pb-4">
-          <Hint label="Compose — c" side="right">
-            <Button variant="solid" size="md" pill block onClick={() => composer.open()}>
-              <PenLine />
-              Compose
-            </Button>
-          </Hint>
+          {/* No tooltip: the button says what it is, and c is in the help. */}
+          <Button variant="solid" size="md" pill block onClick={() => composer.open()}>
+            <PenLine />
+            Compose
+          </Button>
         </div>
       )}
 
@@ -603,11 +659,9 @@ function NavRail({
 
       {composer.canWrite && (
         <div className="flex justify-center pb-4">
-          <Hint label="Compose — c" side="right">
-            <IconButton size="md" label="Compose" variant="solid" onClick={() => composer.open()}>
-              <PenLine />
-            </IconButton>
-          </Hint>
+          <IconButton size="md" label="Compose" variant="solid" onClick={() => composer.open()}>
+            <PenLine />
+          </IconButton>
         </div>
       )}
 
@@ -982,6 +1036,8 @@ function ThemeToggle() {
           setDark(next);
           document.documentElement.classList.toggle("dark", next);
           localStorage.setItem("theme", next ? "dark" : "light");
+          // Settings offers the same choice, so this writes where that reads.
+          void saveAppearanceAction({ theme: next ? "dark" : "light" });
         }}
       >
         {dark ? <Sun /> : <Moon />}

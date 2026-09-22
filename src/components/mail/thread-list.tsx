@@ -88,6 +88,8 @@ interface Props {
   offset: number;
   showMailbox: boolean;
   labels: LabelRow[];
+  /** Compact drops the preview line and tightens the rows. */
+  density?: "comfortable" | "compact";
 }
 
 export function ThreadList({
@@ -102,7 +104,9 @@ export function ThreadList({
   offset,
   showMailbox,
   labels,
+  density = "comfortable",
 }: Props) {
+  const compact = density === "compact";
   const router = useRouter();
   const [purging, setPurging] = useState<ThreadListItem | null>(null);
   const [selected, setSelected] = useState<Set<string>>(new Set());
@@ -146,14 +150,15 @@ export function ThreadList({
       <li
         key={item.id}
         className={cn(
-          "group relative flex items-start gap-3 border-b border-border/70 px-4 py-3 transition-colors duration-100",
+          "group relative flex items-start border-b border-border/70 px-4 transition-colors duration-100",
+          compact ? "gap-2.5 py-1.5" : "gap-3 py-3",
           active ? "bg-accent" : "hover:bg-accent/55",
         )}
       >
         {/* The avatar becomes a checkbox the moment you reach for it. */}
-        <span className="relative mt-0.5 size-8 shrink-0">
+        <span className={cn("relative mt-0.5 shrink-0", compact ? "size-6" : "size-8")}>
           <Avatar
-            size="md"
+            size={compact ? "sm" : "md"}
             name={sender?.name}
             address={sender?.address ?? item.id}
             className={cn(
@@ -233,7 +238,7 @@ export function ThreadList({
             )}
           </span>
 
-          {item.snippet && (
+          {item.snippet && !compact && (
             <span className="mt-0.5 block truncate text-[12.5px] text-muted-foreground">
               {item.snippet}
             </span>

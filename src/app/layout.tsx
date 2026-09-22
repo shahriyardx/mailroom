@@ -37,10 +37,11 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       <head>
         <script
           // Applies the saved theme before paint so there is no flash of the
-          // wrong colours. Dark unless this browser has chosen otherwise.
+          // wrong colours. "system" follows the device; anything else but
+          // "light" is dark, which is also what an unset value means.
           // biome-ignore lint/security/noDangerouslySetInnerHtml: required for pre-paint theme
           dangerouslySetInnerHTML={{
-            __html: `try{if(localStorage.getItem("theme")!=="light")document.documentElement.classList.add("dark")}catch(e){document.documentElement.classList.add("dark")}`,
+            __html: `try{var t=localStorage.getItem("theme");var d=t==="light"?false:t==="system"?matchMedia("(prefers-color-scheme: dark)").matches:true;document.documentElement.classList.toggle("dark",d)}catch(e){document.documentElement.classList.add("dark")}`,
           }}
         />
       </head>

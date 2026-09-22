@@ -1,10 +1,12 @@
 import { Toaster } from "@/components/kit";
 import { ComposerProvider } from "@/components/mail/composer-provider";
 import { LiveUpdates } from "@/components/mail/live-updates";
+import { ThemeSync } from "@/components/mail/theme-sync";
 import { db } from "@/db";
 import { label, member } from "@/db/schema";
 import { requireAccess } from "@/server/access";
 import { sendableMailboxesFor } from "@/server/mailboxes";
+import { getAppearance } from "@/server/preferences";
 import { eq } from "drizzle-orm";
 
 export default async function MailLayout({ children }: { children: React.ReactNode }) {
@@ -24,8 +26,11 @@ export default async function MailLayout({ children }: { children: React.ReactNo
   // Labels are fetched here too so the provider tree stays stable between views.
   await db.query.label.findMany({ where: eq(label.organizationId, access.orgId) });
 
+  const look = await getAppearance(access.userId);
+
   return (
     <ComposerProvider mailboxes={mailboxes} defaultMailboxId={defaultMailboxId}>
+      <ThemeSync theme={look.theme} />
       {children}
       <LiveUpdates />
       {/* Nothing was rendering the toasts the actions raise. */}

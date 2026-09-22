@@ -32,6 +32,7 @@ import {
 } from "@/server/grants";
 import { rememberImageChoice } from "@/server/image-trust";
 import { assertCan, can } from "@/server/permissions";
+import { type Appearance, saveAppearance } from "@/server/preferences";
 import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
 import type { EventType } from "@aws-sdk/client-sesv2";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
@@ -321,6 +322,27 @@ export async function deleteThreadsAction(threadIds: string[]) {
   const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   await trashThreads(owned);
   revalidatePath("/mail", "layout");
+}
+
+const appearanceSchema = z.object({
+  theme: z.enum(["system", "light", "dark"]).optional(),
+  density: z.enum(["comfortable", "compact"]).optional(),
+  readingLayout: z.enum(["split", "stacked"]).optional(),
+  navCollapsed: z.boolean().optional(),
+});
+
+/**
+ * Changes how the app looks for whoever is signed in.
+ *
+ * One action for every appearance choice, because they are saved the same way
+ * and a page that flips one switch should not need its own endpoint.
+ */
+export async function saveAppearanceAction(patch: unknown): Promise<Appearance> {
+  const access = await requireAccess();
+  const next = await saveAppearance(access.userId, appearanceSchema.parse(patch));
+  revalidatePath("/mail", "layout");
+  revalidatePath("/settings", "layout");
+  return next;
 }
 
 /** The view the trash is being emptied from, which is all it may reach. */
