@@ -1,6 +1,14 @@
 "use client";
 
-import { Avatar, IconButton, Sheet, SheetContent, SheetTitle, Wordmark } from "@/components/kit";
+import {
+  Avatar,
+  IconButton,
+  SectionProvider,
+  Sheet,
+  SheetContent,
+  SheetTitle,
+  Wordmark,
+} from "@/components/kit";
 import { ViewSwitcher } from "@/components/mail/view-switcher";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
@@ -55,7 +63,7 @@ const GROUPS: { title?: string; items: Item[] }[] = [
       { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
       { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
       {
-        href: "/settings/templates",
+        href: "/campaigns/templates",
         label: "Templates",
         icon: FileText,
         needs: "rules:manage",
@@ -65,22 +73,22 @@ const GROUPS: { title?: string; items: Item[] }[] = [
   {
     title: "Sending",
     items: [
-      { href: "/settings/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
-      { href: "/settings/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
+      { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+      { href: "/campaigns/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
       {
-        href: "/settings/reporting",
+        href: "/campaigns/reporting",
         label: "Delivery",
         icon: Activity,
         needs: "domain:manage",
       },
       {
-        href: "/settings/blocked",
+        href: "/campaigns/blocked",
         label: "Blocked",
         icon: ShieldOff,
         needs: "rules:manage",
       },
-      { href: "/settings/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
-      { href: "/settings/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
+      { href: "/campaigns/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
+      { href: "/campaigns/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
     ],
   },
 ];
@@ -199,7 +207,9 @@ export function CampaignsShell({
 
         <main className="min-h-0 flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-[1100px] px-5 pt-4 pb-10 sm:px-8 md:pt-8">
-            {children}
+            {/* Panels rendered under here are application panels, including
+                the shared screens this view borrows from settings. */}
+            <SectionProvider kind="app">{children}</SectionProvider>
           </div>
         </main>
       </div>

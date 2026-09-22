@@ -11,6 +11,7 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/kit";
+import { sectionBase } from "@/lib/section";
 import { cn } from "@/lib/utils";
 import {
   AlertTriangle,
@@ -27,6 +28,7 @@ import {
   XCircle,
 } from "lucide-react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -123,13 +125,14 @@ const DISC: Record<string, string> = {
 };
 
 export function LogDetail(props: DetailProps) {
+  const base = sectionBase(usePathname());
   const first = props.to[0]?.address ?? props.fromAddress;
 
   return (
     <div className="space-y-6 py-6">
       <div>
         <Link
-          href="/settings/logs"
+          href={`${base}/logs`}
           className="mb-3 inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />

@@ -12,10 +12,11 @@ import {
   Panel,
   StatusPill,
 } from "@/components/kit";
+import { sectionBase } from "@/lib/section";
 import { removeSuppressionAction } from "@/server/actions";
 import { Search, ShieldOff, Trash2 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -38,6 +39,7 @@ interface Props {
 
 export function SuppressionPanel({ rows, query, matching, total, page, pageCount }: Props) {
   const router = useRouter();
+  const base = sectionBase(usePathname());
   const [unblocking, setUnblocking] = useState<Row | null>(null);
 
   const href = (next: number) => {
@@ -95,7 +97,7 @@ export function SuppressionPanel({ rows, query, matching, total, page, pageCount
           Search
         </Button>
         {query && (
-          <Button type="button" variant="ghost" onClick={() => router.push("/settings/blocked")}>
+          <Button type="button" variant="ghost" onClick={() => router.push(`${base}/blocked`)}>
             Clear
           </Button>
         )}

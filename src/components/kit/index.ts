@@ -63,6 +63,7 @@ export {
   SelectTrigger,
   SelectValue,
 } from "./select";
+export { SectionProvider, useSection } from "./section";
 export { Separator } from "./separator";
 export { Meter, Stat, Stats } from "./stat";
 export {

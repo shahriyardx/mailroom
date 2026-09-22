@@ -15,6 +15,7 @@ import {
   TabsTrigger,
 } from "@/components/kit";
 import { DAY_RANGES, type Direction, type LogRow, SENDING_STATUSES } from "@/lib/log-view";
+import { sectionBase } from "@/lib/section";
 import { cn } from "@/lib/utils";
 import { Inbox, Search, Send } from "lucide-react";
 import Link from "next/link";
@@ -43,6 +44,7 @@ const TONE: Record<string, "ok" | "warn" | "danger" | "neutral"> = {
 export function LogTable({ rows, direction, keys, nextCursor }: Props) {
   const router = useRouter();
   const path = usePathname();
+  const base = sectionBase(path);
   const params = useSearchParams();
   const [pending, start] = useTransition();
 
@@ -192,7 +194,7 @@ export function LogTable({ rows, direction, keys, nextCursor }: Props) {
             </thead>
             <tbody className="divide-y divide-border">
               {rows.map((row) => (
-                <Row key={row.id} row={row} direction={direction} />
+                <Row key={row.id} row={row} direction={direction} base={base} />
               ))}
             </tbody>
           </table>
@@ -215,7 +217,7 @@ export function LogTable({ rows, direction, keys, nextCursor }: Props) {
   );
 }
 
-function Row({ row, direction }: { row: LogRow; direction: Direction }) {
+function Row({ row, direction, base }: { row: LogRow; direction: Direction; base: string }) {
   const who =
     direction === "sending" ? (row.to[0]?.address ?? "—") : (row.fromName ?? row.fromAddress);
   const extra = direction === "sending" && row.to.length > 1 ? ` +${row.to.length - 1}` : "";
@@ -223,7 +225,7 @@ function Row({ row, direction }: { row: LogRow; direction: Direction }) {
   return (
     <tr className="group transition-colors hover:bg-accent/50">
       <td className="px-3 py-2.5">
-        <Link href={`/settings/logs/${row.id}`} className="flex min-w-0 items-center gap-2">
+        <Link href={`${base}/logs/${row.id}`} className="flex min-w-0 items-center gap-2">
           <span
             aria-hidden
             className="size-2 shrink-0 rounded-full"
@@ -254,7 +256,7 @@ function Row({ row, direction }: { row: LogRow; direction: Direction }) {
       </td>
       <td className="px-3 py-2.5">
         <Link
-          href={`/settings/logs/${row.id}`}
+          href={`${base}/logs/${row.id}`}
           className="block truncate text-[13px] text-muted-foreground"
         >
           {row.subject || "(no subject)"}
