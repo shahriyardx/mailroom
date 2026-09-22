@@ -61,11 +61,19 @@ interface Props {
   backHref: string;
   /** Every label the user has, so one can be put on this conversation. */
   labels: LabelRow[];
+  /** One pane at a time, so the way back is needed at every width. */
+  stacked?: boolean;
   /** Senders this reader has already decided about, for remote images. */
   imageChoices?: Record<string, boolean>;
 }
 
-export function ThreadView({ thread, backHref, labels, imageChoices = {} }: Props) {
+export function ThreadView({
+  thread,
+  backHref,
+  labels,
+  imageChoices = {},
+  stacked = false,
+}: Props) {
   const router = useRouter();
   const composer = useComposer();
   const [, startTransition] = useTransition();
@@ -142,9 +150,15 @@ export function ThreadView({ thread, backHref, labels, imageChoices = {} }: Prop
   return (
     <section className="flex h-full min-w-0 flex-col bg-card">
       <header className="flex h-12 shrink-0 items-center gap-0.5 border-b border-border px-3">
-        {/* On a narrow screen the conversation covers the list, so it needs a
-            way back that a wide screen does not. */}
-        <IconButton label="Back to the list" size="md" asChild className="mr-1 lg:hidden">
+        {/* Whenever the conversation covers the list it needs a way back:
+            always on a narrow screen, and at every width when the two panes
+            take turns rather than sitting side by side. */}
+        <IconButton
+          label="Back to the list"
+          size="md"
+          asChild
+          className={cn("mr-1", !stacked && "lg:hidden")}
+        >
           <Link href={backHref}>
             <ArrowLeft />
           </Link>

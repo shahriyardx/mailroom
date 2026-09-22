@@ -107,7 +107,6 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       settingsHref={settingsHref}
       initialRailed={railed}
       readingLayout={look.readingLayout}
-      backHref={backHref}
       openSubject={detail?.subject || undefined}
       threadOpen={Boolean(detail)}
       list={
@@ -124,6 +123,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
           showMailbox={scope.kind !== "mailbox"}
           labels={labels}
           density={look.density}
+          wide={look.readingLayout === "stacked"}
         />
       }
     >
@@ -131,6 +131,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
         <ThreadView
           thread={detail}
           backHref={backHref}
+          stacked={look.readingLayout === "stacked"}
           labels={labels}
           imageChoices={imageChoices}
         />

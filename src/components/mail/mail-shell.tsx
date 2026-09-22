@@ -33,7 +33,6 @@ import { cn, colorOf } from "@/lib/utils";
 import { emptyTrashAction, saveAppearanceAction } from "@/server/actions";
 import {
   Archive,
-  ArrowLeft,
   ChevronRight,
   FileText,
   Globe,
@@ -101,8 +100,6 @@ interface Props {
   openSubject?: string;
   /** True when a conversation is open, which takes over the screen on mobile. */
   threadOpen?: boolean;
-  /** The list this conversation was opened from, for the way back. */
-  backHref?: string;
   /** Whether to offer the first address. A 404 for anyone who may not add one. */
   canAddMailbox?: boolean;
   /** The settings screen this reader may open, resolved so the gear does not
@@ -128,7 +125,6 @@ export function MailShell({
   children,
   openSubject,
   threadOpen = false,
-  backHref,
   canAddMailbox = false,
   settingsHref = "/settings",
   initialRailed = false,
@@ -372,25 +368,16 @@ export function MailShell({
                   : ["lg:flex", threadOpen ? "flex" : "hidden"],
               )}
             >
-              {openSubject && (
-                <div
-                  className={cn(
-                    "flex h-10 shrink-0 items-center gap-1.5 border-b border-border px-2",
-                    !stacked && "lg:hidden",
-                  )}
-                >
-                  {backHref && (
-                    <IconButton size="sm" label="Back to the list" asChild>
-                      <Link href={backHref}>
-                        <ArrowLeft />
-                      </Link>
-                    </IconButton>
-                  )}
-                  <p className="min-w-0 truncate text-[12.5px] text-muted-foreground">
-                    {openSubject}
-                  </p>
+              {/* A conversation covering the list needs to say which one it
+                  is. Not needed when the two sit side by side, and not needed
+                  stacked either: there the conversation's own toolbar carries
+                  the way back, and its subject is the first thing in it. */}
+              {openSubject && !stacked && (
+                <div className="flex h-10 shrink-0 items-center border-b border-border px-4 lg:hidden">
+                  <p className="truncate text-[12.5px] text-muted-foreground">{openSubject}</p>
                 </div>
               )}
+
               <div className="min-h-0 flex-1 overflow-hidden">{children}</div>
             </section>
           </div>

@@ -90,6 +90,12 @@ interface Props {
   labels: LabelRow[];
   /** Compact drops the preview line and tightens the rows. */
   density?: "comfortable" | "compact";
+  /**
+   * True when the list has the whole screen rather than a column beside the
+   * conversation. With that much width a row fits on one line, which is what
+   * every full-width mail list does.
+   */
+  wide?: boolean;
 }
 
 export function ThreadList({
@@ -105,6 +111,7 @@ export function ThreadList({
   showMailbox,
   labels,
   density = "comfortable",
+  wide = false,
 }: Props) {
   const compact = density === "compact";
   const router = useRouter();
@@ -150,8 +157,9 @@ export function ThreadList({
       <li
         key={item.id}
         className={cn(
-          "group relative flex items-start border-b border-border/70 px-4 transition-colors duration-100",
-          compact ? "gap-2.5 py-1.5" : "gap-3 py-3",
+          "group relative flex border-b border-border/70 px-4 transition-colors duration-100",
+          wide ? "items-start lg:items-center" : "items-start",
+          compact ? "gap-2.5 py-1.5" : wide ? "gap-3 py-3 lg:gap-2.5 lg:py-1.5" : "gap-3 py-3",
           active ? "bg-accent" : "hover:bg-accent/55",
         )}
       >
@@ -187,8 +195,81 @@ export function ThreadList({
           </span>
         </span>
 
-        {/* Three lines: who it is, what it is about, how it starts. */}
-        <Link href={hrefFor(item.id)} className="min-w-0 flex-1">
+        {/* One line across a full-width list, three in a column beside the
+            conversation. Same row, read at the width it has. */}
+        {wide && (
+          <Link
+            href={hrefFor(item.id)}
+            className="hidden min-w-0 flex-1 items-center gap-3 lg:flex"
+          >
+            <span
+              className={cn(
+                "w-44 shrink-0 truncate text-[13px] xl:w-56",
+                unread ? "font-semibold text-foreground" : "font-medium text-muted-foreground",
+              )}
+            >
+              {sender?.name || sender?.address || "Unknown"}
+            </span>
+            {item.messageCount > 1 && (
+              <span className="shrink-0 rounded-full bg-muted px-1.5 font-mono text-[10px] text-muted-foreground">
+                {item.messageCount}
+              </span>
+            )}
+
+            <span className="flex min-w-0 flex-1 items-center gap-2">
+              <span
+                className={cn(
+                  "shrink-0 truncate text-[13.5px]",
+                  unread ? "font-semibold text-foreground" : "font-medium text-foreground/85",
+                )}
+              >
+                {item.subject || "(no subject)"}
+              </span>
+              {item.labels.map((entry) => (
+                <span
+                  key={entry.id}
+                  className="flex shrink-0 items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
+                >
+                  <span
+                    className="size-[6px] rounded-full"
+                    style={{ background: entry.color }}
+                    aria-hidden
+                  />
+                  {entry.name}
+                </span>
+              ))}
+              {item.snippet && (
+                <span className="min-w-0 flex-1 truncate text-[12.5px] text-muted-foreground">
+                  — {item.snippet}
+                </span>
+              )}
+            </span>
+
+            {showMailbox && (
+              <span
+                className="shrink-0 rounded-full px-1.5 py-px font-mono text-[10px]"
+                style={{
+                  background: `color-mix(in oklab, ${item.mailboxColor} 15%, transparent)`,
+                  color: item.mailboxColor,
+                }}
+              >
+                {item.mailboxAddress}
+              </span>
+            )}
+            {item.hasAttachments && (
+              <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
+            {unread && (
+              <span className="size-[7px] shrink-0 rounded-full bg-primary" aria-label="Unread" />
+            )}
+            {/* The row actions take the timestamp's place on hover. */}
+            <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums group-hover:invisible">
+              {formatStamp(item.lastMessageAt)}
+            </span>
+          </Link>
+        )}
+
+        <Link href={hrefFor(item.id)} className={cn("min-w-0 flex-1", wide && "lg:hidden")}>
           <span className="flex items-center gap-2">
             <span
               className={cn(
@@ -243,9 +324,34 @@ export function ThreadList({
               {item.snippet}
             </span>
           )}
+
+          {/* What it is filed under, said on the row rather than only inside
+              the conversation, so a folder can be read without opening it. */}
+          {item.labels.length > 0 && (
+            <span className="mt-1.5 flex flex-wrap items-center gap-1">
+              {item.labels.map((entry) => (
+                <span
+                  key={entry.id}
+                  className="flex items-center gap-1 rounded-full bg-muted px-1.5 py-px text-[10.5px] text-muted-foreground"
+                >
+                  <span
+                    className="size-[6px] rounded-full"
+                    style={{ background: entry.color }}
+                    aria-hidden
+                  />
+                  {entry.name}
+                </span>
+              ))}
+            </span>
+          )}
         </Link>
 
-        <span className="absolute top-2 right-3 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
+        <span
+          className={cn(
+            "absolute right-3 flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100",
+            wide ? "top-2 lg:top-1/2 lg:-translate-y-1/2" : "top-2",
+          )}
+        >
           <RowAction
             label={item.isStarred ? "Unstar" : "Star"}
             onClick={() => run(() => setStarAction([item.id], !item.isStarred))}

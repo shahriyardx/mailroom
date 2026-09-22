@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { attachment, mailbox, message, thread, threadLabel } from "@/db/schema";
+import { attachment, label, mailbox, message, thread, threadLabel } from "@/db/schema";
 import { type Scope, type ViewFolder, isRealFolder } from "@/lib/scope";
 import { and, arrayContains, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
 import { resolveScope } from "./mailboxes";
@@ -21,6 +21,8 @@ export interface ThreadListItem {
   isStarred: boolean;
   hasAttachments: boolean;
   lastMessageAt: Date;
+  /** What it has been filed under, for the chips on the row. */
+  labels: { id: string; name: string; color: string }[];
 }
 
 interface ListOptions {
@@ -149,6 +151,42 @@ export async function listThreads(options: ListOptions): Promise<{
   const page = hasMore ? rows.slice(0, PAGE_SIZE) : rows;
   const items = backwards ? [...page].reverse() : page;
 
+  /**
+   * Labels come back in their own query rather than as a join on the list
+   * above: a thread with three labels would otherwise arrive three times and
+   * take two of the fifty places on the page with it.
+   */
+  const filed = new Map<string, ThreadListItem["labels"]>();
+  if (items.length > 0) {
+    const rows = await db
+      .select({
+        threadId: threadLabel.threadId,
+        id: label.id,
+        name: label.name,
+        color: label.color,
+      })
+      .from(threadLabel)
+      .innerJoin(label, eq(label.id, threadLabel.labelId))
+      .where(
+        inArray(
+          threadLabel.threadId,
+          items.map((row) => row.id),
+        ),
+      )
+      .orderBy(asc(label.name));
+
+    for (const row of rows) {
+      const list = filed.get(row.threadId) ?? [];
+      list.push({ id: row.id, name: row.name, color: row.color });
+      filed.set(row.threadId, list);
+    }
+  }
+
+  const listed: ThreadListItem[] = items.map((row) => ({
+    ...row,
+    labels: filed.get(row.id) ?? [],
+  }));
+
   const key = (row: (typeof items)[number]) => `${row.lastMessageAt.getTime()}|${row.id}`;
   const first = items.at(0);
   const last = items.at(-1);
@@ -177,7 +215,7 @@ export async function listThreads(options: ListOptions): Promise<{
   }
 
   return {
-    items,
+    items: listed,
     total: totalRow?.value ?? items.length,
     offset,
     /**
