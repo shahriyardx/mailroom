@@ -31,6 +31,7 @@ import {
   readableMailboxIds,
 } from "@/server/grants";
 import { rememberImageChoice } from "@/server/image-trust";
+import { upsertLabel } from "@/server/labels";
 import { assertCan, can } from "@/server/permissions";
 import { type Appearance, saveAppearance } from "@/server/preferences";
 import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
@@ -564,12 +565,9 @@ export async function deleteMailboxAction(mailboxId: string) {
 export async function createLabelAction(name: string, color: string) {
   const access = await requireAccess();
   assertCan(access, "rules:manage");
-  const id = newId("lbl");
-  await db
-    .insert(label)
-    .values({ id, organizationId: access.orgId, name, color })
-    .onConflictDoNothing();
+  const id = await upsertLabel(access.orgId, name, color);
   revalidatePath("/mail", "layout");
+  revalidatePath("/settings");
   return { id };
 }
 

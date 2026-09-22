@@ -246,7 +246,7 @@ export function ThreadView({
               {thread.labels.map((entry) => (
                 <li
                   key={entry.labelId}
-                  className="group/label flex items-center gap-1.5 rounded-full bg-muted py-0.5 pr-1 pl-2 text-[11.5px]"
+                  className="flex items-center gap-1.5 rounded-full bg-muted py-0.5 pr-1 pl-2 text-[11.5px]"
                 >
                   <span
                     className="size-2 rounded-full"
@@ -262,7 +262,7 @@ export function ThreadView({
                     onClick={() =>
                       run(() => setThreadsLabelAction([thread.id], entry.labelId, false))
                     }
-                    className="grid size-4 place-items-center rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-accent hover:text-foreground group-hover/label:opacity-100 focus-visible:opacity-100"
+                    className="grid size-4 place-items-center rounded-full text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
                   >
                     <X className="size-3" />
                   </button>
