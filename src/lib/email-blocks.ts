@@ -124,6 +124,26 @@ export interface CodeBlock extends Common {
   code: string;
 }
 
+export interface YoutubeBlock extends Common {
+  type: "youtube";
+  /** A watch link, a short link, or the id on its own. */
+  url: string;
+  caption: string;
+  align: Align;
+  /** Per cent of the content width. */
+  width: number;
+  radius: number;
+}
+
+export interface TableBlock extends Common {
+  type: "table";
+  /** Row zero is the heading row when this is on. */
+  header: boolean;
+  rows: string[][];
+  borderColor: string;
+  headerBackground: string;
+}
+
 export interface SocialBlock extends Common {
   type: "social";
   links: { label: string; href: string }[];
@@ -155,6 +175,8 @@ export type Block =
   | ColumnsBlock
   | QuoteBlock
   | CodeBlock
+  | YoutubeBlock
+  | TableBlock
   | SocialBlock
   | FooterBlock
   | HtmlBlock;
@@ -275,6 +297,31 @@ export function newBlock(kind: BlockKind, id: string): Block {
       };
     case "code":
       return { id, type: "code", code: "npm install mailroom", style };
+    case "youtube":
+      return {
+        id,
+        type: "youtube",
+        url: "",
+        caption: "Watch on YouTube",
+        align: "center",
+        width: 100,
+        radius: 8,
+        style,
+      };
+    case "table":
+      return {
+        id,
+        type: "table",
+        header: true,
+        rows: [
+          ["Item", "Price"],
+          ["One", "$10"],
+          ["Two", "$20"],
+        ],
+        borderColor: "#e4e4e7",
+        headerBackground: "#f4f4f5",
+        style,
+      };
     case "social":
       return {
         id,
@@ -329,6 +376,8 @@ const KINDS: BlockKind[] = [
   "columns",
   "quote",
   "code",
+  "youtube",
+  "table",
   "social",
   "footer",
   "html",
@@ -338,6 +387,38 @@ function isBlock(value: unknown): value is Block {
   if (!value || typeof value !== "object") return false;
   const block = value as Block;
   return typeof block.id === "string" && KINDS.includes(block.type);
+}
+
+/**
+ * The video id out of whatever somebody pasted.
+ *
+ * A watch link, a short link, an embed link, or the id on its own — all four
+ * turn up, and asking which one you have is a question with no good answer.
+ */
+export function youtubeId(url: string): string | null {
+  const value = url.trim();
+  if (!value) return null;
+
+  const patterns = [
+    /(?:youtube\.com\/watch\?(?:.*&)?v=)([\w-]{11})/,
+    /(?:youtu\.be\/)([\w-]{11})/,
+    /(?:youtube\.com\/(?:embed|shorts|live)\/)([\w-]{11})/,
+  ];
+  for (const pattern of patterns) {
+    const found = pattern.exec(value)?.[1];
+    if (found) return found;
+  }
+
+  return /^[\w-]{11}$/.test(value) ? value : null;
+}
+
+/** Where the picture of a video lives. */
+export function youtubeThumb(id: string) {
+  return `https://img.youtube.com/vi/${id}/hqdefault.jpg`;
+}
+
+export function youtubeWatch(id: string) {
+  return `https://www.youtube.com/watch?v=${id}`;
 }
 
 /* -------------------------------------------------------------------------- */
@@ -498,6 +579,53 @@ function renderBlock(block: Block, theme: EmailTheme): string {
         `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr><td style="background-color:#f4f4f5;border-radius:8px;padding:12px 14px;font-family:'Courier New',Courier,monospace;font-size:13px;line-height:1.5;color:#18181b;"><pre style="margin:0;white-space:pre-wrap;">${escapeHtml(block.code)}</pre></td></tr></table>`,
       );
 
+    case "youtube": {
+      // Nothing plays inside an email — every client strips iframes and
+      // script — so what goes out is the thumbnail, linked to the video.
+      // A fake play button drawn over it would be a lie about what happens
+      // when it is pressed; the caption says where the link goes instead.
+      const id = youtubeId(block.url);
+      if (!id) return "";
+
+      const padding = block.style?.padding ?? defaultPadding("youtube");
+      const room = theme.width - padding[1] - padding[3];
+      const width = Math.round((room * clamp(block.width, 10, 100)) / 100);
+      const radius = block.radius > 0 ? `border-radius:${clamp(block.radius, 0, 40)}px;` : "";
+      const caption = block.caption
+        ? `<div style="${typography(block, theme, { size: 13, weight: 500 })};text-align:${block.align};padding-top:8px;">${escapeHtml(block.caption)}</div>`
+        : "";
+
+      return cell(
+        block,
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${block.align}"><tr><td>
+<a href="${attr(youtubeWatch(id))}" style="text-decoration:none;"><img src="${attr(youtubeThumb(id))}" alt="${attr(block.caption || "Watch the video")}" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;${radius}border:0;outline:none;text-decoration:none;"></a>
+${caption}
+</td></tr></table>`,
+      );
+    }
+
+    case "table": {
+      const rules = `border:1px solid ${attr(block.borderColor)};padding:8px 10px;`;
+      const body = block.rows
+        .map((row, index) => {
+          const heading = block.header && index === 0;
+          const cells = row
+            .map((value) =>
+              heading
+                ? `<th align="left" bgcolor="${attr(block.headerBackground)}" style="${rules}font-weight:600;">${escapeHtml(value)}</th>`
+                : `<td style="${rules}">${escapeHtml(value)}</td>`,
+            )
+            .join("");
+          return `<tr>${cells}</tr>`;
+        })
+        .join("");
+
+      return cell(
+        block,
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;${typography(block, theme, { size: 14, weight: 400 })};">${body}</table>`,
+      );
+    }
+
     case "social": {
       const links = block.links
         .filter((link) => link.label)
@@ -558,6 +686,14 @@ export function designToText(design: EmailDesign): string {
         break;
       case "image":
         if (block.alt) parts.push(`[${block.alt}]`);
+        break;
+      case "youtube": {
+        const id = youtubeId(block.url);
+        if (id) parts.push(`${block.caption || "Watch the video"}: ${youtubeWatch(id)}`);
+        break;
+      }
+      case "table":
+        parts.push(block.rows.map((row) => row.join(" | ")).join("\n"));
         break;
       case "social":
         parts.push(block.links.map((link) => `${link.label}: ${link.href}`).join("\n"));

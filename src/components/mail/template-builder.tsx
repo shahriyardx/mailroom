@@ -36,6 +36,8 @@ import {
   newBlock,
   readDesign,
   renderDesign,
+  youtubeId,
+  youtubeThumb,
 } from "@/lib/email-blocks";
 import { slugify, templateVariables } from "@/lib/template";
 import { useSubmit } from "@/lib/use-submit";
@@ -62,10 +64,12 @@ import {
   MousePointerClick,
   Plus,
   Quote as QuoteIcon,
+  Table2,
   Trash2,
   Type,
   UnfoldVertical,
   UserMinus,
+  Youtube,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Link from "next/link";
@@ -100,6 +104,7 @@ const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: t
         { kind: "quote", label: "Quote", icon: QuoteIcon },
         { kind: "code", label: "Code", icon: Code2 },
         { kind: "image", label: "Image", icon: ImageIcon },
+        { kind: "youtube", label: "YouTube", icon: Youtube },
       ],
     },
     {
@@ -107,6 +112,7 @@ const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: t
       items: [
         { kind: "button", label: "Button", icon: MousePointerClick },
         { kind: "columns", label: "Columns", icon: Columns2 },
+        { kind: "table", label: "Table", icon: Table2 },
         { kind: "divider", label: "Divider", icon: Minus },
         { kind: "spacer", label: "Spacer", icon: UnfoldVertical },
       ],
@@ -121,6 +127,9 @@ const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: t
     },
   ];
 
+/** What a palette drag carries. A custom type, so nothing else is mistaken for one. */
+const NEW_BLOCK = "application/x-mailroom-block";
+
 const LABELS: Record<BlockKind, string> = {
   heading: "Heading",
   text: "Text",
@@ -131,6 +140,8 @@ const LABELS: Record<BlockKind, string> = {
   columns: "Columns",
   quote: "Quote",
   code: "Code",
+  youtube: "YouTube",
+  table: "Table",
   social: "Social links",
   footer: "Unsubscribe footer",
   html: "Raw HTML",
@@ -370,8 +381,17 @@ export function TemplateBuilder({
                   <button
                     key={item.kind}
                     type="button"
+                    draggable
+                    // Dragged onto the canvas to land where it is dropped, or
+                    // clicked to go on the end. Both, because a palette that
+                    // only drags is unusable with a keyboard and one that
+                    // only clicks makes you move every block you add.
+                    onDragStart={(event) => {
+                      event.dataTransfer.setData(NEW_BLOCK, item.kind);
+                      event.dataTransfer.effectAllowed = "copy";
+                    }}
                     onClick={() => add(item.kind)}
-                    className="flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground transition-colors hover:bg-accent"
+                    className="flex w-full cursor-grab items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground transition-colors hover:bg-accent active:cursor-grabbing"
                   >
                     <item.icon className="size-4 text-muted-foreground" />
                     {item.label}
@@ -425,16 +445,20 @@ export function TemplateBuilder({
 
         {!previewing && (
           <aside className="flex w-[304px] shrink-0 flex-col border-border border-l bg-card">
-            <div className="shrink-0 px-3 pt-3">
-              <Tabs value={tab} onValueChange={(value) => setTab(value as typeof tab)}>
-                <TabsList variant="segmented" className="w-full">
-                  <TabsTrigger value="block" className="flex-1">
+            <div className="flex shrink-0 border-border border-b p-3">
+              <Tabs
+                value={tab}
+                onValueChange={(value) => setTab(value as typeof tab)}
+                className="w-full"
+              >
+                <TabsList variant="segmented" className="flex w-full">
+                  <TabsTrigger value="block" className="flex-1 justify-center">
                     Block
                   </TabsTrigger>
-                  <TabsTrigger value="page" className="flex-1">
+                  <TabsTrigger value="page" className="flex-1 justify-center">
                     Page
                   </TabsTrigger>
-                  <TabsTrigger value="details" className="flex-1">
+                  <TabsTrigger value="details" className="flex-1 justify-center">
                     Details
                   </TabsTrigger>
                 </TabsList>
@@ -526,7 +550,7 @@ function Canvas({
   onReorder: (from: number, to: number) => void;
   onDuplicate: (id: string) => void;
   onRemove: (id: string) => void;
-  onAdd: (kind: BlockKind) => void;
+  onAdd: (kind: BlockKind, at?: number) => void;
 }) {
   const theme = design.theme;
   const dragging = useRef<number | null>(null);
@@ -534,17 +558,36 @@ function Canvas({
 
   return (
     <div className="mx-auto w-full" style={{ maxWidth: theme.width + 120 }}>
-      <Input
-        value={subject}
-        onChange={(event) => onSubject(event.target.value)}
-        placeholder="Subject line"
-        aria-label="Subject"
-        className="mb-5 h-10 text-[14px]"
-      />
+      {/* Labelled in the field itself. The bar above holds the template's
+          name, which is a different thing that often says the same words, and
+          two identical boxes one under the other is a good way to type the
+          subject into the wrong one. */}
+      <div className="relative mb-5">
+        <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 text-[13px] text-muted-foreground">
+          Subject
+        </span>
+        <Input
+          value={subject}
+          onChange={(event) => onSubject(event.target.value)}
+          placeholder="What the reader sees in their inbox"
+          aria-label="Subject"
+          className="h-10 pl-[68px] text-[14px]"
+        />
+      </div>
 
       <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: theme.background }}>
+        {/* The card takes a drop of its own, so a block dragged onto an
+            empty canvas — or into the room under the last block — lands
+            rather than bouncing back to the palette. */}
         <div
           className="mx-auto overflow-hidden"
+          onDragOver={(event) => event.preventDefault()}
+          onDrop={(event) => {
+            const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
+            if (kind) onAdd(kind, over ?? design.blocks.length);
+            dragging.current = null;
+            setOver(null);
+          }}
           style={{
             width: theme.width,
             maxWidth: "100%",
@@ -555,8 +598,8 @@ function Canvas({
         >
           {design.blocks.length === 0 ? (
             <div className="px-8 py-16 text-center">
-              <p className="text-[13px] text-muted-foreground">
-                Nothing here yet. Add a block to start.
+              <p className="text-[13px]" style={{ color: "#71717a" }}>
+                Nothing here yet. Drag a block in from the left, or click one.
               </p>
               <div className="mt-4 flex flex-wrap justify-center gap-1.5">
                 {PALETTE[0]!.items.slice(0, 3).map((item) => (
@@ -592,7 +635,11 @@ function Canvas({
                 }}
                 onDrop={(event) => {
                   event.preventDefault();
-                  if (dragging.current !== null && over !== null) onReorder(dragging.current, over);
+                  const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
+                  if (kind) onAdd(kind, over ?? index);
+                  else if (dragging.current !== null && over !== null) {
+                    onReorder(dragging.current, over);
+                  }
                   dragging.current = null;
                   setOver(null);
                 }}
@@ -691,6 +738,16 @@ function Handle({
     </Tooltip>
   );
 }
+
+/**
+ * What a block with nothing in it yet looks like.
+ *
+ * Drawn in the email's own colours rather than the app's: the card is white
+ * in either theme, and an app token for muted text is pale grey on white.
+ */
+const PLACEHOLDER =
+  "flex h-24 items-center justify-center gap-2 rounded-lg border border-dashed text-[12.5px]";
+const PLACEHOLDER_STYLE = { borderColor: "#d4d4d8", color: "#a1a1aa" } as const;
 
 /** The padding, background and border a block's cell is drawn with. */
 function boxOf(block: Block): React.CSSProperties {
@@ -807,7 +864,7 @@ function BlockView({
               }}
             />
           ) : (
-            <div className="flex h-24 items-center justify-center gap-2 rounded-lg border border-border border-dashed text-[12.5px] text-muted-foreground">
+            <div className={PLACEHOLDER} style={PLACEHOLDER_STYLE}>
               <ImageIcon className="size-4" />
               Add an image URL on the right
             </div>
@@ -825,8 +882,8 @@ function BlockView({
     case "spacer":
       return (
         <div
-          className="flex items-center justify-center border-border/60 border-y border-dashed text-[10.5px] text-muted-foreground/70"
-          style={{ height: block.size }}
+          className="flex items-center justify-center border-y border-dashed text-[10.5px]"
+          style={{ height: block.size, borderColor: "#e4e4e7", color: "#a1a1aa" }}
         >
           {block.size}px
         </div>
@@ -881,9 +938,93 @@ function BlockView({
     case "code":
       return (
         <div style={box}>
-          <pre className="overflow-x-auto rounded-lg bg-muted px-3.5 py-3 font-mono text-[13px] text-foreground">
+          <pre
+            className="overflow-x-auto rounded-lg px-3.5 py-3 font-mono text-[13px]"
+            style={{ backgroundColor: "#f4f4f5", color: "#18181b" }}
+          >
             {block.code}
           </pre>
+        </div>
+      );
+
+    case "youtube": {
+      const id = youtubeId(block.url);
+      return (
+        <div style={{ ...box, textAlign: block.align }}>
+          {id ? (
+            <>
+              {/* The canvas mirrors an email, where next/image does not exist. */}
+              <img
+                src={youtubeThumb(id)}
+                alt={block.caption}
+                style={{
+                  width: `${block.width}%`,
+                  borderRadius: block.radius,
+                  display: "inline-block",
+                  height: "auto",
+                }}
+              />
+              {block.caption && (
+                <div style={{ ...typeOf(block, theme, { size: 13, weight: 500 }), paddingTop: 8 }}>
+                  {block.caption}
+                </div>
+              )}
+            </>
+          ) : (
+            <div className={PLACEHOLDER} style={PLACEHOLDER_STYLE}>
+              <Youtube className="size-4" />
+              Paste a YouTube link on the right
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    case "table":
+      return (
+        <div style={box} onClick={stop} onKeyDown={stop}>
+          <table
+            className="w-full border-collapse"
+            style={typeOf(block, theme, { size: 14, weight: 400 })}
+          >
+            <tbody>
+              {block.rows.map((row, rowIndex) => (
+                <tr key={`${block.id}-r${rowIndex}`}>
+                  {row.map((value, cellIndex) => (
+                    <td
+                      key={`${block.id}-r${rowIndex}c${cellIndex}`}
+                      style={{
+                        border: `1px solid ${block.borderColor}`,
+                        padding: "8px 10px",
+                        backgroundColor:
+                          block.header && rowIndex === 0 ? block.headerBackground : undefined,
+                        fontWeight: block.header && rowIndex === 0 ? 600 : undefined,
+                      }}
+                    >
+                      {/* Typed in place: a table edited through a side panel
+                          is a spreadsheet with the numbers somewhere else. */}
+                      <input
+                        value={value}
+                        onChange={(event) =>
+                          onPatch({
+                            rows: block.rows.map((entry, at) =>
+                              at === rowIndex
+                                ? entry.map((cell, index) =>
+                                    index === cellIndex ? event.target.value : cell,
+                                  )
+                                : entry,
+                            ),
+                          })
+                        }
+                        className="w-full border-0 bg-transparent p-0 outline-none"
+                        style={{ font: "inherit", color: "inherit" }}
+                      />
+                    </td>
+                  ))}
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       );
 
@@ -917,7 +1058,10 @@ function BlockView({
     case "html":
       return (
         <div style={box}>
-          <div className="rounded-lg border border-border border-dashed bg-muted/50 px-3 py-2 font-mono text-[11.5px] text-muted-foreground">
+          <div
+            className="rounded-lg border border-dashed px-3 py-2 font-mono text-[11.5px]"
+            style={{ borderColor: "#d4d4d8", backgroundColor: "#fafafa", color: "#71717a" }}
+          >
             Raw HTML — shown as written in Preview
           </div>
         </div>
@@ -957,6 +1101,15 @@ function Section({
       </button>
       {shown && <div className="space-y-2 px-4 pt-0.5 pb-3.5">{children}</div>}
     </div>
+  );
+}
+
+/** More rows, or fewer, keeping what is already typed. */
+function resize(rows: string[][], count: number): string[][] {
+  const width = rows[0]?.length ?? 2;
+  return Array.from(
+    { length: Math.max(1, count) },
+    (_, index) => rows[index] ?? Array.from({ length: width }, () => ""),
   );
 }
 
@@ -1420,6 +1573,95 @@ function Inspector({
             rows={6}
             className="font-mono text-[12px]"
           />
+        )}
+
+        {block.type === "youtube" && (
+          <>
+            <Row label="Video">
+              <Input
+                value={block.url}
+                onChange={(event) => onPatch({ url: event.target.value })}
+                placeholder="youtube.com/watch?v=…"
+                className="h-8 font-mono text-[12px]"
+              />
+            </Row>
+            <Row label="Caption">
+              <Input
+                value={block.caption}
+                onChange={(event) => onPatch({ caption: event.target.value })}
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+            <Row label="Width">
+              <NumberField
+                value={block.width}
+                unit="%"
+                onChange={(width) => onPatch({ width: width ?? 100 })}
+              />
+            </Row>
+            <Row label="Corners">
+              <NumberField
+                value={block.radius}
+                onChange={(radius) => onPatch({ radius: radius ?? 0 })}
+              />
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+            <Note>
+              Nothing plays inside an email — every client strips the embed. What goes out is the
+              video's own thumbnail, linked to it.
+            </Note>
+          </>
+        )}
+
+        {block.type === "table" && (
+          <>
+            <Row label="Rows">
+              <NumberField
+                value={block.rows.length}
+                unit=""
+                onChange={(count) => onPatch({ rows: resize(block.rows, count ?? 1) })}
+              />
+            </Row>
+            <Row label="Columns">
+              <NumberField
+                value={block.rows[0]?.length ?? 2}
+                unit=""
+                onChange={(count) =>
+                  onPatch({
+                    rows: block.rows.map((row) =>
+                      Array.from(
+                        { length: Math.max(1, count ?? 1) },
+                        (_, index) => row[index] ?? "",
+                      ),
+                    ),
+                  })
+                }
+              />
+            </Row>
+            <Row label="Heading row">
+              <input
+                type="checkbox"
+                checked={block.header}
+                onChange={(event) => onPatch({ header: event.target.checked })}
+                className="size-4 accent-primary"
+              />
+            </Row>
+            <Row label="Heading fill">
+              <Swatch
+                value={block.headerBackground}
+                onChange={(headerBackground) => onPatch({ headerBackground })}
+              />
+            </Row>
+            <Row label="Lines">
+              <Swatch
+                value={block.borderColor}
+                onChange={(borderColor) => onPatch({ borderColor })}
+              />
+            </Row>
+            <Note>Type into the cells on the canvas.</Note>
+          </>
         )}
 
         {block.type === "social" && (

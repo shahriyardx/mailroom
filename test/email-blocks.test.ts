@@ -8,6 +8,7 @@ import {
   newBlock,
   readDesign,
   renderDesign,
+  youtubeId,
 } from "@/lib/email-blocks";
 
 /**
@@ -125,5 +126,56 @@ describe("reading a stored design back", () => {
     assert.equal(readDesign(null), null);
     assert.equal(readDesign("{}"), null);
     assert.equal(readDesign({ theme: {} }), null);
+  });
+});
+
+describe("a video in an email", () => {
+  it("finds the id in whatever was pasted", () => {
+    const wanted = "dQw4w9WgXcQ";
+    assert.equal(youtubeId(`https://www.youtube.com/watch?v=${wanted}`), wanted);
+    assert.equal(youtubeId(`https://youtu.be/${wanted}`), wanted);
+    assert.equal(youtubeId(`https://www.youtube.com/embed/${wanted}`), wanted);
+    assert.equal(youtubeId(`https://www.youtube.com/watch?list=x&v=${wanted}`), wanted);
+    assert.equal(youtubeId(wanted), wanted);
+    assert.equal(youtubeId("https://example.test/video"), null);
+    assert.equal(youtubeId(""), null);
+  });
+
+  it("goes out as a thumbnail pointing at the video, because nothing plays in mail", () => {
+    const block = { ...newBlock("youtube", "b1"), url: "https://youtu.be/dQw4w9WgXcQ" };
+    const html = renderDesign(design(block as never));
+
+    assert.ok(!html.includes("<iframe"), "an iframe would be stripped by every client");
+    assert.match(html, /img\.youtube\.com\/vi\/dQw4w9WgXcQ\/hqdefault\.jpg/);
+    assert.match(html, /href="https:\/\/www\.youtube\.com\/watch\?v=dQw4w9WgXcQ"/);
+  });
+
+  it("is nothing at all until there is a link", () => {
+    assert.equal(renderDesign(design(newBlock("youtube", "b1"))).includes("<img"), false);
+  });
+});
+
+describe("a table", () => {
+  it("draws the first row as headings when it is asked to", () => {
+    const html = renderDesign(design(newBlock("table", "b1")));
+
+    assert.match(html, /<th align="left"/);
+    assert.match(html, /border-collapse:collapse/);
+    assert.match(html, /<td style="[^"]*">One<\/td>/);
+  });
+
+  it("draws every row the same when it is not", () => {
+    const html = renderDesign(design({ ...newBlock("table", "b1"), header: false } as never));
+    assert.ok(!html.includes("<th"), "no heading row means no heading cells");
+  });
+
+  it("escapes a cell, so a stray angle bracket stays text", () => {
+    const block = { ...newBlock("table", "b1"), header: false, rows: [["<b>x</b>"]] };
+    const html = renderDesign(design(block as never));
+    assert.match(html, /&lt;b&gt;x&lt;\/b&gt;/);
+  });
+
+  it("reads as rows of text in the plain-text half", () => {
+    assert.match(designToText(design(newBlock("table", "b1"))), /Item \| Price/);
   });
 });
