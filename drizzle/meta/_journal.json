@@ -218,6 +218,13 @@
       "when": 1789976410306,
       "tag": "0030_workspace",
       "breakpoints": true
+    },
+    {
+      "idx": 31,
+      "version": "7",
+      "when": 1789976470306,
+      "tag": "0031_campaigns",
+      "breakpoints": true
     }
   ]
 }

@@ -10,9 +10,12 @@ export async function register() {
 
   await runMigrations();
 
-  // After the migrations, because the worker reads a table one of them makes.
+  // After the migrations, because the workers read tables they make.
   const { startOutboxWorker } = await import("@/server/outbox");
   startOutboxWorker();
+
+  const { startBroadcastWorker } = await import("@/server/broadcast-runner");
+  startBroadcastWorker();
 }
 
 async function runMigrations() {

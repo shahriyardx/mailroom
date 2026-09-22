@@ -55,6 +55,28 @@ export const sendJobStatusEnum = pgEnum("send_job_status", [
   "canceled",
 ]);
 
+export const listMemberStatusEnum = pgEnum("list_member_status", [
+  "subscribed",
+  "unsubscribed",
+  "bounced",
+  "complained",
+]);
+
+export const broadcastStatusEnum = pgEnum("broadcast_status", [
+  "draft",
+  "scheduled",
+  "sending",
+  "sent",
+  "cancelled",
+]);
+
+export const broadcastRecipientStatusEnum = pgEnum("broadcast_recipient_status", [
+  "pending",
+  "sent",
+  "failed",
+  "skipped",
+]);
+
 export const eventTypeEnum = pgEnum("event_type", [
   "send",
   "delivery",
@@ -1094,6 +1116,10 @@ export type Folder = (typeof folderEnum.enumValues)[number];
 export type Domain = typeof domain.$inferSelect;
 export type Integration = typeof integration.$inferSelect;
 export type Workspace = typeof workspace.$inferSelect;
+export type MailingList = typeof mailingList.$inferSelect;
+export type ListMember = typeof listMember.$inferSelect;
+export type Broadcast = typeof broadcast.$inferSelect;
+export type BroadcastRecipient = typeof broadcastRecipient.$inferSelect;
 export type ApiKey = typeof apiKey.$inferSelect;
 export type Organization = typeof organization.$inferSelect;
 export type Member = typeof member.$inferSelect;
@@ -1162,6 +1188,147 @@ export const workspace = pgTable("workspace", {
   setupCompletedAt: timestamp("setup_completed_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/* -------------------------------------------------------------------------- */
+/* Campaigns                                                                  */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * People who agreed to hear from you, grouped.
+ *
+ * Deliberately not the `contact` table. That one is an address book built by
+ * watching mail go past — a row there means somebody wrote to you once, which
+ * is not consent to be sent a newsletter. Confusing the two is how an
+ * instance ends up mailing everyone who ever sent it a support request.
+ */
+export const mailingList = pgTable(
+  "mailing_list",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    description: text("description"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("mailing_list_org_idx").on(t.organizationId)],
+);
+
+/**
+ * One person on one list.
+ *
+ * `status` is per list, not per person: unsubscribing from the newsletter must
+ * not remove somebody from the release notes they also asked for.
+ *
+ * `consentSource` and `consentAt` are not decoration. Somebody will eventually
+ * ask why they are being emailed, and an answer of "we do not record that" is
+ * both a bad answer and, under GDPR, the wrong one.
+ */
+export const listMember = pgTable(
+  "list_member",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    listId: text("list_id")
+      .notNull()
+      .references(() => mailingList.id, { onDelete: "cascade" }),
+    address: text("address").notNull(),
+    name: text("name"),
+    /** Whatever else you want to merge into a subject or body. */
+    fields: jsonb("fields").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
+
+    status: listMemberStatusEnum("status").notNull().default("subscribed"),
+    /** Free text: "imported from mailchimp", "signup form", "added by hand". */
+    consentSource: text("consent_source"),
+    consentAt: timestamp("consent_at", { withTimezone: true }),
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("list_member_list_address_idx").on(t.listId, t.address),
+    index("list_member_org_idx").on(t.organizationId),
+    // The send query: everyone on this list who may still be written to.
+    index("list_member_sendable_idx").on(t.listId, t.status),
+  ],
+);
+
+/** One message, written once, sent to everybody on a list. */
+export const broadcast = pgTable(
+  "broadcast",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    listId: text("list_id")
+      .notNull()
+      .references(() => mailingList.id, { onDelete: "cascade" }),
+    /** Which address it comes from; also what decides the sending domain. */
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+
+    subject: text("subject").notNull(),
+    html: text("html"),
+    text: text("text"),
+
+    status: broadcastStatusEnum("status").notNull().default("draft"),
+    scheduledAt: timestamp("scheduled_at", { withTimezone: true }),
+    startedAt: timestamp("started_at", { withTimezone: true }),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("broadcast_org_idx").on(t.organizationId),
+    // The runner's only filter: what is due to go out.
+    index("broadcast_due_idx").on(t.status, t.scheduledAt),
+  ],
+);
+
+/**
+ * One person's copy of one broadcast.
+ *
+ * The row is written before anything is sent, which is what makes a broadcast
+ * resumable: a process that dies halfway leaves every unsent recipient still
+ * "pending", and starting again picks up exactly those.
+ *
+ * It also freezes the audience. A broadcast that read the list as it went
+ * would send to somebody who subscribed during the send and skip somebody who
+ * left, and neither is explicable afterwards.
+ */
+export const broadcastRecipient = pgTable(
+  "broadcast_recipient",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    broadcastId: text("broadcast_id")
+      .notNull()
+      .references(() => broadcast.id, { onDelete: "cascade" }),
+    listMemberId: text("list_member_id")
+      .notNull()
+      .references(() => listMember.id, { onDelete: "cascade" }),
+    /** Copied rather than joined: where it actually went, even if the row changes later. */
+    address: text("address").notNull(),
+
+    status: broadcastRecipientStatusEnum("status").notNull().default("pending"),
+    /** The message row this became, for delivery events and the email log. */
+    messageId: text("message_id").references(() => message.id, { onDelete: "set null" }),
+    sentAt: timestamp("sent_at", { withTimezone: true }),
+    error: text("error"),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+  },
+  (t) => [
+    uniqueIndex("broadcast_recipient_unique_idx").on(t.broadcastId, t.listMemberId),
+    // The claim query: who on this broadcast has not been sent to yet.
+    index("broadcast_recipient_pending_idx").on(t.broadcastId, t.status),
+    index("broadcast_recipient_org_idx").on(t.organizationId),
+  ],
+);
 
 export const preference = pgTable("preference", {
   userId: text("user_id")
