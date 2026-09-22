@@ -28,7 +28,17 @@ const button = cva(
         subtle: "bg-muted text-foreground hover:bg-accent",
         // No chrome until you touch it.
         ghost: "text-muted-foreground hover:bg-accent hover:text-foreground",
-        danger: "bg-destructive text-destructive-foreground shadow-raise hover:bg-destructive/90",
+        /*
+         * Destructive, but not yet done. A tint and red lettering read as
+         * "this one is dangerous" without shouting it from across the page —
+         * which matters because most of these only open a confirmation, and a
+         * solid red button that turns out to be a question is a small lie.
+         */
+        danger:
+          "border border-destructive/30 bg-destructive/10 text-destructive hover:border-destructive/45 hover:bg-destructive/15",
+        /** The last press, where weight is the point. */
+        "danger-solid":
+          "bg-destructive text-destructive-foreground shadow-raise hover:bg-destructive/90",
         "danger-ghost": "text-muted-foreground hover:bg-danger-soft hover:text-destructive",
         link: "text-primary underline-offset-4 hover:underline",
       },

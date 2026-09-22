@@ -129,7 +129,7 @@ export function ConfirmDialog({
             Cancel
           </Button>
           <Button
-            variant="danger"
+            variant="danger-solid"
             pill
             disabled={!ready || running}
             loading={running}
