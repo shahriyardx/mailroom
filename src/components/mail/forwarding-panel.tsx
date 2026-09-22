@@ -4,16 +4,15 @@ import {
   Badge,
   BlankSlate,
   Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
   Input,
   List,
   ListRow,
   Note,
   Panel,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Switch,
 } from "@/components/kit";
 import {
@@ -26,7 +25,7 @@ import {
   setForwardOffAction,
 } from "@/server/actions";
 import type { ForwardingView } from "@/server/forwarding";
-import { AtSign, Forward, Globe, Inbox, RefreshCw, TriangleAlert, X } from "lucide-react";
+import { AtSign, Forward, Globe, Inbox, Plus, RefreshCw, TriangleAlert, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -65,7 +64,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
       <Panel
         title="Addresses"
         meta={view.addresses.length > 0 ? view.addresses.length : undefined}
-        description="The destinations on your Cloudflare account, which is where a forwarding address really lives. Anything added there shows up here; anything added here is created there. Cloudflare emails each one a link, and forwarding starts working once it is clicked."
+        description="The forwarding destinations on your Cloudflare account. Anything added there appears here; anything added here is created there, and Cloudflare emails it a link to click."
         action={
           view.addresses.length > 0 ? (
             <Button
@@ -216,22 +215,23 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
 
       <Panel
         title="Everything"
-        description="A copy of every message this instance receives, whichever domain or mailbox it arrives at."
+        description="A copy of every message this instance receives, whichever mailbox it arrives at."
       >
-        <Chips
-          rules={view.instance}
-          addresses={view.addresses}
-          choices={verified}
-          disabled={busy}
-          empty="No instance-wide copy."
-          onAdd={(addressId) =>
-            run(
-              () => addForwardingRuleAction(addressId, { kind: "instance" }),
-              "Everything will be copied there",
-            )
-          }
-          onRemove={(ruleId) => run(() => removeForwardingRuleAction(ruleId), "Rule removed")}
-        />
+        <div className="rounded-xl border border-border bg-card px-3.5 py-3">
+          <Targets
+            rules={view.instance}
+            addresses={view.addresses}
+            choices={verified}
+            disabled={busy}
+            onAdd={(addressId) =>
+              run(
+                () => addForwardingRuleAction(addressId, { kind: "instance" }),
+                "Everything will be copied there",
+              )
+            }
+            onRemove={(ruleId) => run(() => removeForwardingRuleAction(ruleId), "Rule removed")}
+          />
+        </div>
 
         {view.fromEnvironment.length > 0 ? (
           <Note className="mt-3">
@@ -244,7 +244,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
 
       <Panel
         title="By domain"
-        description="On top of anything above. A domain can also be kept out of the instance-wide copy."
+        description="On top of the rule above, unless the domain is set to skip it."
       >
         {view.domains.length === 0 ? (
           <BlankSlate
@@ -260,7 +260,6 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                 icon={<Globe />}
                 label={entry.name}
                 off={entry.forwardOff}
-                offLabel="Skip wider rules"
                 rules={entry.rules}
                 addresses={view.addresses}
                 choices={verified}
@@ -289,7 +288,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
 
       <Panel
         title="By mailbox"
-        description="The narrowest rule. Also where a single address is kept out of every wider copy."
+        description="The narrowest rule, and where one address is kept out of every wider copy."
       >
         <MailboxRules view={view} verified={verified} busy={busy} run={run} />
       </Panel>
@@ -319,7 +318,6 @@ function MailboxRules({
   busy: boolean;
   run: (work: () => Promise<{ ok: boolean; error?: string }>, done: string) => void;
 }) {
-  const [picked, setPicked] = useState("");
   /**
    * Mailboxes pulled into the list by hand this visit.
    *
@@ -351,7 +349,6 @@ function MailboxRules({
               icon={<Inbox />}
               label={entry.address}
               off={entry.forwardOff}
-              offLabel="Skip wider rules"
               rules={entry.rules}
               addresses={view.addresses}
               choices={verified}
@@ -378,41 +375,42 @@ function MailboxRules({
       )}
 
       {rest.length > 0 ? (
-        <div className="mt-4 flex flex-wrap items-center gap-2">
-          <Select value={picked} onValueChange={(value) => value && setPicked(value)}>
-            <SelectTrigger className="min-w-0 flex-1 sm:max-w-xs">
-              <SelectValue placeholder="Pick a mailbox" />
-            </SelectTrigger>
-            <SelectContent>
-              {rest.map((entry) => (
-                <SelectItem key={entry.id} value={entry.id}>
-                  {entry.address}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button
-            variant="outline"
-            disabled={busy || !picked}
-            onClick={() => {
-              setOpened((current) => [...current, picked]);
-              setPicked("");
-            }}
-          >
-            Set up a mailbox
-          </Button>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <Button variant="outline" size="sm" pill className="mt-4" disabled={busy}>
+              <Plus />
+              Set up a mailbox
+            </Button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-72 overflow-y-auto">
+            {rest.map((entry) => (
+              <DropdownMenuItem
+                key={entry.id}
+                className="font-mono text-[12px]"
+                onSelect={() => setOpened((current) => [...current, entry.id])}
+              >
+                {entry.address}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </>
   );
 }
 
-/** One domain or mailbox: what it copies to, and whether it opts out. */
+/**
+ * One domain or mailbox, on one line.
+ *
+ * Name, where its mail is copied, and whether it opts out of the wider rules.
+ * A page with a domain list on it draws this many times over, so anything
+ * that is only sometimes useful — the picker, in particular — stays behind a
+ * button rather than taking a row of its own in every one of them.
+ */
 function ScopeRow({
   icon,
   label,
   off,
-  offLabel,
   rules,
   addresses,
   choices,
@@ -424,7 +422,6 @@ function ScopeRow({
   icon: React.ReactNode;
   label: string;
   off: boolean;
-  offLabel: string;
   rules: Rule[];
   addresses: ForwardingView["addresses"];
   choices: ForwardingView["addresses"];
@@ -434,46 +431,52 @@ function ScopeRow({
   onToggleOff: (off: boolean) => void;
 }) {
   return (
-    <ListRow className="flex-wrap items-start">
-      <span className="mt-0.5 grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground [&_svg]:size-4">
+    <ListRow className="flex-wrap gap-x-3 gap-y-2 py-2.5">
+      <span className="grid size-7 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground [&_svg]:size-[15px]">
         {icon}
       </span>
 
+      <span className="w-[150px] shrink-0 truncate font-mono text-[12.5px]" title={label}>
+        {label}
+      </span>
+
       <div className="min-w-0 flex-1">
-        <div className="truncate font-mono text-[12.5px]">{label}</div>
-        <Chips
-          className="mt-2"
+        <Targets
           rules={rules}
           addresses={addresses}
           choices={choices}
           disabled={disabled}
-          empty="Nothing of its own."
           onAdd={onAdd}
           onRemove={onRemove}
         />
       </div>
 
-      <div className="flex shrink-0 items-center gap-2 text-[12px] text-muted-foreground">
-        <span>{offLabel}</span>
+      <div className="flex shrink-0 items-center gap-2">
+        <span className="text-[11.5px] text-muted-foreground">Skip wider rules</span>
         <Switch
           checked={off}
           disabled={disabled}
           onCheckedChange={onToggleOff}
-          aria-label={`${offLabel} for ${label}`}
+          aria-label={`Skip wider rules for ${label}`}
         />
       </div>
     </ListRow>
   );
 }
 
-/** The addresses one width copies to, each removable, plus a way to add one. */
-function Chips({
+/**
+ * Where one width's mail is copied: a chip each, and a button to add another.
+ *
+ * The picker is a menu behind a button rather than a select sitting open on
+ * the page. Most rows never need it, and six permanently open selects down a
+ * settings page is six controls asking to be used and one page nobody can
+ * read at a glance.
+ */
+function Targets({
   rules,
   addresses,
   choices,
   disabled,
-  empty,
-  className,
   onAdd,
   onRemove,
 }: {
@@ -481,67 +484,60 @@ function Chips({
   addresses: ForwardingView["addresses"];
   choices: ForwardingView["addresses"];
   disabled: boolean;
-  empty: string;
-  className?: string;
   onAdd: (addressId: string) => void;
   onRemove: (ruleId: string) => void;
 }) {
-  const [picked, setPicked] = useState("");
   const used = new Set(rules.map((rule) => rule.addressId));
   const free = choices.filter((entry) => !used.has(entry.id));
 
   return (
-    <div className={className}>
-      <div className="flex flex-wrap items-center gap-2">
-        {rules.length === 0 ? (
-          <span className="text-[12.5px] text-muted-foreground">{empty}</span>
-        ) : (
-          rules.map((rule) => {
-            const address = addresses.find((entry) => entry.id === rule.addressId);
-            return (
-              <span
-                key={rule.ruleId}
-                className="pill gap-1.5 border-border bg-card font-mono text-[11.5px]"
-              >
-                <Forward className="size-3 shrink-0 text-muted-foreground" />
-                {address?.address ?? "an address"}
-                <button
-                  type="button"
-                  aria-label={`Stop copying to ${address?.address ?? "this address"}`}
-                  disabled={disabled}
-                  onClick={() => onRemove(rule.ruleId)}
-                  className="-mr-0.5 text-muted-foreground transition hover:text-foreground"
-                >
-                  <X className="size-3" />
-                </button>
-              </span>
-            );
-          })
-        )}
-      </div>
+    <div className="flex flex-wrap items-center gap-1.5">
+      {rules.map((rule) => {
+        const address = addresses.find((entry) => entry.id === rule.addressId);
+        return (
+          <span
+            key={rule.ruleId}
+            className="pill gap-1.5 border-border bg-card font-mono text-[11.5px]"
+          >
+            <Forward className="size-3 shrink-0 text-muted-foreground" />
+            {address?.address ?? "an address"}
+            <button
+              type="button"
+              aria-label={`Stop copying to ${address?.address ?? "this address"}`}
+              disabled={disabled}
+              onClick={() => onRemove(rule.ruleId)}
+              className="-mr-0.5 text-muted-foreground transition hover:text-foreground"
+            >
+              <X className="size-3" />
+            </button>
+          </span>
+        );
+      })}
 
       {free.length > 0 ? (
-        <div className="mt-2 flex flex-wrap items-center gap-2">
-          <Select
-            value={picked}
-            onValueChange={(value) => {
-              if (!value) return;
-              setPicked("");
-              onAdd(value);
-            }}
-          >
-            <SelectTrigger className="h-8 w-full max-w-xs text-[12.5px]">
-              <SelectValue placeholder="Also copy to…" />
-            </SelectTrigger>
-            <SelectContent>
-              {free.map((entry) => (
-                <SelectItem key={entry.id} value={entry.id}>
-                  {entry.address}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-        </div>
+        <DropdownMenu>
+          <DropdownMenuTrigger asChild>
+            <button
+              type="button"
+              disabled={disabled}
+              className="pill gap-1 border-dashed border-border text-[11.5px] text-muted-foreground transition hover:border-foreground/25 hover:text-foreground disabled:opacity-50"
+            >
+              <Plus className="size-3" />
+              {rules.length === 0 ? "Copy to" : "Add"}
+            </button>
+          </DropdownMenuTrigger>
+          <DropdownMenuContent align="start" className="max-h-64 overflow-y-auto">
+            {free.map((entry) => (
+              <DropdownMenuItem
+                key={entry.id}
+                className="font-mono text-[12px]"
+                onSelect={() => onAdd(entry.id)}
+              >
+                {entry.address}
+              </DropdownMenuItem>
+            ))}
+          </DropdownMenuContent>
+        </DropdownMenu>
       ) : null}
     </div>
   );
