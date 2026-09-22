@@ -155,8 +155,6 @@ export interface ForwardingView {
     forwardOff: boolean;
     rules: { ruleId: string; addressId: string }[];
   }[];
-  /** Set from the environment, unmanageable from here, shown so it is not a mystery. */
-  fromEnvironment: string[];
 }
 
 export async function forwardingView(orgId: string): Promise<ForwardingView> {
@@ -201,7 +199,6 @@ export async function forwardingView(orgId: string): Promise<ForwardingView> {
       ...row,
       rules: at((rule) => rule.mailboxId === row.id),
     })),
-    fromEnvironment: legacy(),
   };
 }
 

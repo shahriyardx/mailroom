@@ -232,14 +232,6 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
             onRemove={(ruleId) => run(() => removeForwardingRuleAction(ruleId), "Rule removed")}
           />
         </div>
-
-        {view.fromEnvironment.length > 0 ? (
-          <Note className="mt-3">
-            This instance is also configured to copy everything to {view.fromEnvironment.join(", ")}
-            . That one is set outside Mailroom, so it cannot be changed here and the switches below
-            do not stop it.
-          </Note>
-        ) : null}
       </Panel>
 
       <Panel
