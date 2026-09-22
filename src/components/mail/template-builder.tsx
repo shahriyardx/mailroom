@@ -840,13 +840,13 @@ function DropLine({ where }: { where: "top" | "bottom" }) {
   return (
     <span
       className={cn(
-        "pointer-events-none absolute inset-x-0 z-30 h-1 rounded-full bg-primary ring-4 ring-primary/20",
-        where === "top" ? "-top-0.5" : "-bottom-0.5",
+        // Inside the block's own bounds, not straddling the join: a line that
+        // hangs over the edge sits on top of the block above it, which reads
+        // as the wrong block being marked.
+        "pointer-events-none absolute inset-x-0 z-30 h-[3px] bg-primary",
+        where === "top" ? "top-0" : "bottom-0",
       )}
-    >
-      <span className="-translate-y-1/2 absolute top-1/2 left-0 size-2.5 rounded-full bg-primary" />
-      <span className="-translate-y-1/2 absolute top-1/2 right-0 size-2.5 rounded-full bg-primary" />
-    </span>
+    />
   );
 }
 
