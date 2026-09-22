@@ -45,11 +45,23 @@ export async function POST(request: NextRequest) {
 
   try {
     const result = await ingestInbound(parsed.email, parsed.attachments ?? []);
+    /*
+     * `forward` is the worker's instruction, not a report.
+     *
+     * Only this side can answer it: the rules are rows, they are read fresh
+     * for every message, and working them out needs the mailbox and domain
+     * the address belongs to. The worker forwards to each address given and
+     * to nothing else.
+     */
     if (result.stored.length === 0) {
-      // No local mailbox owns this address; tell the worker so it can reject.
-      return NextResponse.json({ stored: 0, reason: "no mailbox" }, { status: 202 });
+      // No local mailbox owns this address; tell the worker so it can reject
+      // it — unless a domain or instance rule says where to send it instead.
+      return NextResponse.json(
+        { stored: 0, reason: "no mailbox", forward: result.forward },
+        { status: 202 },
+      );
     }
-    return NextResponse.json({ stored: result.stored.length });
+    return NextResponse.json({ stored: result.stored.length, forward: result.forward });
   } catch (error) {
     console.error("inbound ingest failed", error);
     return NextResponse.json({ error: "ingest failed" }, { status: 500 });

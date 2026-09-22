@@ -15,6 +15,7 @@ import { domainOf, makeSnippet, normalizeSubject } from "@/lib/mail";
 import { colorOf, newId } from "@/lib/utils";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
+import { targetsForMailbox, targetsForUnknownAddress } from "./forwarding";
 import { announceToMailbox } from "./push";
 import { publish } from "./realtime";
 import { dispatchWebhooks } from "./webhooks";
@@ -218,9 +219,19 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
   /** What each stored message needs for the outward webhook, in the same order. */
   const notify: { orgId: string; mailboxId: string; payload: Record<string, unknown> }[] = [];
 
+  /**
+   * Every mailbox this message reached, for the forwarding answer below.
+   *
+   * Filled in even when the message turns out to be one we already have: the
+   * worker only forwards once, and a mailbox that is a duplicate here still
+   * has the same rules about where its mail is copied.
+   */
+  const delivered: { orgId: string; mailboxId: string }[] = [];
+
   for (const address of deliveredTo) {
     const box = await resolveMailbox(address);
     if (!box) continue;
+    delivered.push({ orgId: box.organizationId, mailboxId: box.id });
 
     // Ignore a message we already stored for this mailbox.
     if (payload.messageId) {
@@ -394,5 +405,25 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
     });
   }
 
-  return { stored };
+  /*
+   * Where the worker should also send this message.
+   *
+   * Worked out here rather than in the worker because only this side knows
+   * which mailbox the address belongs to, which domain that mailbox sits on,
+   * and what any of them have been told to do. The worker gets a plain list
+   * of addresses back and forwards to each.
+   */
+  const forward = new Set<string>();
+  for (const entry of delivered) {
+    for (const address of await targetsForMailbox(entry.orgId, entry.mailboxId)) {
+      forward.add(address);
+    }
+  }
+  if (delivered.length === 0) {
+    for (const address of deliveredTo) {
+      for (const target of await targetsForUnknownAddress(address)) forward.add(target);
+    }
+  }
+
+  return { stored, forward: [...forward] };
 }

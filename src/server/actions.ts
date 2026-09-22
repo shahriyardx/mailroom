@@ -24,6 +24,16 @@ import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
 import {
+  type Width,
+  addForwardingAddress,
+  addForwardingRule,
+  refreshForwardingAddresses,
+  removeForwardingAddress,
+  removeForwardingRule,
+  resendForwardingVerification,
+  setForwardOff,
+} from "@/server/forwarding";
+import {
   assertCanManage,
   assertCanSendAs,
   creatableDomainIds,
@@ -1275,4 +1285,92 @@ export async function deleteTemplateAction(id: string) {
   assertCan(access, "rules:manage");
   await deleteTemplate(access.orgId, id);
   revalidatePath("/settings/templates");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Forwarding                                                                 */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Where inbound mail is also sent.
+ *
+ * Every one of these is owner-only: a forwarding rule takes a copy of other
+ * people's mail out of the building, which is the same weight of decision as
+ * changing how mail is received at all.
+ */
+
+export async function addForwardingAddressAction(address: string) {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  try {
+    const result = await addForwardingAddress(access.orgId, address);
+    revalidatePath("/settings/forwarding");
+    return { ok: true as const, verified: result.verified };
+  } catch (error) {
+    return failure(error, "Cloudflare would not take that address");
+  }
+}
+
+export async function refreshForwardingAction() {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  try {
+    const result = await refreshForwardingAddresses(access.orgId);
+    revalidatePath("/settings/forwarding");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    return failure(error, "Cloudflare could not be reached");
+  }
+}
+
+export async function resendForwardingVerificationAction(addressId: string) {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  try {
+    await resendForwardingVerification(access.orgId, addressId);
+    revalidatePath("/settings/forwarding");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "Cloudflare would not send it again");
+  }
+}
+
+export async function removeForwardingAddressAction(addressId: string) {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  try {
+    await removeForwardingAddress(access.orgId, addressId);
+    revalidatePath("/settings/forwarding");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That address could not be removed");
+  }
+}
+
+export async function addForwardingRuleAction(addressId: string, width: Width) {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  try {
+    await addForwardingRule(access.orgId, addressId, width);
+    revalidatePath("/settings/forwarding");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That rule could not be added");
+  }
+}
+
+export async function removeForwardingRuleAction(ruleId: string) {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  await removeForwardingRule(access.orgId, ruleId);
+  revalidatePath("/settings/forwarding");
+  return { ok: true as const };
+}
+
+export async function setForwardOffAction(width: Width, off: boolean) {
+  const access = await requireAccess();
+  assertCan(access, "inbound:manage");
+  await setForwardOff(access.orgId, width, off);
+  revalidatePath("/settings/forwarding");
+  return { ok: true as const };
 }

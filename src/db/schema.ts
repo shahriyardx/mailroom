@@ -345,6 +345,12 @@ export const domain = pgTable(
      */
     autoCreateMailboxes: boolean("auto_create_mailboxes").notNull().default(false),
 
+    /**
+     * When on, forwarding rules written for the whole instance skip this
+     * domain. Its own rules still apply. See {@link forwardRule}.
+     */
+    forwardOff: boolean("forward_off").notNull().default(false),
+
     /** Set when the row came from SES rather than being created here. */
     importedAt: timestamp("imported_at", { withTimezone: true }),
     lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
@@ -373,12 +379,84 @@ export const mailbox = pgTable(
     isCatchAll: boolean("is_catch_all").notNull().default(false),
     isDefault: boolean("is_default").notNull().default(false),
     color: text("color").notNull().default("#6366f1"),
+
+    /**
+     * When on, forwarding rules written for the instance or for this
+     * mailbox's domain skip it. Its own rules still apply, so a mailbox can
+     * be kept out of a company-wide archive copy and still forward somewhere
+     * of its own. See {@link forwardRule}.
+     */
+    forwardOff: boolean("forward_off").notNull().default(false),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("mailbox_address_idx").on(t.address),
     index("mailbox_org_idx").on(t.organizationId),
     index("mailbox_domain_idx").on(t.domain),
+  ],
+);
+
+/**
+ * An address inbound mail may be forwarded on to.
+ *
+ * Kept apart from the rules that point at it because verification belongs to
+ * the address, not to any one rule: Cloudflare will not forward anywhere the
+ * owner has not agreed to, it agrees once per account, and asking twice would
+ * mean two emails for the same decision.
+ */
+export const forwardAddress = pgTable(
+  "forward_address",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    address: text("address").notNull(),
+    /** Cloudflare's own id for the destination, needed to remove or re-ask. */
+    destinationId: text("destination_id"),
+    /** When Cloudflare saw the owner click the link. Null until they do. */
+    verifiedAt: timestamp("verified_at", { withTimezone: true }),
+    /** The last time we asked Cloudflare what it thinks of this address. */
+    checkedAt: timestamp("checked_at", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("forward_address_org_idx").on(t.organizationId, t.address),
+    index("forward_address_org_only_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * Where a copy of inbound mail also goes.
+ *
+ * A rule sits at one of three widths, narrowest first: a mailbox, a domain,
+ * or the whole instance, and the width is whichever of the two columns is
+ * filled in. Every rule that matches a message applies, so an archive copy of
+ * everything and a second copy of one mailbox can both be set up without
+ * either cancelling the other. `forwardOff` on a domain or a mailbox is how
+ * a narrower thing opts out of the wider ones.
+ */
+export const forwardRule = pgTable(
+  "forward_rule",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    addressId: text("address_id")
+      .notNull()
+      .references(() => forwardAddress.id, { onDelete: "cascade" }),
+    /** Set for a domain-wide rule. */
+    domainId: text("domain_id").references(() => domain.id, { onDelete: "cascade" }),
+    /** Set for a single mailbox. Neither set means the whole instance. */
+    mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("forward_rule_org_idx").on(t.organizationId),
+    index("forward_rule_domain_idx").on(t.domainId),
+    index("forward_rule_mailbox_idx").on(t.mailboxId),
   ],
 );
 

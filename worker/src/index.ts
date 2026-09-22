@@ -15,8 +15,13 @@ export interface Env {
   STORE_RAW?: string;
   MAX_ATTACHMENT_BYTES?: string;
   /**
-   * Optional comma-separated addresses to forward every message on to, on top
-   * of storing it. Each must be a verified destination in Email Routing.
+   * Addresses to forward every message on to, whatever the app says.
+   *
+   * Superseded by the rules on Settings -> Forwarding, which arrive in the
+   * reply to the webhook below and need no redeploy to change. Kept because
+   * an instance that set this before those rules existed should not silently
+   * stop copying its mail. Each must be a verified destination in Email
+   * Routing.
    */
   FORWARD_TO?: string;
 }
@@ -103,6 +108,27 @@ async function forward(message: ForwardableEmailMessage, addresses: string[]) {
   }
 }
 
+/**
+ * The addresses the app wants this message copied to.
+ *
+ * Anything unexpected in the reply means forward nowhere rather than guess:
+ * an older app that does not send the field, a proxy that replaced the body,
+ * a 500 with HTML in it. Forwarding is additive, so the safe failure is not
+ * doing it.
+ */
+async function readForwardList(response: Response): Promise<string[]> {
+  try {
+    const body = (await response.json()) as { forward?: unknown };
+    if (!Array.isArray(body.forward)) return [];
+    return body.forward
+      .filter((entry): entry is string => typeof entry === "string")
+      .map((entry) => entry.trim().toLowerCase())
+      .filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export default {
   /** Cloudflare Email Routing calls this for every message sent to a routed address. */
   async email(message: ForwardableEmailMessage, env: Env, ctx: ExecutionContext) {
@@ -174,10 +200,23 @@ export default {
       body,
     });
 
-    const forwardTo = (env.FORWARD_TO ?? "")
-      .split(",")
-      .map((address) => address.trim())
-      .filter(Boolean);
+    /*
+     * Where this message also goes.
+     *
+     * The app answers it per message, because only the app knows which
+     * mailbox the address belongs to and what has been set for it. Anything
+     * in FORWARD_TO is added on top, for instances still configured that way.
+     */
+    const told = await readForwardList(response.clone());
+    const forwardTo = [
+      ...new Set([
+        ...told,
+        ...(env.FORWARD_TO ?? "")
+          .split(",")
+          .map((address) => address.trim().toLowerCase())
+          .filter(Boolean),
+      ]),
+    ];
 
     if (response.status === 202) {
       // The app has no mailbox for this address. Forward it if somewhere was

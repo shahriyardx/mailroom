@@ -10,6 +10,7 @@ import {
   Bell,
   BookOpen,
   FileText,
+  Forward,
   Gauge,
   Globe,
   Inbox,
@@ -73,6 +74,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     title: "Receiving",
     items: [
       { href: "/settings/inbound", label: "Inbound worker", icon: Inbox, needs: "inbound:manage" },
+      { href: "/settings/forwarding", label: "Forwarding", icon: Forward, needs: "inbound:manage" },
       {
         href: "/settings/filters",
         label: "Filters",

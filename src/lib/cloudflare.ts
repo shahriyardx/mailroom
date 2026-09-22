@@ -234,3 +234,48 @@ export const EMAIL_ROUTING_MX = [
   { host: "route2.mx.cloudflare.net", priority: 99 },
   { host: "route3.mx.cloudflare.net", priority: 1 },
 ] as const;
+
+/* -------------------------------------------------------------------------- */
+/* Email Routing destination addresses                                        */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * An address Email Routing is allowed to forward to.
+ *
+ * Cloudflare will not hand a message to an address nobody has agreed to: it
+ * emails the address a link, and only once that is clicked does `verified`
+ * carry a timestamp and `message.forward()` start working. Destinations are
+ * account-wide, so one verification covers every zone on the account.
+ */
+export interface Destination {
+  id: string;
+  email: string;
+  created: string;
+  modified: string;
+  verified: string | null;
+}
+
+export async function listDestinations(token: string, accountId: string) {
+  return call<Destination[]>(token, `/accounts/${accountId}/email/routing/addresses?per_page=100`);
+}
+
+/**
+ * Registers an address and makes Cloudflare send it the verification mail.
+ *
+ * Asking again for one that already exists is an error, not a resend, so the
+ * caller checks first.
+ */
+export async function addDestination(token: string, accountId: string, email: string) {
+  return call<Destination>(token, `/accounts/${accountId}/email/routing/addresses`, {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function deleteDestination(token: string, accountId: string, destinationId: string) {
+  return call<Destination>(
+    token,
+    `/accounts/${accountId}/email/routing/addresses/${destinationId}`,
+    { method: "DELETE" },
+  );
+}

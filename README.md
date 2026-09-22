@@ -99,7 +99,7 @@ R2_ACCESS_KEY_ID=
 R2_SECRET_ACCESS_KEY=
 R2_BUCKET=mail-attachments
 
-FORWARD_TO=                  # optional: also forward everything to this address
+FORWARD_TO=                  # optional, legacy: Settings -> Forwarding is the managed version
 UPDATE_CHECK=                # set to off to stop the sidebar asking GitHub for releases
 ```
 
@@ -200,7 +200,7 @@ Paste the token, press **Deploy worker**, then **Receive mail here** on each
 domain.
 
 > Turning a zone on replaces its MX records with Cloudflare's. Anything
-> receiving mail on that domain today stops. Set `FORWARD_TO` first for a copy
+> receiving mail on that domain today stops. Set up forwarding first for a copy
 > to keep reaching your old inbox.
 
 ## 7. Make a mailbox

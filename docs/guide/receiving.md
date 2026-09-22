@@ -36,7 +36,8 @@ Press **Receive mail here** on each domain.
 Turning Email Routing on for a zone points its MX at Cloudflare. Anything
 receiving mail on that domain today stops receiving it.
 
-Set `FORWARD_TO` first if you want a copy to keep reaching your old inbox.
+Set up [forwarding](/guide/forwarding) first if you want a copy to keep
+reaching your old inbox.
 :::
 
 ## Where mail lands

@@ -1,0 +1,111 @@
+# Forwarding
+
+**Settings → Forwarding.**
+
+A copy of inbound mail, sent on to an address outside Mailroom. Useful for
+keeping an old inbox fed while you move over, for an archive copy, or for
+getting one mailbox onto a phone that is already set up for something else.
+
+## How it decides
+
+Rules sit at one of three widths:
+
+| | |
+| --- | --- |
+| **Everything** | Every message this instance receives. |
+| **By domain** | Every message to any address on that domain. |
+| **By mailbox** | One address. |
+
+**Every rule that matches applies.** A company-wide archive copy and a copy of
+`support@` going to a shared phone are two rules, and a message to `support@`
+satisfies both, so it is copied twice.
+
+To keep something out of the wider rules, switch **Skip wider rules** on for
+that domain or mailbox. It only stops the widths above it — a mailbox with the
+switch on still follows its own rules.
+
+::: tip Worked example
+`hr@acme.com` in a company that copies everything to `archive@backup.example`:
+switch **Skip wider rules** on for the `hr@acme.com` row, and the archive stops
+receiving it. Everything else still goes.
+:::
+
+## Verifying an address
+
+Cloudflare will not forward to an address whose owner has not agreed to it.
+Adding one on this page registers it with Cloudflare, which emails it a link.
+Until that link is clicked the address shows as **Waiting**, and a rule
+pointing at it does nothing at all.
+
+**Check again** asks Cloudflare what it now thinks — there is no notification
+when somebody clicks, so the page asks when it is opened and when you press the
+button. **Send again** removes the address and re-adds it, which is the only
+way Cloudflare offers to resend.
+
+Verification is per address and account-wide: an address verified once works
+for every domain on the account.
+
+::: warning The token needs one more permission
+Adding and verifying addresses needs **Email Routing Addresses → Edit** on the
+Cloudflare token, on top of what [receiving](/guide/receiving) already needs.
+Without it the page says Cloudflare rejected the token.
+:::
+
+## How the worker knows
+
+It asks. Nothing is stored in the worker and nothing is cached in KV.
+
+For every message, the worker already posts the whole thing to `/api/inbound`
+on your instance — that is how mail gets stored. The reply now also carries the
+addresses to forward to, worked out from the rules at the moment the message
+arrived:
+
+```json
+{ "stored": 1, "forward": ["archive@backup.example"] }
+```
+
+So a rule changed on this page applies to the next message. There is no
+redeploy, and no window where the worker and the dashboard disagree.
+
+::: warning Redeploy the worker once
+This only works with a worker built after forwarding was added. If you are
+upgrading, press **Deploy worker** on Settings → Inbound worker once. Until you
+do, the old worker keeps using `FORWARD_TO` and ignores this page.
+:::
+
+## Mail to an address nobody owns
+
+When no mailbox claims the address, Mailroom cannot apply a mailbox rule —
+there is no mailbox. It falls back to the domain and instance rules, so mail to
+a retired address still reaches somebody instead of bouncing.
+
+If nothing matches, the message is rejected with `550 5.1.1 No such recipient
+here`, exactly as before.
+
+## `FORWARD_TO`
+
+The environment variable still works, and still copies everything everywhere.
+It was the only way to forward before this page existed and an instance
+upgrading should not quietly stop.
+
+It is listed on the page so it is not a mystery, but it cannot be changed from
+there, and **Skip wider rules** does not stop it — a switch in a database has
+no business overriding a decision made in a deploy file. Move it here when you
+get the chance: empty `FORWARD_TO`, restart, and add the same address as an
+instance-wide rule.
+
+## What is not forwarded
+
+- Mail you send. Only inbound messages.
+- Anything, if the address is still **Waiting**.
+- Anything, if no Cloudflare token is connected.
+
+## When it stops working
+
+Forwarding happens after the message is stored, so a forwarding failure never
+costs you the copy in Mailroom — Cloudflare retries the whole delivery and the
+app ignores the duplicate.
+
+If one address stops receiving, check it still shows **Verified**. Somebody
+removing the destination in the Cloudflare dashboard, or unsubscribing from the
+link in the verification mail, takes it back to waiting.
