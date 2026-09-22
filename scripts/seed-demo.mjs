@@ -12,6 +12,7 @@
  *   node scripts/seed-demo.mjs --mailbox=you@yours.com      # a particular one
  *   node scripts/seed-demo.mjs --count=100                  # plus 100 ordinary ones
  *   node scripts/seed-demo.mjs --count=200 --no-samples     # only the ordinary ones
+ *   node scripts/seed-demo.mjs --unread=20 --no-samples     # 20 recent, all unread
  *   node scripts/seed-demo.mjs --remove                     # take it all back out
  *
  * Everything it writes is tagged, so --remove touches nothing else.
@@ -444,7 +445,32 @@ for (let index = 0; index < bulk; index += 1) {
   });
 }
 
+/**
+ * Mail that has not been read, for looking at the Unread filter. Recent and
+ * minutes apart, so they arrive at the top of the list together.
+ */
+const unread = Number(process.argv.find((arg) => arg.startsWith("--unread="))?.split("=")[1] ?? 0);
+
+for (let index = 0; index < unread; index += 1) {
+  const [name, address] = SENDERS[(index + 3) % SENDERS.length];
+  const subject = SUBJECTS[(index + 5) % SUBJECTS.length].replace("{n}", String(2100 + index));
+  const body = BODIES[(index + 2) % BODIES.length];
+
+  total += await thread({
+    subject,
+    messages: [
+      {
+        from: { name, address },
+        unread: true,
+        at: ago(3 + index * 11),
+        text: plain(body),
+        html: reply(`${body}\n\n— ${name}`),
+      },
+    ],
+  });
+}
+
 const crafted = process.argv.includes("--no-samples") ? 0 : 7;
-console.log(`Added ${total} messages in ${crafted + bulk} threads to ${box.address}.`);
+console.log(`Added ${total} messages in ${crafted + bulk + unread} threads to ${box.address}.`);
 console.log("Undo with: node scripts/seed-demo.mjs --remove");
 await sql.end();
