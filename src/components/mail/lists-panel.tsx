@@ -2,16 +2,19 @@
 
 import {
   Badge,
-  BlankSlate,
   Button,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Field,
   Input,
-  List,
-  ListRow,
   Note,
-  Panel,
   Textarea,
 } from "@/components/kit";
+import { Empty, PageHeader, Row, SearchBox, Surface, Toolbar } from "@/components/mail/page-frame";
 import {
   addListMembersAction,
   createListAction,
@@ -20,18 +23,22 @@ import {
   setListMemberStatusAction,
 } from "@/server/actions";
 import type { ListRow as ListSummary, MemberRow } from "@/server/campaigns";
-import { ListChecks, Users } from "lucide-react";
+import { ListChecks, Plus, UserPlus, Users } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
 
 /**
  * Who a broadcast goes to.
  *
- * The consent line is not decoration and is not optional. Somebody will
- * eventually ask why they are being emailed, and the answer has to be better
- * than a shrug — so every way of adding people asks where they came from, and
- * the answer is stored against each of them.
+ * Two columns rather than two stacked panels: the lists are a short index you
+ * pick from, and the people on the one you picked are the screen. Stacking
+ * them pushed the names — the thing anybody came here for — below the fold as
+ * soon as there were more than a few lists.
+ *
+ * The consent line is not decoration and is not optional. Somebody will ask
+ * why they are being emailed, and the answer has to be better than a shrug.
  */
 export function ListsPanel({
   lists,
@@ -45,9 +52,22 @@ export function ListsPanel({
   const router = useRouter();
   const [busy, startTransition] = useTransition();
 
+  const [newList, setNewList] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [query, setQuery] = useState("");
+
   const [name, setName] = useState("");
   const [paste, setPaste] = useState("");
   const [source, setSource] = useState("");
+
+  const shown = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return members;
+    return members.filter(
+      (person) =>
+        person.address.includes(needle) || (person.name ?? "").toLowerCase().includes(needle),
+    );
+  }, [members, query]);
 
   function run(work: () => Promise<{ ok: boolean; error?: string }>, done: string) {
     startTransition(async () => {
@@ -61,94 +81,223 @@ export function ListsPanel({
     });
   }
 
+  const createList = (
+    <Button onClick={() => setNewList(true)}>
+      <Plus />
+      Create list
+    </Button>
+  );
+
   return (
     <>
-      <Panel
-        title="Lists"
-        meta={lists.length > 0 ? lists.length : undefined}
-        description="A group of people who agreed to hear from you. Someone can be on more than one, and leaving one does not touch the others."
-      >
-        <form
-          className="mb-4 flex flex-wrap gap-2"
-          onSubmit={(event) => {
-            event.preventDefault();
-            if (!name.trim()) return;
-            run(() => createListAction(name), "List made");
-            setName("");
-          }}
-        >
-          <Input
-            value={name}
-            onChange={(event) => setName(event.target.value)}
-            placeholder="Newsletter"
-            className="min-w-0 flex-1"
-            disabled={busy}
-          />
-          <Button type="submit" disabled={busy || !name.trim()}>
-            Make a list
+      <PageHeader title="Lists" count={lists.length}>
+        {selected ? (
+          <Button variant="outline" onClick={() => setAdding(true)}>
+            <UserPlus />
+            Add people
           </Button>
-        </form>
+        ) : null}
+        {createList}
+      </PageHeader>
 
-        {lists.length === 0 ? (
-          <BlankSlate
+      {lists.length === 0 ? (
+        <Surface>
+          <Empty
             icon={<ListChecks />}
             title="No lists yet"
-            hint="A broadcast goes to a list, so this is the first thing to make."
-          />
-        ) : (
-          <List>
-            {lists.map((entry) => (
-              <ListRow key={entry.id}>
-                <span className="grid size-8 shrink-0 place-items-center rounded-full bg-muted text-muted-foreground [&_svg]:size-4">
-                  <ListChecks />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <a
-                      href={`/campaigns/lists?list=${entry.id}`}
-                      className="truncate text-[13px] font-medium hover:underline"
-                    >
-                      {entry.name}
-                    </a>
-                    {entry.id === selected?.id ? (
-                      <Badge size="sm" tone="ok">
-                        Open
-                      </Badge>
-                    ) : null}
-                  </div>
-                  <div className="text-[12px] text-muted-foreground">
-                    {entry.subscribed} subscribed
-                    {entry.total > entry.subscribed
-                      ? `, ${entry.total - entry.subscribed} not`
-                      : ""}
-                  </div>
-                </div>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  disabled={busy}
-                  title="Deletes the list and everyone on it"
-                  onClick={() => run(() => removeListAction(entry.id), "List removed")}
+            hint="A list is a group of people who agreed to hear from you. A broadcast goes to one, so this is the first thing to make."
+          >
+            {createList}
+          </Empty>
+        </Surface>
+      ) : (
+        <div className="grid gap-4 lg:grid-cols-[minmax(0,260px)_minmax(0,1fr)] lg:items-start">
+          <Surface>
+            {lists.map((entry) => {
+              const active = entry.id === selected?.id;
+              return (
+                <Link
+                  key={entry.id}
+                  href={`/campaigns/lists?list=${entry.id}`}
+                  className={`flex items-center gap-3 border-border border-b px-3.5 py-2.5 transition-colors last:border-b-0 ${
+                    active ? "bg-muted/60" : "hover:bg-muted/30"
+                  }`}
                 >
-                  Remove
-                </Button>
-              </ListRow>
-            ))}
-          </List>
-        )}
-      </Panel>
+                  <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-muted text-muted-foreground [&_svg]:size-4">
+                    <ListChecks />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate text-[13px] font-medium">{entry.name}</span>
+                    <span className="block text-[12px] text-muted-foreground">
+                      {entry.subscribed} subscribed
+                    </span>
+                  </span>
+                </Link>
+              );
+            })}
+          </Surface>
 
-      {selected ? (
-        <Panel
-          title={selected.name}
-          meta={members.length > 0 ? members.length : undefined}
-          description="Everybody on this list, and where each of them came from."
-        >
+          <div>
+            {selected ? (
+              <>
+                <Toolbar>
+                  <SearchBox
+                    value={query}
+                    onChange={setQuery}
+                    placeholder={`Search ${selected.name}…`}
+                  />
+                  <Button
+                    variant="ghost"
+                    disabled={busy}
+                    title="Deletes the list and everyone on it"
+                    onClick={() => run(() => removeListAction(selected.id), "List removed")}
+                  >
+                    Delete list
+                  </Button>
+                </Toolbar>
+
+                <Surface>
+                  {members.length === 0 ? (
+                    <Empty
+                      icon={<Users />}
+                      title="Nobody on this list yet"
+                      hint="Add the people who agreed to hear from you. You will be asked where they came from."
+                    >
+                      <Button onClick={() => setAdding(true)}>
+                        <UserPlus />
+                        Add people
+                      </Button>
+                    </Empty>
+                  ) : shown.length === 0 ? (
+                    <Empty
+                      icon={<Users />}
+                      title="Nothing matches"
+                      hint="Nobody on this list matches what you have typed."
+                    />
+                  ) : (
+                    shown.map((person) => (
+                      <Row key={person.id}>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-wrap items-center gap-2">
+                            <span className="truncate font-mono text-[12.5px]">
+                              {person.address}
+                            </span>
+                            <Badge
+                              size="sm"
+                              tone={
+                                person.status === "subscribed"
+                                  ? "ok"
+                                  : person.status === "unsubscribed"
+                                    ? "warn"
+                                    : "danger"
+                              }
+                            >
+                              {person.status}
+                            </Badge>
+                          </div>
+                          <div className="mt-0.5 text-[12px] text-muted-foreground">
+                            {person.consentSource ?? "No source recorded"}
+                          </div>
+                        </div>
+
+                        {person.status === "subscribed" ? (
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            disabled={busy}
+                            onClick={() =>
+                              run(
+                                () => setListMemberStatusAction(person.id, "unsubscribed"),
+                                "Taken off the list",
+                              )
+                            }
+                          >
+                            Unsubscribe
+                          </Button>
+                        ) : null}
+
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          disabled={busy}
+                          onClick={() => run(() => removeListMemberAction(person.id), "Removed")}
+                        >
+                          Remove
+                        </Button>
+                      </Row>
+                    ))
+                  )}
+                </Surface>
+              </>
+            ) : null}
+          </div>
+        </div>
+      )}
+
+      <Dialog open={newList} onOpenChange={setNewList}>
+        <DialogContent className="sm:max-w-[440px]">
+          <DialogHeader>
+            <DialogTitle>Create a list</DialogTitle>
+            <DialogDescription>
+              Somebody can be on more than one, and leaving one does not touch the others.
+            </DialogDescription>
+          </DialogHeader>
+
           <form
-            className="mb-4 space-y-2.5"
+            id="new-list"
             onSubmit={(event) => {
               event.preventDefault();
-              if (!paste.trim()) return;
+              if (!name.trim()) return;
+              startTransition(async () => {
+                const result = await createListAction(name);
+                if (!result.ok) {
+                  toast.error(result.error);
+                  return;
+                }
+                toast.success("List made");
+                setName("");
+                setNewList(false);
+                router.refresh();
+              });
+            }}
+          >
+            <Field label="Name">
+              <Input
+                value={name}
+                onChange={(event) => setName(event.target.value)}
+                placeholder="Newsletter"
+                disabled={busy}
+                autoFocus
+              />
+            </Field>
+          </form>
+
+          <DialogFooter>
+            <Button variant="ghost" disabled={busy} onClick={() => setNewList(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="new-list" disabled={busy || !name.trim()}>
+              Create list
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={adding} onOpenChange={setAdding}>
+        <DialogContent className="sm:max-w-[520px]">
+          <DialogHeader>
+            <DialogTitle>Add people to {selected?.name}</DialogTitle>
+            <DialogDescription>
+              One address per line. Add a name after a comma if you have one.
+            </DialogDescription>
+          </DialogHeader>
+
+          <form
+            id="add-people"
+            className="space-y-2.5"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!selected || !paste.trim()) return;
               startTransition(async () => {
                 const result = await addListMembersAction(selected.id, paste, source);
                 if (!result.ok) {
@@ -161,17 +310,19 @@ export function ListsPanel({
                   }`,
                 );
                 setPaste("");
+                setAdding(false);
                 router.refresh();
               });
             }}
           >
-            <Field label="Addresses" hint="One per line. Add a name after a comma if you have one.">
+            <Field label="Addresses">
               <Textarea
                 value={paste}
                 onChange={(event) => setPaste(event.target.value)}
                 placeholder={"ada@example.com, Ada Lovelace\nbob@example.com"}
-                rows={4}
+                rows={6}
                 disabled={busy}
+                autoFocus
               />
             </Field>
             <Field
@@ -185,77 +336,23 @@ export function ListsPanel({
                 disabled={busy}
               />
             </Field>
-            <Button type="submit" disabled={busy || !paste.trim()}>
-              Add to {selected.name}
-            </Button>
+
+            <Note>
+              Somebody already on the list is left exactly as they are. Re-importing last month's
+              file will not resubscribe anybody who has left since.
+            </Note>
           </form>
 
-          <Note className="mb-4">
-            Somebody already on the list is left exactly as they are. Re-importing last month's file
-            will not resubscribe anybody who has left since.
-          </Note>
-
-          {members.length === 0 ? (
-            <BlankSlate
-              icon={<Users />}
-              title="Nobody on this list yet"
-              hint="Paste some addresses above."
-            />
-          ) : (
-            <List>
-              {members.map((person) => (
-                <ListRow key={person.id}>
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="truncate font-mono text-[12.5px]">{person.address}</span>
-                      <Badge
-                        size="sm"
-                        tone={
-                          person.status === "subscribed"
-                            ? "ok"
-                            : person.status === "unsubscribed"
-                              ? "warn"
-                              : "danger"
-                        }
-                      >
-                        {person.status}
-                      </Badge>
-                    </div>
-                    <div className="text-[12px] text-muted-foreground">
-                      {person.consentSource ?? "No source recorded"}
-                    </div>
-                  </div>
-
-                  {person.status === "subscribed" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      disabled={busy}
-                      onClick={() =>
-                        run(
-                          () => setListMemberStatusAction(person.id, "unsubscribed"),
-                          "Taken off the list",
-                        )
-                      }
-                    >
-                      Unsubscribe
-                    </Button>
-                  ) : null}
-
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    disabled={busy}
-                    onClick={() => run(() => removeListMemberAction(person.id), "Removed")}
-                  >
-                    Remove
-                  </Button>
-                </ListRow>
-              ))}
-            </List>
-          )}
-        </Panel>
-      ) : null}
+          <DialogFooter>
+            <Button variant="ghost" disabled={busy} onClick={() => setAdding(false)}>
+              Cancel
+            </Button>
+            <Button type="submit" form="add-people" disabled={busy || !paste.trim()}>
+              Add to list
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

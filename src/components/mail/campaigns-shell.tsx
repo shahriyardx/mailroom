@@ -89,7 +89,6 @@ export function CampaignsShell({
   user,
   allowed,
   showSwitcher,
-  title,
   children,
 }: {
   user: { name: string; email: string };
@@ -97,7 +96,6 @@ export function CampaignsShell({
   allowed: string[];
   /** Only when the inbox is switched on too — otherwise there is nowhere to go. */
   showSwitcher: boolean;
-  title: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -186,23 +184,22 @@ export function CampaignsShell({
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-5">
+        {/* Only a way back to the navigation. The page owns its own title,
+            the way an application screen does rather than a settings one. */}
+        <header className="flex h-12 shrink-0 items-center px-4 md:hidden">
           <IconButton
             size="md"
             label="Open navigation"
-            className="-ml-1.5 md:hidden"
+            className="-ml-1.5"
             onClick={() => setNavOpen(true)}
           >
             <Menu />
           </IconButton>
-          <h1 className="min-w-0 truncate font-display text-[18px] font-semibold tracking-[-0.02em]">
-            {title}
-          </h1>
         </header>
 
         <main className="min-h-0 flex-1 overflow-y-auto">
-          <div className="mx-auto w-full max-w-[880px] px-4 py-6 sm:px-6">
-            <div className="divide-y divide-border">{children}</div>
+          <div className="mx-auto w-full max-w-[1100px] px-5 pt-4 pb-10 sm:px-8 md:pt-8">
+            {children}
           </div>
         </main>
       </div>

@@ -27,7 +27,6 @@ export default async function CampaignsLayout({ children }: { children: React.Re
         user={{ name: access.name ?? access.email, email: access.email }}
         allowed={allowed}
         showSwitcher={settings.inboxEnabled}
-        title="Campaigns"
       >
         {children}
       </CampaignsShell>
