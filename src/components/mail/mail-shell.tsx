@@ -74,6 +74,17 @@ const FOLDER_ICONS: Record<ViewFolder, typeof Inbox> = {
 /** Where the sidebar remembers whether it was shrunk to a rail. */
 export const RAIL_COOKIE = "mailroom.rail";
 
+/** What this device last said, or null on the server and before any choice. */
+function readRail(): boolean | null {
+  if (typeof document === "undefined") return null;
+  const saved = document.cookie.match(/(?:^|;\s*)mailroom\.rail=([01])/);
+  return saved ? saved[1] === "1" : null;
+}
+
+function writeRail(value: boolean) {
+  document.cookie = `${RAIL_COOKIE}=${value ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+}
+
 interface Counts {
   folders: Record<string, number>;
   mailboxes: Record<string, number>;
@@ -136,20 +147,18 @@ export function MailShell({
    * storage, so the server renders the width the reader left it at instead of
    * a wide sidebar that snaps narrow once the script runs.
    */
-  const [railed, setRailed] = useState(initialRailed);
-
   /**
    * Moving between folders replaces this whole subtree, and the payload that
-   * replaces it may have been prefetched before the sidebar was collapsed. The
-   * cookie is the one thing that is never stale, so it has the last word once
-   * the page is up.
+   * replaces it may have been prefetched before the sidebar was collapsed.
+   * Read the cookie while the first render is being worked out rather than in
+   * an effect afterwards: an effect is one paint too late, and that paint is a
+   * full-width sidebar sliding shut on every folder you open.
    */
+  const [railed, setRailed] = useState(() => readRail() ?? initialRailed);
+
+  // First visit on this device: seed the mirror from what was saved.
   useEffect(() => {
-    const saved = document.cookie.match(/(?:^|;\s*)mailroom\.rail=([01])/);
-    if (saved) setRailed(saved[1] === "1");
-    // First visit on this device: seed the mirror from what was saved.
-    else if (initialRailed)
-      document.cookie = `${RAIL_COOKIE}=1; path=/; max-age=31536000; samesite=lax`;
+    if (readRail() === null && initialRailed) writeRail(true);
   }, [initialRailed]);
 
   /** Whether the two panes take turns instead of sitting side by side. */
@@ -158,9 +167,9 @@ export function MailShell({
   const toggleRail = useCallback(() => {
     const next = !railed;
     setRailed(next);
-    // Written twice on purpose: the cookie so the next paint is right away,
-    // the row so the choice is there on another device.
-    document.cookie = `${RAIL_COOKIE}=${next ? "1" : "0"}; path=/; max-age=31536000; samesite=lax`;
+    // Written twice on purpose: the cookie so the next page is the right width
+    // from its first paint, the row so the choice is there on another device.
+    writeRail(next);
     void saveAppearanceAction({ navCollapsed: next });
   }, [railed]);
 
