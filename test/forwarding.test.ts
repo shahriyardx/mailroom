@@ -158,6 +158,26 @@ describe("where a mailbox's mail is copied", () => {
   });
 });
 
+describe("adding an address", () => {
+  it("refuses one on a domain this instance receives on", async () => {
+    const { addForwardingAddress } = await import("@/server/forwarding");
+    // Forwarding there hands the message back to the worker, which stores it
+    // and forwards it again.
+    await assert.rejects(
+      () => addForwardingAddress(account.orgId, `anyone@${"example.test"}`),
+      /receives on/,
+    );
+  });
+
+  it("refuses something that is not an address", async () => {
+    const { addForwardingAddress } = await import("@/server/forwarding");
+    await assert.rejects(
+      () => addForwardingAddress(account.orgId, "not-an-address"),
+      /not an email/,
+    );
+  });
+});
+
 describe("where mail for an address nobody owns is copied", () => {
   it("falls back to the domain and instance rules", async () => {
     const { targetsForUnknownAddress } = await import("@/server/forwarding");

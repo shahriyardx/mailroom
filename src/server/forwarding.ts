@@ -227,6 +227,26 @@ export async function addForwardingAddress(orgId: string, input: string) {
   });
   if (existing) throw new Error("That address is already on the list");
 
+  /*
+   * Never forward back into this instance.
+   *
+   * Mail forwarded to an address on a domain we receive on arrives at the
+   * worker again, which stores it and forwards it again. Cloudflare stops
+   * the loop eventually, but not before the mailbox has a pile of copies in
+   * it. The domain is checked rather than the mailbox because a catch-all or
+   * auto-created mailbox means an address with no row today can have one the
+   * moment mail reaches it.
+   */
+  const ours = await db.query.domain.findFirst({
+    where: and(eq(domain.organizationId, orgId), eq(domain.name, address.split("@")[1] ?? "")),
+    columns: { name: true },
+  });
+  if (ours) {
+    throw new Error(
+      `${ours.name} is a domain this instance receives on. Forwarding there would send the mail straight back in.`,
+    );
+  }
+
   const credentials = await cloudflareCredentials(orgId);
   if (!credentials) throw new Error("Connect a Cloudflare token on the Inbound worker page first");
 
