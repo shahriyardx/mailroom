@@ -311,59 +311,74 @@ export function ThreadList({
         }}
       />
 
-      {/* The toolbar only appears once there is a selection to act on. */}
-      {hasSelection && (
-        <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-4">
-          <Checkbox
-            checked={allSelected}
-            onCheckedChange={() =>
-              setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
-            }
-            aria-label="Select all"
-            className="mr-2 shrink-0"
-          />
-          <span className="mr-1 shrink-0 text-[12px] font-medium text-muted-foreground tabular-nums">
-            {selected.size}
-          </span>
-          <BulkAction label="Mark read" onClick={() => run(() => setReadAction(ids, true))}>
-            <MailOpen />
-          </BulkAction>
-          <BulkAction label="Mark unread" onClick={() => run(() => setReadAction(ids, false))}>
-            <MailQuestion />
-          </BulkAction>
-          {folder === "archive" || folder === "spam" || folder === "trash" ? (
-            <BulkAction
-              label="Move to inbox"
-              onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
-            >
-              <ArchiveRestore />
-            </BulkAction>
-          ) : (
-            <BulkAction
-              label="Archive"
-              onClick={() => run(() => moveThreadsAction(ids, "archive"))}
-            >
-              <Archive />
-            </BulkAction>
-          )}
-          <BulkAction label="Report spam" onClick={() => run(() => moveThreadsAction(ids, "spam"))}>
-            <ShieldAlert />
-          </BulkAction>
-          <LabelMenu threadIds={ids} labels={labels} onDone={() => setSelected(new Set())} />
+      {/* The toolbar stays put whether or not anything is picked out. It used
+          to appear on the first tick and push the list down, which moved the
+          row you were reaching for out from under the pointer. */}
+      <div className="flex h-10 shrink-0 items-center gap-1 border-b border-border px-4">
+        <Checkbox
+          checked={allSelected}
+          onCheckedChange={() =>
+            setSelected(allSelected ? new Set() : new Set(items.map((item) => item.id)))
+          }
+          aria-label="Select all"
+          className="mr-2 shrink-0"
+        />
+        <span className="mr-1 w-3 shrink-0 text-[12px] font-medium text-muted-foreground tabular-nums">
+          {hasSelection ? selected.size : ""}
+        </span>
+        <BulkAction
+          label="Mark read"
+          disabled={!hasSelection}
+          onClick={() => run(() => setReadAction(ids, true))}
+        >
+          <MailOpen />
+        </BulkAction>
+        <BulkAction
+          label="Mark unread"
+          disabled={!hasSelection}
+          onClick={() => run(() => setReadAction(ids, false))}
+        >
+          <MailQuestion />
+        </BulkAction>
+        {folder === "archive" || folder === "spam" || folder === "trash" ? (
           <BulkAction
-            label="Delete"
-            destructive
-            onClick={() => run(() => deleteThreadsAction(ids))}
+            label="Move to inbox"
+            disabled={!hasSelection}
+            onClick={() => run(() => moveThreadsAction(ids, "inbox"))}
           >
-            <Trash2 />
+            <ArchiveRestore />
           </BulkAction>
-          <span className="ml-auto">
-            <BulkAction label="Refresh" onClick={() => run(async () => {})}>
-              {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
-            </BulkAction>
-          </span>
-        </div>
-      )}
+        ) : (
+          <BulkAction
+            label="Archive"
+            disabled={!hasSelection}
+            onClick={() => run(() => moveThreadsAction(ids, "archive"))}
+          >
+            <Archive />
+          </BulkAction>
+        )}
+        <BulkAction
+          label="Report spam"
+          disabled={!hasSelection}
+          onClick={() => run(() => moveThreadsAction(ids, "spam"))}
+        >
+          <ShieldAlert />
+        </BulkAction>
+        <LabelMenu threadIds={ids} labels={labels} onDone={() => setSelected(new Set())} />
+        <BulkAction
+          label="Delete"
+          destructive
+          disabled={!hasSelection}
+          onClick={() => run(() => deleteThreadsAction(ids))}
+        >
+          <Trash2 />
+        </BulkAction>
+        <span className="ml-auto">
+          <BulkAction label="Refresh" onClick={() => run(async () => {})}>
+            {pending ? <Loader2 className="animate-spin" /> : <RefreshCw />}
+          </BulkAction>
+        </span>
+      </div>
 
       <ul className="min-h-0 flex-1 overflow-y-auto pb-3">
         {items.length === 0 && <EmptyFolder folder={folder} />}
@@ -450,16 +465,24 @@ function BulkAction({
   label,
   onClick,
   destructive,
+  disabled,
   children,
 }: {
   label: string;
   onClick: () => void;
   destructive?: boolean;
+  /** Nothing is picked out, so the button is there but has nothing to act on. */
+  disabled?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <Hint label={label}>
-      <IconButton label={label} variant={destructive ? "danger" : "ghost"} onClick={onClick}>
+      <IconButton
+        label={label}
+        variant={destructive ? "danger" : "ghost"}
+        disabled={disabled}
+        onClick={onClick}
+      >
         {children}
       </IconButton>
     </Hint>
