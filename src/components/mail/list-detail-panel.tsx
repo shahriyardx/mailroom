@@ -3,6 +3,7 @@
 import {
   Badge,
   Button,
+  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -47,6 +48,7 @@ export function ListDetailPanel({
   const [busy, startTransition] = useTransition();
 
   const [adding, setAdding] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [query, setQuery] = useState("");
   const [paste, setPaste] = useState("");
   const [source, setSource] = useState("");
@@ -117,15 +119,7 @@ export function ListDetailPanel({
             : ""
         }`}
       >
-        <Button
-          variant="ghost"
-          disabled={busy}
-          title="Deletes the list and everyone on it"
-          onClick={() => {
-            run(() => removeListAction(list.id), "List removed");
-            router.push("/campaigns/lists");
-          }}
-        >
+        <Button variant="danger" disabled={busy} onClick={() => setDeleting(true)}>
           <Trash2 />
           Delete
         </Button>
@@ -199,7 +193,7 @@ export function ListDetailPanel({
               ) : null}
 
               <Button
-                variant="ghost"
+                variant="danger-ghost"
                 size="sm"
                 disabled={busy}
                 onClick={() => run(() => removeListMemberAction(person.id), "Removed")}
@@ -210,6 +204,35 @@ export function ListDetailPanel({
           ))
         )}
       </Surface>
+
+      <ConfirmDialog
+        open={deleting}
+        onOpenChange={setDeleting}
+        title={`Delete ${list.name}?`}
+        description="The list goes, and so does everybody on it."
+        consequences={
+          list.total > 0
+            ? `${list.total.toLocaleString()} ${
+                list.total === 1 ? "person" : "people"
+              } will be removed, along with the record of where each of them came from. Any broadcast written for this list goes too. None of it can be recovered.`
+            : "Nothing is on this list yet, so nothing is lost."
+        }
+        confirmLabel="Delete list"
+        onConfirm={async () => {
+          /*
+           * Awaited, then navigated. The first version fired the delete and
+           * pushed in the same tick, so the page it landed on could still be
+           * rendering the list it had just destroyed.
+           */
+          const result = await removeListAction(list.id);
+          if (!result.ok) {
+            toast.error(result.error ?? "That list could not be deleted");
+            return;
+          }
+          toast.success("List deleted");
+          router.push("/campaigns/lists");
+        }}
+      />
 
       <Dialog open={adding} onOpenChange={setAdding}>
         <DialogContent className="sm:max-w-[520px]">

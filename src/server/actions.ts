@@ -1460,9 +1460,15 @@ export async function createListAction(name: string, description?: string) {
 export async function removeListAction(listId: string) {
   const access = await requireAccess();
   assertCan(access, "rules:manage");
-  await removeList(access.orgId, listId);
-  revalidatePath("/campaigns/lists");
-  return { ok: true as const };
+  try {
+    await removeList(access.orgId, listId);
+    revalidatePath("/campaigns/lists");
+    return { ok: true as const };
+  } catch (error) {
+    // The caller navigates away on success, so a silent failure would leave
+    // somebody looking at a list index that still has the list in it.
+    return failure(error, "That list could not be deleted");
+  }
 }
 
 export async function addListMembersAction(listId: string, text: string, consentSource: string) {
