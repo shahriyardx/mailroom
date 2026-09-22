@@ -1,4 +1,5 @@
 import { ApiError, listThreads, threadUrl } from "@/lib/api";
+import { clearCache } from "@/lib/cache";
 import { displayName, rowPerson, threadSubject } from "@/lib/format";
 import { type Settings, getSettings, isConnected } from "@/lib/settings";
 import type { ApiThread } from "@/lib/types";
@@ -140,13 +141,17 @@ async function announce(threads: ApiThread[]) {
   const shown = threads.slice(0, MAX_NOTIFICATIONS);
 
   for (const thread of shown) {
-    const from = displayName(rowPerson(thread, "inbox"));
+    // Neither may be blank: a notification with an empty title is drawn as
+    // the extension's own name and an empty card, which says nothing at all.
+    const from = displayName(rowPerson(thread, "inbox")).trim() || "New mail";
+    const subject = threadSubject(thread).trim() || "(no subject)";
+
     try {
       await browser.notifications.create(`thread:${thread.id}`, {
         type: "basic",
         iconUrl: icon,
         title: from,
-        message: threadSubject(thread),
+        message: subject,
       });
     } catch {
       // A browser with notifications switched off at the OS level throws
@@ -210,6 +215,9 @@ export default defineBackground(() => {
       JSON.stringify(before.mailboxIds ?? []) !== JSON.stringify(after.mailboxIds ?? []);
 
     if (movedInstance) {
+      // Anything remembered — announced ids, the lists the popup paints from
+      // — is about the instance or the scope that was just left behind.
+      void clearCache();
       void browser.storage.local
         .set({ [SEEN_KEY]: {}, [STATE_KEY]: BLANK })
         .then(schedule)

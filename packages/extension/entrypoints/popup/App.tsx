@@ -11,6 +11,7 @@ import {
   listThreads,
   patchThread,
 } from "@/lib/api";
+import { cacheList, cacheMailboxes, cachedList, cachedMailboxes } from "@/lib/cache";
 import { cx } from "@/lib/format";
 import { openTab, refreshBadge, useDebounced, useSettings, useTheme } from "@/lib/hooks";
 import { isConnected, watchesNothing } from "@/lib/settings";
@@ -93,6 +94,7 @@ export function App({ inTab }: { inTab: boolean }) {
         const result = await listThreads(settings, view, { search: term, limit: PAGE });
         setThreads(result.threads);
         setCursor(result.nextCursor);
+        void cacheList(settings, view, term, result.threads);
       } catch (caught) {
         setError(caught instanceof ApiError ? caught.message : "Could not load your mail.");
         setThreads([]);
@@ -104,19 +106,50 @@ export function App({ inTab }: { inTab: boolean }) {
     [settings, view, term],
   );
 
+  /**
+   * What this view looked like last time, on screen before the request that
+   * replaces it has even been sent.
+   *
+   * The popup is built from scratch on every open, so without this each one
+   * begins with four grey rows for as long as the round trip takes. The fetch
+   * still happens, and still wins; it just no longer has an empty screen to
+   * itself.
+   */
   useEffect(() => {
+    if (!settings || !isConnected(settings)) return;
+    let alive = true;
+
+    void cachedList(settings, view, term).then((entry) => {
+      if (!alive || !entry || entry.threads.length === 0) return;
+      // Only ahead of the real answer. Once that has landed it stands.
+      setThreads((current) => (current.length === 0 ? entry.threads : current));
+      setLoading(false);
+    });
+
     void load();
-  }, [load]);
+
+    return () => {
+      alive = false;
+    };
+  }, [load, settings, view, term]);
 
   // The mailbox picker only makes sense once we know what there is to pick.
   useEffect(() => {
     if (!settings || !isConnected(settings)) return;
     let alive = true;
+
+    void cachedMailboxes().then((rows) => {
+      if (alive && rows) setMailboxes((current) => (current.length === 0 ? rows : current));
+    });
+
     void listMailboxes(settings)
       .then((rows) => {
-        if (alive) setMailboxes(rows);
+        if (!alive) return;
+        setMailboxes(rows);
+        void cacheMailboxes(rows);
       })
       .catch(() => {});
+
     return () => {
       alive = false;
     };
