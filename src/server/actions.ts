@@ -32,7 +32,7 @@ import {
 } from "@/server/grants";
 import { rememberImageChoice } from "@/server/image-trust";
 import { assertCan, can } from "@/server/permissions";
-import { restoreThreads, trashThreads } from "@/server/trash";
+import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
 import type { EventType } from "@aws-sdk/client-sesv2";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -321,6 +321,27 @@ export async function deleteThreadsAction(threadIds: string[]) {
   const owned = await assertOwnsThreads(access.orgId, threadIds, await readableMailboxIds(access));
   await trashThreads(owned);
   revalidatePath("/mail", "layout");
+}
+
+/** The view the trash is being emptied from, which is all it may reach. */
+const scopeSchema = z.union([
+  z.object({ kind: z.literal("all") }),
+  z.object({ kind: z.literal("domain"), domain: z.string().min(1) }),
+  z.object({ kind: z.literal("mailbox"), mailboxId: z.string().min(1) }),
+]);
+
+/**
+ * Empties the trash of whatever the reader is looking at, and says how many
+ * conversations went. Scoped to the view rather than the whole account: the
+ * button sits in one mailbox's trash, so it should not quietly clear another.
+ */
+export async function emptyTrashAction(scope: unknown) {
+  const access = await requireAccess();
+  const view = scopeSchema.parse(scope);
+  const mailboxIds = await resolveScope(access.orgId, view, await readableMailboxIds(access));
+  const count = await emptyTrash(mailboxIds);
+  revalidatePath("/mail", "layout");
+  return count;
 }
 
 export async function setThreadsLabelAction(threadIds: string[], labelId: string, on: boolean) {

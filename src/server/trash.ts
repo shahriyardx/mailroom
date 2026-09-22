@@ -77,3 +77,34 @@ export async function restoreThreads(threadIds: string[]) {
 
   for (const id of threadIds) await recomputeThread(id);
 }
+
+/**
+ * Throws away everything in the trash for the given mailboxes, and says how
+ * many conversations it touched.
+ *
+ * Messages are what the trash holds, not conversations: a thread can have a
+ * reply still sitting in Sent while the message it answered is deleted. So
+ * this removes the deleted messages and leaves the rest of the thread alone.
+ * A thread with nothing left is dropped by {@link recomputeThread}.
+ */
+export async function emptyTrash(mailboxIds: string[]) {
+  if (mailboxIds.length === 0) return 0;
+
+  const rows = await db
+    .select({ id: message.id, threadId: message.threadId })
+    .from(message)
+    .innerJoin(thread, eq(thread.id, message.threadId))
+    .where(and(eq(message.folder, "trash"), inArray(thread.mailboxId, mailboxIds)));
+  if (rows.length === 0) return 0;
+
+  await db.delete(message).where(
+    inArray(
+      message.id,
+      rows.map((row) => row.id),
+    ),
+  );
+
+  const touched = [...new Set(rows.map((row) => row.threadId))];
+  for (const id of touched) await recomputeThread(id);
+  return touched.length;
+}

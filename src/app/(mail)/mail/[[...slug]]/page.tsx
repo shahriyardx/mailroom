@@ -1,5 +1,5 @@
 import { Button } from "@/components/kit";
-import { MailShell } from "@/components/mail/mail-shell";
+import { MailShell, RAIL_COOKIE } from "@/components/mail/mail-shell";
 import { ThreadList } from "@/components/mail/thread-list";
 import { ThreadView } from "@/components/mail/thread-view";
 import { db } from "@/db";
@@ -14,6 +14,7 @@ import { settingsLanding } from "@/server/settings-landing";
 import { getThreadDetail, listThreads } from "@/server/threads";
 import { eq } from "drizzle-orm";
 import { Inbox } from "lucide-react";
+import { cookies } from "next/headers";
 import Link from "next/link";
 
 interface PageProps {
@@ -31,6 +32,9 @@ interface PageProps {
 export default async function MailPage({ params, searchParams }: PageProps) {
   const access = await requireAccess();
   const { slug } = await params;
+  // Read here rather than in the shell, so the sidebar is the width it was
+  // left at from the first paint.
+  const railed = (await cookies()).get(RAIL_COOKIE)?.value === "1";
   const query = await searchParams;
   const { scope, folder } = parseRoute(slug);
 
@@ -96,6 +100,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       user={{ name: access.name, email: access.email }}
       canAddMailbox={mayAddMailbox}
       settingsHref={settingsHref}
+      initialRailed={railed}
       openSubject={detail?.subject || undefined}
       threadOpen={Boolean(detail)}
       list={

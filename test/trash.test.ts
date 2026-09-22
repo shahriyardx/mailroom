@@ -131,3 +131,46 @@ describe("putting a conversation back", () => {
     }
   });
 });
+
+describe("emptying the trash", () => {
+  it("destroys what is in the trash and leaves the rest of the thread", async () => {
+    const { db } = await import("@/db");
+    const { message, thread } = await import("@/db/schema");
+    const { emptyTrash, trashThreads } = await import("@/server/trash");
+    const { and, eq } = await import("drizzle-orm");
+
+    const gone = await conversation(["inbox"]);
+    const mixed = await conversation(["inbox", "sent"]);
+    const kept = await conversation(["inbox"]);
+
+    await trashThreads([gone]);
+    // Only their half of this one was deleted; the reply is still in Sent.
+    await db
+      .update(message)
+      .set({ folder: "trash", previousFolder: "inbox" })
+      .where(and(eq(message.threadId, mixed), eq(message.folder, "inbox")));
+
+    const count = await emptyTrash([account.mailboxId]);
+    assert.equal(count, 2, "both conversations with trashed mail");
+
+    const remaining = await db.select().from(thread);
+    assert.deepEqual(
+      remaining.map((row) => row.id).sort(),
+      [kept, mixed].sort(),
+      "the one wholly in the trash is gone, the untouched one stays",
+    );
+    assert.deepEqual(await foldersNow(mixed), ["sent"], "my reply survives");
+  });
+
+  it("does not reach a mailbox the view does not cover", async () => {
+    const { db } = await import("@/db");
+    const { thread } = await import("@/db/schema");
+    const { emptyTrash, trashThreads } = await import("@/server/trash");
+
+    const id = await conversation(["inbox"]);
+    await trashThreads([id]);
+
+    assert.equal(await emptyTrash(["mbx_somewhere_else"]), 0);
+    assert.equal((await db.select().from(thread)).length, 1, "still there");
+  });
+});
