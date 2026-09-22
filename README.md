@@ -25,6 +25,7 @@ invitation. No public sign-up.
 - **Delivery reporting** — delivered, bounced, complained, automatic suppression
 - **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
+- **A browser extension** for Chrome, Firefox and Edge — notifications and your inbox in the toolbar
 
 ## What it looks like
 
@@ -208,6 +209,21 @@ domain.
 Tick **Catch-all** to collect every unclaimed address on that domain in one
 inbox, or **Capture every address** to give each one its own mailbox.
 
+## The browser extension
+
+Your inbox in the toolbar, for Chrome, Firefox and Edge. It notifies you when
+mail arrives, shows the conversation, and triages it. Replying hands over to
+the dashboard with the composer open.
+
+```sh
+pnpm ext:build
+```
+
+Load `packages/extension/.output/chrome-mv3` as an unpacked extension (or
+`.output/firefox-mv3/manifest.json` in Firefox), then give it your address and
+an API key. Full instructions in
+[packages/extension](packages/extension/README.md).
+
 ## Sending from your own code
 
 **Settings → API keys.** A key not locked to one mailbox can send as any
@@ -280,6 +296,8 @@ laptop.
 | `pnpm reset-owner --yes` | Release the owner slot |
 | `pnpm sdk:build` | Build the Node SDK |
 | `pnpm sdk:test` | Test the Node SDK |
+| `pnpm ext:dev` | The browser extension, with reloading |
+| `pnpm ext:build` | Build it for Chrome, Firefox and Edge |
 
 ## Worth knowing
 

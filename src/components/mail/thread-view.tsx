@@ -42,8 +42,8 @@ import {
   X,
 } from "lucide-react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState, useTransition } from "react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { Fragment, useCallback, useEffect, useRef, useState, useTransition } from "react";
 import { toast } from "sonner";
 import { useComposer } from "./composer-provider";
 import { EmailFrame } from "./email-frame";
@@ -77,7 +77,11 @@ export function ThreadView({
   stacked = false,
 }: Props) {
   const router = useRouter();
+  const pathname = usePathname();
+  const params = useSearchParams();
   const composer = useComposer();
+  /** Which thread the `?reply=` request has already been honoured for. */
+  const answered = useRef<string | null>(null);
   const [, startTransition] = useTransition();
   // Every message opens with the thread. A mail client that hides what it
   // just told you had arrived makes you click to read your own mail.
@@ -116,38 +120,72 @@ export function ThreadView({
 
   const last = thread.messages.at(-1)!;
 
-  function replyDraft(mode: "reply" | "replyAll" | "forward") {
-    const recipients =
-      mode === "forward"
-        ? ""
-        : last.isOutbound
-          ? last.to.map(formatAddress).join(", ")
-          : formatAddress({ name: last.fromName, address: last.replyTo ?? last.fromAddress });
+  // Wrapped, because the `?reply=` effect below calls it and an effect that
+  // depends on a function rebuilt every render would run on every render.
+  const replyDraft = useCallback(
+    (mode: "reply" | "replyAll" | "forward") => {
+      const recipients =
+        mode === "forward"
+          ? ""
+          : last.isOutbound
+            ? last.to.map(formatAddress).join(", ")
+            : formatAddress({ name: last.fromName, address: last.replyTo ?? last.fromAddress });
 
-    const cc =
-      mode === "replyAll"
-        ? [...last.to, ...last.cc]
-            .filter((entry) => entry.address !== thread.mailbox.address)
-            .map(formatAddress)
-            .join(", ")
-        : "";
+      const cc =
+        mode === "replyAll"
+          ? [...last.to, ...last.cc]
+              .filter((entry) => entry.address !== thread.mailbox.address)
+              .map(formatAddress)
+              .join(", ")
+          : "";
 
-    composer.open({
-      mailboxId: thread.mailbox.id,
-      to: recipients,
-      cc,
-      subject: mode === "forward" ? forwardSubject(last.subject) : replySubject(last.subject),
-      html: quoteForReply({
-        fromLabel: last.fromName ?? last.fromAddress,
-        sentAt: new Date(last.sentAt ?? last.receivedAt),
-        html: last.htmlBody,
-        text: last.textBody,
-      }),
-      threadId: mode === "forward" ? undefined : thread.id,
-      inReplyTo: last.rfcMessageId ?? undefined,
-      references: [...(last.references ?? []), last.rfcMessageId].filter(Boolean) as string[],
-    });
-  }
+      composer.open({
+        mailboxId: thread.mailbox.id,
+        to: recipients,
+        cc,
+        subject: mode === "forward" ? forwardSubject(last.subject) : replySubject(last.subject),
+        html: quoteForReply({
+          fromLabel: last.fromName ?? last.fromAddress,
+          sentAt: new Date(last.sentAt ?? last.receivedAt),
+          html: last.htmlBody,
+          text: last.textBody,
+        }),
+        threadId: mode === "forward" ? undefined : thread.id,
+        inReplyTo: last.rfcMessageId ?? undefined,
+        references: [...(last.references ?? []), last.rfcMessageId].filter(Boolean) as string[],
+      });
+    },
+    [composer, last, thread.id, thread.mailbox.id, thread.mailbox.address],
+  );
+
+  /**
+   * `?reply=` opens the composer on arrival.
+   *
+   * The browser extension reads mail but does not write it, so its reply
+   * button hands over to here. Landing on the conversation with the box
+   * already open is the difference between continuing an action and starting
+   * a new one.
+   *
+   * The parameter is taken out of the address afterwards, so going back to
+   * this page — or refreshing it — does not open a second empty draft over
+   * the one being typed.
+   */
+  useEffect(() => {
+    const asked = params.get("reply");
+    if (!asked) return;
+    if (answered.current === thread.id) return;
+    if (!composer.canWriteAs(thread.mailbox.id)) return;
+
+    answered.current = thread.id;
+
+    const mode = asked === "replyAll" || asked === "forward" ? asked : ("reply" as const);
+    replyDraft(mode);
+
+    const rest = new URLSearchParams(params.toString());
+    rest.delete("reply");
+    const query = rest.toString();
+    router.replace(query ? `${pathname}?${query}` : pathname, { scroll: false });
+  }, [params, pathname, router, thread.id, thread.mailbox.id, composer, replyDraft]);
 
   return (
     <section className="flex h-full min-w-0 flex-col bg-card">

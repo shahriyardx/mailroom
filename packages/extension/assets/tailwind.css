@@ -1,0 +1,229 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   Mailroom, in a toolbar
+
+   The same design language as the web app — warm neutrals, one indigo accent
+   that only ever means state, soft geometry — with the tokens copied rather
+   than imported, because the extension is built on its own and must not grow
+   a dependency on the Next app's stylesheet.
+
+   Keep in step with src/app/globals.css. If a token moves there, move it here.
+   ========================================================================== */
+
+@custom-variant dark (&:is(.dark *));
+
+:root {
+  --radius: 0.75rem;
+
+  --shadow-raise: 0 1px 2px oklch(0.2 0.02 80 / 0.05);
+  --shadow-pop: 0 4px 14px -4px oklch(0.2 0.02 80 / 0.1), 0 1px 3px oklch(0.2 0.02 80 / 0.05);
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.006 265);
+
+  --card: oklch(1 0 0);
+  --popover: oklch(1 0 0);
+
+  --primary: oklch(0.53 0.17 278);
+  --primary-foreground: oklch(0.99 0.004 278);
+  --primary-soft: oklch(0.955 0.02 278);
+  --primary-soft-foreground: oklch(0.44 0.16 278);
+
+  --secondary: oklch(0.962 0.002 265);
+  --secondary-foreground: oklch(0.28 0.006 265);
+
+  --muted: oklch(0.968 0.002 265);
+  --muted-foreground: oklch(0.55 0.006 265);
+
+  --accent: oklch(0.956 0.002 265);
+  --accent-foreground: oklch(0.22 0.006 265);
+
+  --destructive: oklch(0.55 0.18 25);
+  --destructive-foreground: oklch(0.99 0 0);
+
+  --border: oklch(0.918 0.002 265);
+  --input: oklch(0.93 0.002 265);
+  --ring: oklch(0.53 0.17 278);
+
+  --rail: oklch(0.989 0.001 265);
+  --rail-foreground: oklch(0.36 0.006 265);
+
+  --ok: oklch(0.53 0.1 158);
+  --ok-soft: oklch(0.955 0.03 158);
+  --warn: oklch(0.6 0.12 72);
+  --warn-soft: oklch(0.962 0.04 72);
+  --danger-soft: oklch(0.962 0.025 25);
+}
+
+.dark {
+  --shadow-raise: 0 1px 2px oklch(0 0 0 / 0.3);
+  --shadow-pop: 0 4px 14px -4px oklch(0 0 0 / 0.45), 0 1px 3px oklch(0 0 0 / 0.3);
+
+  --background: oklch(0.152 0.004 265);
+  --foreground: oklch(0.935 0.003 265);
+
+  --card: oklch(0.196 0.005 265);
+  --popover: oklch(0.232 0.006 265);
+
+  --primary: oklch(0.68 0.15 278);
+  --primary-foreground: oklch(0.17 0.03 278);
+  --primary-soft: oklch(0.29 0.055 278);
+  --primary-soft-foreground: oklch(0.85 0.08 278);
+
+  --secondary: oklch(0.258 0.006 265);
+  --secondary-foreground: oklch(0.935 0.003 265);
+
+  --muted: oklch(0.248 0.006 265);
+  --muted-foreground: oklch(0.66 0.006 265);
+
+  --accent: oklch(0.272 0.006 265);
+  --accent-foreground: oklch(0.95 0.003 265);
+
+  --destructive: oklch(0.66 0.17 25);
+  --destructive-foreground: oklch(0.16 0.01 25);
+
+  --border: oklch(0.288 0.006 265);
+  --input: oklch(0.308 0.007 265);
+  --ring: oklch(0.68 0.15 278);
+
+  --rail: oklch(0.182 0.005 265);
+  --rail-foreground: oklch(0.74 0.006 265);
+
+  --ok: oklch(0.72 0.12 160);
+  --ok-soft: oklch(0.29 0.045 160);
+  --warn: oklch(0.78 0.12 76);
+  --warn-soft: oklch(0.3 0.05 76);
+  --danger-soft: oklch(0.3 0.055 25);
+}
+
+@theme inline {
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", "IBM Plex Mono", monospace;
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-popover: var(--popover);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary-soft: var(--primary-soft);
+  --color-primary-soft-foreground: var(--primary-soft-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-rail: var(--rail);
+  --color-rail-foreground: var(--rail-foreground);
+  --color-ok: var(--ok);
+  --color-ok-soft: var(--ok-soft);
+  --color-warn: var(--warn);
+  --color-warn-soft: var(--warn-soft);
+  --color-danger-soft: var(--danger-soft);
+
+  --shadow-raise: var(--shadow-raise);
+  --shadow-pop: var(--shadow-pop);
+
+  --radius-sm: calc(var(--radius) * 0.667);
+  --radius-md: calc(var(--radius) * 0.833);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) * 1.333);
+
+  --animate-fade-in: fade-in 0.16s cubic-bezier(0.16, 1, 0.3, 1);
+
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(2px);
+    }
+    to {
+      opacity: 1;
+      transform: none;
+    }
+  }
+}
+
+@layer base {
+  :root {
+    color-scheme: light;
+  }
+
+  .dark {
+    color-scheme: dark;
+  }
+
+  * {
+    border-color: var(--border);
+  }
+
+  html,
+  body {
+    height: 100%;
+    margin: 0;
+  }
+
+  body {
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    font-size: 13.5px;
+    line-height: 1.55;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .font-mono,
+  code {
+    font-feature-settings: "tnum" 1, "zero" 1;
+  }
+
+  ::-webkit-scrollbar {
+    width: 9px;
+    height: 9px;
+  }
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    background: color-mix(in oklab, var(--muted-foreground) 26%, transparent);
+    border: 3px solid transparent;
+    background-clip: content-box;
+    border-radius: 99px;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    background: color-mix(in oklab, var(--muted-foreground) 48%, transparent);
+    background-clip: content-box;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.07em;
+    color: var(--muted-foreground);
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    border-width: 1px;
+    padding: 0.125rem 0.5rem;
+    font-size: 11px;
+    line-height: 1;
+  }
+}

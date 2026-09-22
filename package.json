@@ -52,6 +52,10 @@
     "docs:dev": "pnpm --filter mailroom-docs run dev",
     "docs:build": "pnpm --filter mailroom-docs run build",
     "docs:deploy": "pnpm --filter mailroom-docs run build && pnpm --filter mailroom-docs run deploy",
+    "ext:dev": "pnpm --filter mailroom-extension run dev",
+    "ext:build": "pnpm --filter mailroom-extension run build:all",
+    "ext:zip": "pnpm --filter mailroom-extension run zip:all",
+    "ext:typecheck": "pnpm --filter mailroom-extension run typecheck",
     "test": "node scripts/test.mjs"
   },
   "dependencies": {

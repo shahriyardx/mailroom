@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Mailroom</title>
+    <style>
+      /*
+       * A toolbar popup is sized by its content, so the frame has to be stated
+       * here. The same page opened in a tab fills the window instead, which is
+       * what the `in-tab` class switches off.
+       */
+      html:not(.in-tab),
+      html:not(.in-tab) body {
+        width: 400px;
+        height: 600px;
+        overflow: hidden;
+      }
+      #root {
+        height: 100%;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="./main.tsx"></script>
+  </body>
+</html>

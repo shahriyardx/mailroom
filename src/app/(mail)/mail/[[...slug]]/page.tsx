@@ -27,6 +27,8 @@ interface PageProps {
     dir?: string;
     label?: string;
     unread?: string;
+    /** Read by the reading pane, which opens the composer and clears it. */
+    reply?: string;
   }>;
 }
 

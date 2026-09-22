@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <!--
+    The toolbar icon: the Mailroom mark on its accent chip, the same pair the
+    web app draws. Kept as the source for the PNGs in public/icon, which is
+    what the manifest actually points at — browsers will not take an SVG.
+  -->
+  <rect width="128" height="128" rx="28" fill="#5b5bd6" />
+  <g transform="translate(24 24) scale(3.3333)" fill="#ffffff">
+    <path
+      fill-rule="evenodd"
+      clip-rule="evenodd"
+      d="M12 2.4c-.33 0-.65.1-.92.29L2.7 8.5A1.6 1.6 0 0 0 2 9.82V19a2.8 2.8 0 0 0 2.8 2.8h14.4A2.8 2.8 0 0 0 22 19V9.82a1.6 1.6 0 0 0-.7-1.32l-8.38-5.81A1.6 1.6 0 0 0 12 2.4Zm-3.4 10.25h6.8a1.35 1.35 0 0 1 0 2.7H8.6a1.35 1.35 0 0 1 0-2.7Z"
+    />
+  </g>
+</svg>

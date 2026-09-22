@@ -16,6 +16,8 @@
       "src/generated/**",
       "worker/.wrangler",
       "packages/*/dist",
+      "packages/extension/.wxt",
+      "packages/extension/.output",
       "docs/.vitepress/dist",
       "docs/.vitepress/cache"
     ]
@@ -52,6 +54,16 @@
     }
   },
   "overrides": [
+    {
+      "include": ["packages/extension/components/**"],
+      "linter": {
+        "rules": {
+          "a11y": {
+            "noLabelWithoutControl": "off"
+          }
+        }
+      }
+    },
     {
       "include": ["src/components/ui/**", "src/hooks/**"],
       "linter": {
