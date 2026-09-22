@@ -6,6 +6,11 @@ A copy of inbound mail, sent on to an address outside Mailroom. Useful for
 keeping an old inbox fed while you move over, for an archive copy, or for
 getting one mailbox onto a phone that is already set up for something else.
 
+**Nothing is forwarded until you set it up.** A fresh instance forwards
+nowhere. It takes two steps: add the address you want mail copied to and let
+its owner verify it, then write a rule saying what to copy there. Neither
+happens on its own.
+
 ## How it decides
 
 Rules sit at one of three widths:

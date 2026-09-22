@@ -27,7 +27,7 @@ features:
   - title: Domains managed from the app
     details: Add a domain, copy its DNS records, watch it verify. A subdomain of a domain you already verified needs no records at all.
   - title: Forwarding without a redeploy
-    details: Send a copy of inbound mail on to an address outside Mailroom — for the whole instance, one domain or one mailbox. Rules apply to the very next message.
+    details: Nothing is forwarded until you add a rule. Once you do, a copy of inbound mail goes on to an address outside Mailroom — for the whole instance, one domain or one mailbox — from the very next message.
   - title: A complete API
     details: Twenty-eight endpoints covering sending, reading, filing and replying — with scoped keys, cursor pagination and idempotent sends.
   - title: Signed webhooks

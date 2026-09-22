@@ -22,7 +22,7 @@ invitation. No public sign-up.
 - **Domains managed from the app** — add, get DNS records, watch it verify
 - **Subdomains for free** — a subdomain of a verified domain needs no records
 - **Worker deployed from the app** — no `wrangler`
-- **Forwarding** — a copy of inbound mail sent on, per instance, per domain or per mailbox
+- **Forwarding** — off until you set it up, then a copy of inbound mail sent on, per instance, per domain or per mailbox
 - **Delivery reporting** — delivered, bounced, complained, automatic suppression
 - **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
