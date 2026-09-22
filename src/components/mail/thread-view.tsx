@@ -227,7 +227,7 @@ export function ThreadView({
         )}
       </header>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-5 py-5 sm:px-7">
+      <div className="min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-7">
         {/* The subject names the conversation, so it is stated once at the
             top rather than buried inside the message that started it. It
             starts at the edge, not indented to meet the sender's name: a
@@ -330,7 +330,11 @@ export function ThreadView({
                       </button>
                     )}
                     {open && (
-                      <div className="mt-4">
+                      /* The message itself steps back out of the column the
+                         sender's name is in. Fifty pixels of avatar is a
+                         quarter of a phone's width to give up on every line
+                         of every message. */
+                      <div className="mt-4 -ml-[3.25rem] sm:ml-0">
                         {!item.isOutbound && <AuthBadges message={item} />}
                         {item.isOutbound && item.deliveryError && (
                           <p className="mb-3 rounded-xl bg-danger-soft px-3 py-2 text-[12px] text-destructive">
