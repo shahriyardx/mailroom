@@ -829,16 +829,23 @@ function Canvas({
   );
 }
 
-/** Where a dropped block will land. */
+/**
+ * Where a dropped block will land.
+ *
+ * Thick enough to be read at a glance while something is moving under the
+ * cursor: a hairline is a thing you have to look for, and by then you have
+ * already let go.
+ */
 function DropLine({ where }: { where: "top" | "bottom" }) {
   return (
     <span
       className={cn(
-        "pointer-events-none absolute inset-x-0 z-30 h-0.5 bg-primary",
-        where === "top" ? "top-0" : "bottom-0",
+        "pointer-events-none absolute inset-x-0 z-30 h-1 rounded-full bg-primary ring-4 ring-primary/20",
+        where === "top" ? "-top-0.5" : "-bottom-0.5",
       )}
     >
-      <span className="-top-[3px] -left-px absolute size-2 rounded-full bg-primary" />
+      <span className="-translate-y-1/2 absolute top-1/2 left-0 size-2.5 rounded-full bg-primary" />
+      <span className="-translate-y-1/2 absolute top-1/2 right-0 size-2.5 rounded-full bg-primary" />
     </span>
   );
 }
