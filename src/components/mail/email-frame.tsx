@@ -171,7 +171,21 @@ function Frame({
     try {
       const doc = frame.contentDocument;
       if (!doc?.body) return;
-      const next = Math.max(doc.body.scrollHeight, doc.documentElement.scrollHeight);
+      /**
+       * scrollHeight is a whole number, and a body of 13px text at a line
+       * height of 1.55 almost never lands on one. Rounded down, the frame is
+       * a fraction of a pixel too short for what is inside it, and gives
+       * itself a scrollbar over half a line of nothing. Measure the real box
+       * and round up.
+       */
+      const next = Math.ceil(
+        Math.max(
+          doc.body.getBoundingClientRect().height,
+          doc.documentElement.getBoundingClientRect().height,
+          doc.body.scrollHeight,
+          doc.documentElement.scrollHeight,
+        ),
+      );
       if (next > 0) setHeight(Math.min(Math.max(next, 32), 20000));
     } catch {
       // Opaque origin: fall back to a readable default rather than a blank frame.
@@ -207,9 +221,21 @@ function Frame({
     // srcDoc frames can finish before the listener attaches.
     if (frame.contentDocument?.readyState === "complete") onLoad();
 
+    /**
+     * Narrowing the pane reflows the text taller inside a frame whose height
+     * was worked out at the old width. Watching the frame itself catches
+     * that, which watching only its contents does not.
+     */
+    let outer: ResizeObserver | undefined;
+    if (typeof ResizeObserver !== "undefined") {
+      outer = new ResizeObserver(measure);
+      outer.observe(frame);
+    }
+
     return () => {
       frame.removeEventListener("load", onLoad);
       observer?.disconnect();
+      outer?.disconnect();
     };
   }, [measure]);
 

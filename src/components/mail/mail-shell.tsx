@@ -376,10 +376,8 @@ function NavPanel({
       <NavRail
         folder={folder}
         scope={scope}
-        activeKey={activeKey}
         activeLabel={activeLabel}
         counts={counts}
-        mailboxes={mailboxes}
         settingsHref={settingsHref}
         labels={labels}
         user={user}
@@ -565,18 +563,16 @@ function NavPanel({
 /**
  * The sidebar with every word taken out of it.
  *
- * Only what a single icon can stand for survives: the folders, the mailboxes
- * as their own colours, the labels as theirs. The domains they group under do
- * not, because a rail has no room for a tree — open the sidebar to switch by
- * domain. Every icon says what it is on hover.
+ * Only what a single icon can stand for survives: the folders, and the labels
+ * as their own colours. Which mailbox you are in does not, because a rail has
+ * no room for a tree of domains and the addresses under them — open the
+ * sidebar to switch. Every icon says what it is on hover.
  */
 function NavRail({
   folder,
   scope,
-  activeKey,
   activeLabel,
   counts,
-  mailboxes,
   settingsHref,
   labels,
   user,
@@ -586,10 +582,8 @@ function NavRail({
 }: {
   folder: ViewFolder;
   scope: Scope;
-  activeKey: string;
   activeLabel: string | null;
   counts: Counts;
-  mailboxes: Mailbox[];
   settingsHref: string;
   labels: LabelRow[];
   user: { name: string; email: string };
@@ -635,36 +629,6 @@ function NavRail({
               </li>
             );
           })}
-        </ul>
-
-        <Separator className="my-2.5" />
-
-        <ul className="space-y-1">
-          <li>
-            <RailRow
-              href={scopeHref({ kind: "all" }, folder)}
-              active={activeKey === "all"}
-              label="All mail"
-            >
-              <Layers className="size-[17px]" />
-            </RailRow>
-          </li>
-          {mailboxes.map((box) => (
-            <li key={box.id}>
-              <RailRow
-                href={scopeHref({ kind: "mailbox", mailboxId: box.id }, folder)}
-                active={activeKey === `m:${box.id}`}
-                label={box.address}
-                badge={(counts.mailboxes[box.id] ?? 0) > 0}
-              >
-                <span
-                  className="size-2.5 rounded-full"
-                  style={{ background: box.color }}
-                  aria-hidden
-                />
-              </RailRow>
-            </li>
-          ))}
         </ul>
 
         {labels.length > 0 && (
