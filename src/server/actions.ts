@@ -24,6 +24,17 @@ import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
 import {
+  addMembers,
+  cancelBroadcast,
+  createBroadcast,
+  createList,
+  parseMemberList,
+  removeList,
+  removeMember,
+  setMemberStatus,
+  startBroadcast,
+} from "@/server/campaigns";
+import {
   type Width,
   addForwardingAddress,
   addForwardingRule,
@@ -1422,4 +1433,109 @@ export async function finishSetupAction() {
   } catch (error) {
     return failure(error, "That could not be saved");
   }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Lists and broadcasts                                                       */
+/* -------------------------------------------------------------------------- */
+
+/*
+ * A list is a rules question, not a sending one: who may be written to is the
+ * same kind of decision as a filter or a label. Sending one is gated on
+ * mail:send, because that is what it is.
+ */
+
+export async function createListAction(name: string, description?: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  try {
+    await createList(access.orgId, name, description);
+    revalidatePath("/settings/lists");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That list could not be made");
+  }
+}
+
+export async function removeListAction(listId: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await removeList(access.orgId, listId);
+  revalidatePath("/settings/lists");
+  return { ok: true as const };
+}
+
+export async function addListMembersAction(listId: string, text: string, consentSource: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  try {
+    const result = await addMembers(
+      access.orgId,
+      listId,
+      parseMemberList(text),
+      consentSource.trim() || "added by hand",
+    );
+    revalidatePath("/settings/lists");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    return failure(error, "Those could not be added");
+  }
+}
+
+export async function setListMemberStatusAction(
+  memberId: string,
+  status: "subscribed" | "unsubscribed",
+) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await setMemberStatus(access.orgId, memberId, status);
+  revalidatePath("/settings/lists");
+  return { ok: true as const };
+}
+
+export async function removeListMemberAction(memberId: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await removeMember(access.orgId, memberId);
+  revalidatePath("/settings/lists");
+  return { ok: true as const };
+}
+
+export async function createBroadcastAction(input: {
+  listId: string;
+  mailboxId: string;
+  subject: string;
+  html?: string;
+  text?: string;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const id = await createBroadcast(access.orgId, input);
+    revalidatePath("/settings/broadcasts");
+    return { ok: true as const, id };
+  } catch (error) {
+    return failure(error, "That broadcast could not be made");
+  }
+}
+
+export async function startBroadcastAction(broadcastId: string, when?: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const at = when ? new Date(when) : null;
+    const result = await startBroadcast(access.orgId, broadcastId, at);
+    revalidatePath("/settings/broadcasts");
+    return { ok: true as const, ...result };
+  } catch (error) {
+    return failure(error, "That broadcast could not be started");
+  }
+}
+
+export async function cancelBroadcastAction(broadcastId: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await cancelBroadcast(access.orgId, broadcastId);
+  revalidatePath("/settings/broadcasts");
+  return { ok: true as const };
 }
