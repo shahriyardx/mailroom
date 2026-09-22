@@ -179,3 +179,34 @@ describe("a table", () => {
     assert.match(designToText(design(newBlock("table", "b1"))), /Item \| Price/);
   });
 });
+
+describe("the play badge on a video", () => {
+  const url = "https://youtu.be/dQw4w9WgXcQ";
+
+  it("is drawn rather than fetched, and hidden from the one client that would misplace it", () => {
+    const html = renderDesign(design({ ...newBlock("youtube", "b1"), url } as never));
+
+    assert.match(html, /<!--\[if !mso\]><!-->/, "Word ignores the negative margin that lifts it");
+    assert.match(html, /&#9654;/, "a triangle in a box needs no hosted image");
+    assert.ok(!html.includes("margin-top:-0px"), "it is lifted onto the middle of the picture");
+  });
+
+  it("is left off when it is switched off", () => {
+    const block = { ...newBlock("youtube", "b1"), url, playButton: false };
+    const html = renderDesign(design(block as never));
+
+    assert.ok(!html.includes("&#9654;"));
+    assert.match(html, /img\.youtube\.com/, "the thumbnail is still there");
+  });
+});
+
+describe("the badge does not move what follows it", () => {
+  it("lifts inside a box that cannot collapse", () => {
+    const block = { ...newBlock("youtube", "b1"), url: "https://youtu.be/dQw4w9WgXcQ" };
+    const html = renderDesign(design(block as never));
+
+    // A plain block of no height lets the child's negative top margin collapse
+    // through it, which drags every block after the video up over the picture.
+    assert.match(html, /display:inline-block;width:100%;height:0/);
+  });
+});

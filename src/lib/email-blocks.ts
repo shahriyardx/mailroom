@@ -133,6 +133,8 @@ export interface YoutubeBlock extends Common {
   /** Per cent of the content width. */
   width: number;
   radius: number;
+  /** A play badge over the thumbnail, so it reads as a video. */
+  playButton: boolean;
 }
 
 export interface TableBlock extends Common {
@@ -236,12 +238,10 @@ function defaultPadding(kind: BlockKind): Padding {
   switch (kind) {
     case "spacer":
       return [0, 0, 0, 0];
-    case "divider":
-      return [8, GUTTER, 22, GUTTER];
     case "footer":
-      return [20, GUTTER, 24, GUTTER];
+      return [20, GUTTER, 20, GUTTER];
     default:
-      return [0, GUTTER, 16, GUTTER];
+      return [8, GUTTER, 8, GUTTER];
   }
 }
 
@@ -309,6 +309,7 @@ export function newBlock(kind: BlockKind, id: string): Block {
         align: "center",
         width: 100,
         radius: 8,
+        playButton: true,
         style,
       };
     case "table":
@@ -598,10 +599,32 @@ function renderBlock(block: Block, theme: EmailTheme): string {
         ? `<div style="${typography(block, theme, { size: 13, weight: 500 })};text-align:${block.align};padding-top:8px;">${escapeHtml(block.caption)}</div>`
         : "";
 
+      /*
+       * The badge is lifted onto the thumbnail by a negative margin inside a
+       * cell of no height, so it overlays without taking a line of its own.
+       * Word, which is what Outlook renders with, ignores negative margins
+       * and would drop the badge underneath the picture — so Outlook is shown
+       * the thumbnail on its own instead. A missing badge is a picture; a
+       * badge in the wrong place is a mistake.
+       *
+       * It is drawn rather than fetched: a triangle in a red box needs no
+       * hosted image, and an image of a play button is one more thing to
+       * block, break or have to serve.
+       */
+      const thumbHeight = Math.round(width * 0.75);
+      const badge = block.playButton
+        ? `<!--[if !mso]><!--><div style="display:inline-block;width:100%;height:0;line-height:0;font-size:0;">
+<div style="margin-top:-${Math.round(thumbHeight / 2) + 24}px;text-align:center;">
+<span style="display:inline-block;width:68px;height:48px;line-height:48px;border-radius:12px;background-color:#ff0000;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;text-align:center;">&#9654;</span>
+</div>
+</div><!--<![endif]-->`
+        : "";
+
       return cell(
         block,
         `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${block.align}"><tr><td>
 <a href="${attr(youtubeWatch(id))}" style="text-decoration:none;"><img src="${attr(youtubeThumb(id))}" alt="${attr(block.caption || "Watch the video")}" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;${radius}border:0;outline:none;text-decoration:none;"></a>
+${badge}
 ${caption}
 </td></tr></table>`,
       );

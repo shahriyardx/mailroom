@@ -897,7 +897,7 @@ const PLACEHOLDER_STYLE = { borderColor: "#d4d4d8", color: "#a1a1aa" } as const;
 /** The padding, background and border a block's cell is drawn with. */
 function boxOf(block: Block): React.CSSProperties {
   const style = block.style ?? {};
-  const padding = style.padding ?? [0, 32, 16, 32];
+  const padding = style.padding ?? [8, 32, 8, 32];
   return {
     padding: padding.map((value) => `${value}px`).join(" "),
     backgroundColor: style.background,
@@ -1098,17 +1098,19 @@ function BlockView({
         <div style={{ ...box, textAlign: block.align }}>
           {id ? (
             <>
-              {/* The canvas mirrors an email, where next/image does not exist. */}
-              <img
-                src={youtubeThumb(id)}
-                alt={block.caption}
-                style={{
-                  width: `${block.width}%`,
-                  borderRadius: block.radius,
-                  display: "inline-block",
-                  height: "auto",
-                }}
-              />
+              <span className="relative inline-block" style={{ width: `${block.width}%` }}>
+                {/* The canvas mirrors an email, where next/image does not exist. */}
+                <img
+                  src={youtubeThumb(id)}
+                  alt={block.caption}
+                  style={{ width: "100%", borderRadius: block.radius, display: "block" }}
+                />
+                {block.playButton && (
+                  <span className="-translate-x-1/2 -translate-y-1/2 absolute top-1/2 left-1/2 flex h-12 w-[68px] items-center justify-center rounded-xl bg-[#ff0000] text-[22px] text-white">
+                    ▶
+                  </span>
+                )}
+              </span>
               {block.caption && (
                 <div style={{ ...typeOf(block, theme, { size: 13, weight: 500 }), paddingTop: 8 }}>
                   {block.caption}
@@ -1753,9 +1755,18 @@ function Inspector({
             <Row label="Align">
               <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
             </Row>
+            <Row label="Play button">
+              <input
+                type="checkbox"
+                checked={block.playButton}
+                onChange={(event) => onPatch({ playButton: event.target.checked })}
+                className="size-4 accent-primary"
+              />
+            </Row>
             <Note>
               Nothing plays inside an email — every client strips the embed. What goes out is the
-              video's own thumbnail, linked to it.
+              video's own thumbnail, linked to it. Outlook is shown the thumbnail without the badge,
+              because it cannot put one in the right place.
             </Note>
           </>
         )}
