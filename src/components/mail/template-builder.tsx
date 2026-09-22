@@ -663,7 +663,33 @@ function Canvas({
 }) {
   const theme = design.theme;
   const dragging = useRef<number | null>(null);
+
+  /*
+   * Where a drop would land, twice: state so the line is drawn, and a ref so
+   * the drop handler reads what the last dragover decided rather than what
+   * the render it was created in happened to close over.
+   */
   const [over, setOver] = useState<number | null>(null);
+  const overRef = useRef<number | null>(null);
+
+  function aim(at: number | null) {
+    overRef.current = at;
+    setOver(at);
+  }
+
+  /** One handler for the whole card, because a drop bubbles and the blocks
+      are full of inputs and editable regions that would otherwise eat it. */
+  function drop(event: React.DragEvent) {
+    event.preventDefault();
+    const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
+    const at = overRef.current ?? design.blocks.length;
+
+    if (kind) onAdd(kind, at);
+    else if (dragging.current !== null) onReorder(dragging.current, at);
+
+    dragging.current = null;
+    aim(null);
+  }
 
   return (
     /* No frame around it. The page colour runs to the edges of the pane and
@@ -678,17 +704,15 @@ function Canvas({
           className="mx-auto overflow-hidden"
           onDragOver={(event) => {
             event.preventDefault();
-            if (event.target === event.currentTarget) setOver(design.blocks.length);
+            event.dataTransfer.dropEffect = dragging.current === null ? "copy" : "move";
+            // Anywhere on the card that is not a block itself — the room
+            // under the last one, or an empty canvas — means the end.
+            if (event.target === event.currentTarget) aim(design.blocks.length);
           }}
           onDragLeave={(event) => {
-            if (event.target === event.currentTarget) setOver(null);
+            if (event.target === event.currentTarget) aim(null);
           }}
-          onDrop={(event) => {
-            const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
-            if (kind) onAdd(kind, over ?? design.blocks.length);
-            dragging.current = null;
-            setOver(null);
-          }}
+          onDrop={drop}
           style={{
             width: theme.width,
             maxWidth: "100%",
@@ -727,22 +751,14 @@ function Canvas({
                 }}
                 onDragEnd={() => {
                   dragging.current = null;
-                  setOver(null);
+                  aim(null);
                 }}
                 onDragOver={(event) => {
+                  // Only aims. The card does the dropping.
                   event.preventDefault();
+                  event.stopPropagation();
                   const box = event.currentTarget.getBoundingClientRect();
-                  setOver(event.clientY < box.top + box.height / 2 ? index : index + 1);
-                }}
-                onDrop={(event) => {
-                  event.preventDefault();
-                  const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
-                  if (kind) onAdd(kind, over ?? index);
-                  else if (dragging.current !== null && over !== null) {
-                    onReorder(dragging.current, over);
-                  }
-                  dragging.current = null;
-                  setOver(null);
+                  aim(event.clientY < box.top + box.height / 2 ? index : index + 1);
                 }}
                 onFocus={() => onSelect(block.id)}
                 onClick={() => onSelect(block.id)}
