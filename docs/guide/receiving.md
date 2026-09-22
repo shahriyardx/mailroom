@@ -20,9 +20,15 @@ Zone    → Email Routing Rules     → Edit
 Zone    → DNS                     → Edit
 ```
 
-**Email Routing Addresses** is an *account* permission, and a different one
-from the *zone* permission just below it. It is only needed for
-[forwarding](/guide/forwarding); leave it out and everything else still works.
+![The seven permissions on the Cloudflare token, with Email Routing Addresses highlighted](/shots/cloudflare-token.png)
+
+**Email Routing Addresses** is an *account* permission, and a different thing
+from **Email Routing Rules**, the *zone* permission four lines below it. The
+account one is what [forwarding](/guide/forwarding) needs; the zone one is what
+receiving needs. Cloudflare lists them side by side and the names barely
+differ, which is why the picture is here.
+
+Leave the addresses one out and everything except forwarding still works.
 
 ::: warning Zone Settings is easy to miss
 Cloudflare gates *turning Email Routing on* behind **Zone Settings**, not

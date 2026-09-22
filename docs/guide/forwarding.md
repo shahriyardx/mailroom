@@ -69,9 +69,10 @@ Edit** on the Cloudflare token, on top of what [receiving](/guide/receiving)
 already needs. Without it the page says Cloudflare rejected the token.
 
 It is an *account* permission, not the *zone* one of a similar name that
-receiving already uses. Add it to the token you already have — editing a
-token's permissions does not change its value, so there is nothing to
-reconnect here.
+receiving already uses — [the token guide](/guide/receiving#the-cloudflare-token)
+has a picture of the whole list. Add it to the token you already have; editing
+a token's permissions does not change its value, so there is nothing to
+reconnect here. Creating a *new* token does, since a new token has a new value.
 :::
 
 ## How the worker knows

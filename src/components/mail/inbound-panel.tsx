@@ -250,9 +250,15 @@ function ConnectCard() {
           Zone Settings is the one that is easy to miss: Cloudflare gates reading and turning on
           Email Routing behind it, not behind the Email Routing permission.
         </Note>
+        <Note className="mb-2">
+          Email Routing <em>Addresses</em> is an account permission and Email Routing <em>Rules</em>{" "}
+          is a zone one. They sit next to each other in Cloudflare's list and are not the same thing
+          — the first is what Forwarding needs, the second is what receiving needs.
+        </Note>
         <ul className="mb-3 space-y-1 font-mono text-[12px] text-muted-foreground">
           <li>Account → Workers Scripts → Edit</li>
           <li>Account → Workers R2 Storage → Edit</li>
+          <li>Account → Email Routing Addresses → Edit</li>
           <li>Zone → Zone → Read</li>
           <li>Zone → Zone Settings → Edit</li>
           <li>Zone → Email Routing Rules → Edit</li>
