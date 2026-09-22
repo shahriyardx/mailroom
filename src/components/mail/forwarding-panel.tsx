@@ -65,7 +65,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
       <Panel
         title="Addresses"
         meta={view.addresses.length > 0 ? view.addresses.length : undefined}
-        description="Somewhere a copy of inbound mail may be sent. Cloudflare emails each one a link, and forwarding to it starts working once that link is clicked."
+        description="The destinations on your Cloudflare account, which is where a forwarding address really lives. Anything added there shows up here; anything added here is created there. Cloudflare emails each one a link, and forwarding starts working once it is clicked."
         action={
           view.addresses.length > 0 ? (
             <Button
@@ -80,7 +80,11 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                     toast.error(result.error);
                     return;
                   }
-                  toast.success(`${result.verified} of ${result.checked} verified`);
+                  toast.success(
+                    result.adopted > 0
+                      ? `Found ${result.adopted} already on Cloudflare. ${result.verified} of ${result.checked} verified.`
+                      : `${result.verified} of ${result.checked} verified`,
+                  );
                   router.refresh();
                 })
               }
@@ -140,7 +144,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
           <BlankSlate
             icon={<AtSign />}
             title="Nowhere to forward to yet"
-            hint="Add an address above, then say which mail should be copied to it."
+            hint="Your Cloudflare account has no forwarding destinations either. Add one above and Cloudflare will email it a link."
           />
         ) : (
           <List>
@@ -152,14 +156,19 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="truncate font-mono text-[12.5px]">{entry.address}</span>
-                    <Badge size="sm" tone={entry.verified ? "ok" : "warn"}>
-                      {entry.verified ? "Verified" : "Waiting"}
+                    <Badge
+                      size="sm"
+                      tone={entry.verified ? "ok" : entry.inCloudflare ? "warn" : "danger"}
+                    >
+                      {entry.verified ? "Verified" : entry.inCloudflare ? "Waiting" : "Gone"}
                     </Badge>
                   </div>
                   <div className="text-[12px] text-muted-foreground">
-                    {entry.uses === 0
-                      ? "No rule points at it yet"
-                      : `Used by ${entry.uses} ${entry.uses === 1 ? "rule" : "rules"}`}
+                    {!entry.inCloudflare
+                      ? "Cloudflare no longer has this destination. Add it again to start forwarding."
+                      : entry.uses === 0
+                        ? "No rule points at it yet"
+                        : `Used by ${entry.uses} ${entry.uses === 1 ? "rule" : "rules"}`}
                   </div>
                 </div>
 
@@ -168,6 +177,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                     variant="outline"
                     size="sm"
                     disabled={busy || !view.connected}
+                    title="Removes it from Cloudflare and adds it back, which is the only resend Cloudflare offers"
                     onClick={() =>
                       run(
                         () => resendForwardingVerificationAction(entry.id),
@@ -183,6 +193,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                   variant="ghost"
                   size="sm"
                   disabled={busy}
+                  title="Deletes the destination from Cloudflare too, along with every rule here that points at it"
                   onClick={() =>
                     run(() => removeForwardingAddressAction(entry.id), "Address removed")
                   }

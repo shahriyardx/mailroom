@@ -30,12 +30,26 @@ switch **Skip wider rules** on for the `hr@acme.com` row, and the archive stops
 receiving it. Everything else still goes.
 :::
 
+## The address list is Cloudflare's
+
+A forwarding destination really lives on your Cloudflare account, so this page
+shows what Cloudflare holds rather than a second list to keep in step by hand.
+
+- Addresses already verified in the **Cloudflare dashboard** appear here on
+  your next visit, already verified, with nothing to press.
+- Adding one here creates it there.
+- Removing one here deletes it there, along with every rule on this page that
+  pointed at it.
+
+The one thing not adopted is an address on a domain this instance receives on:
+offering it would only offer a mail loop.
+
 ## Verifying an address
 
 Cloudflare will not forward to an address whose owner has not agreed to it.
-Adding one on this page registers it with Cloudflare, which emails it a link.
-Until that link is clicked the address shows as **Waiting**, and a rule
-pointing at it does nothing at all.
+Adding one registers it with Cloudflare, which emails it a link. Until that
+link is clicked the address shows as **Waiting**, and a rule pointing at it
+does nothing at all.
 
 **Check again** asks Cloudflare what it now thinks — there is no notification
 when somebody clicks, so the page asks when it is opened and when you press the
@@ -44,6 +58,10 @@ way Cloudflare offers to resend.
 
 Verification is per address and account-wide: an address verified once works
 for every domain on the account.
+
+An address marked **Gone** is one Cloudflare no longer has — somebody deleted
+the destination there. Its rules are kept rather than quietly dropped, so you
+can add the address again and carry on.
 
 ::: warning The token needs one more permission
 Adding and verifying addresses needs **Email Routing Addresses → Edit** on the

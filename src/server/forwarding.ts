@@ -131,6 +131,8 @@ export interface ForwardAddressRow {
   id: string;
   address: string;
   verified: boolean;
+  /** False when Cloudflare no longer has it, which a reader has to fix there. */
+  inCloudflare: boolean;
   createdAt: Date;
   /** Rules pointing at it, for the "in use by" line and for delete warnings. */
   uses: number;
@@ -186,6 +188,7 @@ export async function forwardingView(orgId: string): Promise<ForwardingView> {
       id: row.id,
       address: row.address,
       verified: row.verifiedAt !== null,
+      inCloudflare: row.destinationId !== null,
       createdAt: row.createdAt,
       uses: rules.filter((rule) => rule.addressId === row.id).length,
     })),
@@ -276,19 +279,25 @@ export async function addForwardingAddress(orgId: string, input: string) {
 }
 
 /**
- * Asks Cloudflare what it now thinks of every address on the list.
+ * Makes this list match Cloudflare's.
  *
- * There is no webhook for somebody clicking the link in their mail, so the
- * page asks when it is opened and when the button is pressed.
+ * Cloudflare is where a forwarding address really lives, so the page shows
+ * what it holds rather than a separate list somebody has to keep in step by
+ * hand. An address added in the Cloudflare dashboard turns up here on the
+ * next visit, already verified, with nothing to press.
+ *
+ * The local rows still exist, because the question "is this verified" is
+ * asked once per inbound message and that is no place for a call to somebody
+ * else's API.
+ *
+ * An address Cloudflare no longer has keeps its row and loses its
+ * verification, rather than being deleted: deleting it would take the rules
+ * pointing at it with it, and quietly forgetting where somebody's mail was
+ * being copied is worse than showing them a row that needs attention.
  */
 export async function refreshForwardingAddresses(orgId: string) {
   const credentials = await cloudflareCredentials(orgId);
-  if (!credentials) return { checked: 0, verified: 0 };
-
-  const rows = await db.query.forwardAddress.findMany({
-    where: eq(forwardAddress.organizationId, orgId),
-  });
-  if (rows.length === 0) return { checked: 0, verified: 0 };
+  if (!credentials) return { checked: 0, verified: 0, adopted: 0 };
 
   let known: Awaited<ReturnType<typeof listDestinations>>;
   try {
@@ -297,14 +306,20 @@ export async function refreshForwardingAddresses(orgId: string) {
     throw explain(error);
   }
 
+  const rows = await db.query.forwardAddress.findMany({
+    where: eq(forwardAddress.organizationId, orgId),
+  });
+
   let verified = 0;
+
   for (const row of rows) {
     const match = known.find((entry) => entry.email.toLowerCase() === row.address);
     const verifiedAt = match?.verified ? new Date(match.verified) : null;
     if (verifiedAt) verified += 1;
 
     const changed =
-      verifiedAt?.getTime() !== row.verifiedAt?.getTime() || match?.id !== row.destinationId;
+      verifiedAt?.getTime() !== row.verifiedAt?.getTime() ||
+      (match?.id ?? null) !== row.destinationId;
     if (!changed) continue;
 
     await db
@@ -313,7 +328,45 @@ export async function refreshForwardingAddresses(orgId: string) {
       .where(eq(forwardAddress.id, row.id));
   }
 
-  return { checked: rows.length, verified };
+  // Anything Cloudflare has that this list does not. Listing one forwards
+  // nothing on its own — it takes a rule for that — so adopting is safe.
+  const ours = new Set(rows.map((row) => row.address));
+  const receiving = new Set(
+    (
+      await db.query.domain.findMany({
+        where: eq(domain.organizationId, orgId),
+        columns: { name: true },
+      })
+    ).map((row) => row.name.toLowerCase()),
+  );
+
+  let adopted = 0;
+  for (const entry of known) {
+    const address = entry.email.toLowerCase();
+    if (ours.has(address)) continue;
+    // Somebody's Cloudflare account may forward one of our own domains
+    // somewhere for reasons of its own. Offering it here would only offer a
+    // mail loop, so it is left alone.
+    if (receiving.has(address.split("@")[1] ?? "")) continue;
+
+    await db
+      .insert(forwardAddress)
+      .values({
+        id: newId("fwa"),
+        organizationId: orgId,
+        address,
+        destinationId: entry.id,
+        verifiedAt: entry.verified ? new Date(entry.verified) : null,
+        checkedAt: new Date(),
+      })
+      // Two page loads at once.
+      .onConflictDoNothing();
+
+    adopted += 1;
+    if (entry.verified) verified += 1;
+  }
+
+  return { checked: rows.length + adopted, verified, adopted };
 }
 
 /**
