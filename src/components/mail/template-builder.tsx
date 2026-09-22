@@ -1188,7 +1188,7 @@ function AlignPicker({ value, onChange }: { value: Align; onChange: (value: Alig
   ];
 
   return (
-    <div className="flex h-8 gap-0.5 rounded-lg bg-muted p-0.5">
+    <div className="flex h-8 gap-0.5 rounded-full bg-muted p-0.5">
       {options.map((option) => (
         <button
           key={option.value}
@@ -1197,7 +1197,7 @@ function AlignPicker({ value, onChange }: { value: Align; onChange: (value: Alig
           aria-pressed={value === option.value}
           onClick={() => onChange(option.value)}
           className={cn(
-            "flex flex-1 items-center justify-center rounded-[6px] transition-colors",
+            "flex flex-1 items-center justify-center rounded-full transition-colors",
             value === option.value
               ? "bg-card text-foreground shadow-raise"
               : "text-muted-foreground hover:text-foreground",
