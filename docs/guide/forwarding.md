@@ -64,9 +64,14 @@ the destination there. Its rules are kept rather than quietly dropped, so you
 can add the address again and carry on.
 
 ::: warning The token needs one more permission
-Adding and verifying addresses needs **Email Routing Addresses → Edit** on the
-Cloudflare token, on top of what [receiving](/guide/receiving) already needs.
-Without it the page says Cloudflare rejected the token.
+Adding and verifying addresses needs **Account → Email Routing Addresses →
+Edit** on the Cloudflare token, on top of what [receiving](/guide/receiving)
+already needs. Without it the page says Cloudflare rejected the token.
+
+It is an *account* permission, not the *zone* one of a similar name that
+receiving already uses. Add it to the token you already have — editing a
+token's permissions does not change its value, so there is nothing to
+reconnect here.
 :::
 
 ## How the worker knows

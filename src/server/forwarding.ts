@@ -208,7 +208,7 @@ export async function forwardingView(orgId: string): Promise<ForwardingView> {
 function explain(error: unknown) {
   if (error instanceof CloudflareError && error.codes.includes(10000)) {
     return new Error(
-      "Cloudflare rejected the token. It needs Email Routing Addresses -> Edit. Edit the token in Cloudflare, then reconnect it on the Inbound worker page.",
+      "Cloudflare rejected the token. It needs the account permission Email Routing Addresses -> Edit — not the zone permission of a similar name. Add it to the same token in Cloudflare; its value does not change, so nothing here needs reconnecting.",
     );
   }
   return error instanceof Error ? error : new Error("Cloudflare could not be reached");

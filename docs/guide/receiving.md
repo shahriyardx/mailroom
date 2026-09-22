@@ -11,13 +11,18 @@ message to a Worker, which posts it to your instance. The Worker is deployed
 Create an API token with these permissions:
 
 ```
-Account → Workers Scripts     → Edit
-Account → Workers R2 Storage  → Edit
-Zone    → Zone                → Read
-Zone    → Zone Settings       → Edit
-Zone    → Email Routing Rules → Edit
-Zone    → DNS                 → Edit
+Account → Workers Scripts         → Edit
+Account → Workers R2 Storage      → Edit
+Account → Email Routing Addresses → Edit
+Zone    → Zone                    → Read
+Zone    → Zone Settings           → Edit
+Zone    → Email Routing Rules     → Edit
+Zone    → DNS                     → Edit
 ```
+
+**Email Routing Addresses** is an *account* permission, and a different one
+from the *zone* permission just below it. It is only needed for
+[forwarding](/guide/forwarding); leave it out and everything else still works.
 
 ::: warning Zone Settings is easy to miss
 Cloudflare gates *turning Email Routing on* behind **Zone Settings**, not
