@@ -1093,6 +1093,7 @@ export const apiKeyRelations = relations(apiKey, ({ one }) => ({
 export type Folder = (typeof folderEnum.enumValues)[number];
 export type Domain = typeof domain.$inferSelect;
 export type Integration = typeof integration.$inferSelect;
+export type Workspace = typeof workspace.$inferSelect;
 export type ApiKey = typeof apiKey.$inferSelect;
 export type Organization = typeof organization.$inferSelect;
 export type Member = typeof member.$inferSelect;
@@ -1122,6 +1123,46 @@ export type Template = typeof template.$inferSelect;
  * so the same choices follow them into every organisation and onto every
  * device they sign in from.
  */
+/**
+ * What this instance is, and what it looks like.
+ *
+ * One row per organisation, which for a self-hosted instance means one row.
+ * It exists because two different products live in this codebase — a team's
+ * mailboxes, and a marketing list — and an instance that only wants one of
+ * them should not have to look at the other's navigation to find out.
+ *
+ * Both switches can be on. An either/or would force a company that wants team
+ * mail and a newsletter to run two instances, which is a worse product and a
+ * harder thing to sell.
+ *
+ * `setupCompletedAt` is what the first-run wizard stamps. Null means nobody
+ * has finished it, which is how a fresh instance knows to ask rather than
+ * dropping somebody into an empty inbox with no idea what to press.
+ */
+export const workspace = pgTable("workspace", {
+  organizationId: text("organization_id")
+    .primaryKey()
+    .references(() => organization.id, { onDelete: "cascade" }),
+
+  /** Mailboxes, threads, filters, the extension. */
+  inboxEnabled: boolean("inbox_enabled").notNull().default(true),
+  /** Lists, broadcasts, unsubscribe. */
+  campaignsEnabled: boolean("campaigns_enabled").notNull().default(false),
+
+  /*
+   * Branding, all optional. Empty means fall back to the organisation's own
+   * name and the stock palette, so an instance that skips this step still
+   * looks deliberate rather than half-filled.
+   */
+  brandName: text("brand_name"),
+  brandLogo: text("brand_logo"),
+  brandAccent: text("brand_accent"),
+
+  /** Null until the first-run wizard is finished. */
+  setupCompletedAt: timestamp("setup_completed_at", { withTimezone: true }),
+  updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const preference = pgTable("preference", {
   userId: text("user_id")
     .primaryKey()
