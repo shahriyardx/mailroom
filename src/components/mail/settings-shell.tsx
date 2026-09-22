@@ -119,25 +119,6 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
     ],
   },
   {
-    title: "Campaigns",
-    items: [
-      {
-        href: "/settings/lists",
-        label: "Lists",
-        icon: ListChecks,
-        needs: "rules:manage",
-        feature: "campaigns",
-      },
-      {
-        href: "/settings/broadcasts",
-        label: "Broadcasts",
-        icon: Megaphone,
-        needs: "mail:send",
-        feature: "campaigns",
-      },
-    ],
-  },
-  {
     title: "Account",
     items: [
       { href: "/settings/people", label: "People", icon: Users, needs: "member:manage" },

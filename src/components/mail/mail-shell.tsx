@@ -19,6 +19,7 @@ import {
   SheetTitle,
   Wordmark,
 } from "@/components/kit";
+import { ViewSwitcher } from "@/components/mail/view-switcher";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
 import {
@@ -105,6 +106,8 @@ interface Props {
   /** The settings screen this reader may open, resolved so the gear does not
    * bounce through a redirect. */
   settingsHref?: string;
+  /** Offers the campaigns side. Absent when this instance does not have one. */
+  campaignsEnabled?: boolean;
   /** How the sidebar was left last time, read from a cookie so the first
    * paint is already the right width. */
   initialRailed?: boolean;
@@ -127,6 +130,7 @@ export function MailShell({
   threadOpen = false,
   canAddMailbox = false,
   settingsHref = "/settings",
+  campaignsEnabled = false,
   initialRailed = false,
   readingLayout = "split",
 }: Props) {
@@ -266,6 +270,7 @@ export function MailShell({
       mailboxes={mailboxes}
       canAddMailbox={canAddMailbox}
       settingsHref={settingsHref}
+      campaignsEnabled={campaignsEnabled}
       labels={labels}
       user={user}
       composer={composer}
@@ -398,6 +403,7 @@ function NavPanel({
   mailboxes,
   canAddMailbox,
   settingsHref,
+  campaignsEnabled,
   labels,
   user,
   composer,
@@ -416,6 +422,7 @@ function NavPanel({
   mailboxes: Mailbox[];
   canAddMailbox: boolean;
   settingsHref: string;
+  campaignsEnabled: boolean;
   labels: LabelRow[];
   user: { name: string; email: string };
   composer: ReturnType<typeof useComposer>;
@@ -456,6 +463,12 @@ function NavPanel({
           </IconButton>
         </Hint>
       </div>
+
+      {campaignsEnabled ? (
+        <div className="px-3 pb-3">
+          <ViewSwitcher current="mail" />
+        </div>
+      ) : null}
 
       {/* Nothing to write from, nothing to offer. */}
       {composer.canWrite && (

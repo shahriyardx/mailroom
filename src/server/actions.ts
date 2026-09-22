@@ -1450,7 +1450,7 @@ export async function createListAction(name: string, description?: string) {
   assertCan(access, "rules:manage");
   try {
     await createList(access.orgId, name, description);
-    revalidatePath("/settings/lists");
+    revalidatePath("/campaigns/lists");
     return { ok: true as const };
   } catch (error) {
     return failure(error, "That list could not be made");
@@ -1461,7 +1461,7 @@ export async function removeListAction(listId: string) {
   const access = await requireAccess();
   assertCan(access, "rules:manage");
   await removeList(access.orgId, listId);
-  revalidatePath("/settings/lists");
+  revalidatePath("/campaigns/lists");
   return { ok: true as const };
 }
 
@@ -1475,7 +1475,7 @@ export async function addListMembersAction(listId: string, text: string, consent
       parseMemberList(text),
       consentSource.trim() || "added by hand",
     );
-    revalidatePath("/settings/lists");
+    revalidatePath("/campaigns/lists");
     return { ok: true as const, ...result };
   } catch (error) {
     return failure(error, "Those could not be added");
@@ -1489,7 +1489,7 @@ export async function setListMemberStatusAction(
   const access = await requireAccess();
   assertCan(access, "rules:manage");
   await setMemberStatus(access.orgId, memberId, status);
-  revalidatePath("/settings/lists");
+  revalidatePath("/campaigns/lists");
   return { ok: true as const };
 }
 
@@ -1497,7 +1497,7 @@ export async function removeListMemberAction(memberId: string) {
   const access = await requireAccess();
   assertCan(access, "rules:manage");
   await removeMember(access.orgId, memberId);
-  revalidatePath("/settings/lists");
+  revalidatePath("/campaigns/lists");
   return { ok: true as const };
 }
 
@@ -1512,7 +1512,7 @@ export async function createBroadcastAction(input: {
   assertCan(access, "mail:send");
   try {
     const id = await createBroadcast(access.orgId, input);
-    revalidatePath("/settings/broadcasts");
+    revalidatePath("/campaigns/broadcasts");
     return { ok: true as const, id };
   } catch (error) {
     return failure(error, "That broadcast could not be made");
@@ -1525,7 +1525,7 @@ export async function startBroadcastAction(broadcastId: string, when?: string) {
   try {
     const at = when ? new Date(when) : null;
     const result = await startBroadcast(access.orgId, broadcastId, at);
-    revalidatePath("/settings/broadcasts");
+    revalidatePath("/campaigns/broadcasts");
     return { ok: true as const, ...result };
   } catch (error) {
     return failure(error, "That broadcast could not be started");
@@ -1536,6 +1536,6 @@ export async function cancelBroadcastAction(broadcastId: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
   await cancelBroadcast(access.orgId, broadcastId);
-  revalidatePath("/settings/broadcasts");
+  revalidatePath("/campaigns/broadcasts");
   return { ok: true as const };
 }

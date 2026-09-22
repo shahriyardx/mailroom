@@ -34,6 +34,8 @@ const SIDEBAR = {
         { text: "Sending domains", link: "/guide/domains" },
         { text: "Receiving mail", link: "/guide/receiving" },
         { text: "Forwarding", link: "/guide/forwarding" },
+        { text: "Campaigns", link: "/guide/campaigns" },
+        { text: "Features", link: "/guide/features" },
         { text: "Mailboxes and people", link: "/guide/mailboxes" },
         { text: "API keys", link: "/guide/api-keys" },
         { text: "Test keys", link: "/guide/test-mode" },

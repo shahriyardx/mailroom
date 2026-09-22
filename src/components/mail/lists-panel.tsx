@@ -105,7 +105,7 @@ export function ListsPanel({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <a
-                      href={`/settings/lists?list=${entry.id}`}
+                      href={`/campaigns/lists?list=${entry.id}`}
                       className="truncate text-[13px] font-medium hover:underline"
                     >
                       {entry.name}

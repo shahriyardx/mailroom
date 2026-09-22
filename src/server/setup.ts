@@ -1,6 +1,6 @@
 import "server-only";
 import { db } from "@/db";
-import { domain, mailbox } from "@/db/schema";
+import { domain, mailbox, mailingList } from "@/db/schema";
 import { env } from "@/lib/env";
 import { and, eq } from "drizzle-orm";
 import { cloudflareStatus } from "./integrations";
@@ -44,10 +44,11 @@ export interface SetupState {
 export async function setupState(orgId: string): Promise<SetupState> {
   const settings = await workspaceSettings(orgId);
 
-  const [domains, verifiedDomains, mailboxes, cloudflare] = await Promise.all([
+  const [domains, verifiedDomains, mailboxes, lists, cloudflare] = await Promise.all([
     db.$count(domain, eq(domain.organizationId, orgId)),
     db.$count(domain, and(eq(domain.organizationId, orgId), eq(domain.sendingEnabled, true))),
     db.$count(mailbox, eq(mailbox.organizationId, orgId)),
+    db.$count(mailingList, eq(mailingList.organizationId, orgId)),
     cloudflareStatus(orgId),
   ]);
 
@@ -105,9 +106,9 @@ export async function setupState(orgId: string): Promise<SetupState> {
     {
       key: "list",
       title: "Make a list",
-      detail: "Who a broadcast goes to.",
+      detail: lists > 0 ? `${lists} so far.` : "Who a broadcast goes to.",
       href: "/settings/lists",
-      done: false,
+      done: lists > 0,
       skipped: !settings.campaignsEnabled,
     },
   ];

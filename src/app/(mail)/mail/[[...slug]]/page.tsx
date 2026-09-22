@@ -13,10 +13,12 @@ import { can } from "@/server/permissions";
 import { getAppearance } from "@/server/preferences";
 import { settingsLanding } from "@/server/settings-landing";
 import { getThreadDetail, listThreads } from "@/server/threads";
+import { workspaceSettings } from "@/server/workspace";
 import { eq } from "drizzle-orm";
 import { Inbox } from "lucide-react";
 import { cookies } from "next/headers";
 import Link from "next/link";
+import { redirect } from "next/navigation";
 
 interface PageProps {
   params: Promise<{ slug?: string[] }>;
@@ -39,6 +41,15 @@ export default async function MailPage({ params, searchParams }: PageProps) {
   // left at from the first paint.
   const cookieRail = (await cookies()).get(RAIL_COOKIE)?.value;
   const look = await getAppearance(access.userId);
+  /*
+   * An instance running campaigns alone has no inbox worth showing. Done here
+   * rather than in the layout, which settings also uses — the switch that
+   * turns the inbox back on lives there, and bouncing somebody off it would
+   * strand them with no way to undo the thing they just did.
+   */
+  const workspace = await workspaceSettings(access.orgId);
+  if (!workspace.inboxEnabled) redirect("/campaigns");
+  const campaignsEnabled = workspace.campaignsEnabled;
   // The cookie is this device's own answer; the saved row is what a device
   // that has never been here should start with.
   const railed = cookieRail ? cookieRail === "1" : look.navCollapsed;
@@ -107,6 +118,7 @@ export default async function MailPage({ params, searchParams }: PageProps) {
       user={{ name: access.name, email: access.email }}
       canAddMailbox={mayAddMailbox}
       settingsHref={settingsHref}
+      campaignsEnabled={campaignsEnabled}
       initialRailed={railed}
       readingLayout={look.readingLayout}
       openSubject={detail?.subject || undefined}

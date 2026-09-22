@@ -464,3 +464,43 @@ export async function sendableMailboxes(orgId: string) {
     .where(eq(mailbox.organizationId, orgId))
     .orderBy(asc(mailbox.address));
 }
+
+/* -------------------------------------------------------------------------- */
+/* The overview                                                               */
+/* -------------------------------------------------------------------------- */
+
+export interface CampaignsOverview {
+  lists: number;
+  subscribers: number;
+  unsubscribed: number;
+  broadcastsSent: number;
+  delivered: number;
+  /** Null rather than zero when nothing has been sent: 0% reads as a failure. */
+  openRate: number | null;
+  recent: BroadcastRow[];
+}
+
+export async function campaignsOverview(orgId: string): Promise<CampaignsOverview> {
+  const [lists, tallies, broadcasts] = await Promise.all([
+    db.$count(mailingList, eq(mailingList.organizationId, orgId)),
+    db
+      .select({ status: listMember.status, howMany: count() })
+      .from(listMember)
+      .where(eq(listMember.organizationId, orgId))
+      .groupBy(listMember.status),
+    broadcastsView(orgId),
+  ]);
+
+  const delivered = broadcasts.reduce((sum, row) => sum + row.sent, 0);
+  const opened = broadcasts.reduce((sum, row) => sum + row.opened, 0);
+
+  return {
+    lists,
+    subscribers: tallies.find((row) => row.status === "subscribed")?.howMany ?? 0,
+    unsubscribed: tallies.find((row) => row.status === "unsubscribed")?.howMany ?? 0,
+    broadcastsSent: broadcasts.filter((row) => row.status === "sent").length,
+    delivered,
+    openRate: delivered > 0 ? Math.round((opened / delivered) * 100) : null,
+    recent: broadcasts.slice(0, 5),
+  };
+}
