@@ -26,6 +26,7 @@ invitation. No public sign-up.
 - **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
 - **A browser extension** for Chrome, Firefox and Edge — notifications and your inbox in the toolbar
+- **Desktop notifications** in the browser, from the app itself, no extension needed
 
 ## What it looks like
 
@@ -294,6 +295,7 @@ laptop.
 | `pnpm lint` / `pnpm format` | Biome |
 | `pnpm typecheck` | TypeScript |
 | `pnpm reset-owner --yes` | Release the owner slot |
+| `pnpm push:keys` | Generate the keys for desktop notifications |
 | `pnpm sdk:build` | Build the Node SDK |
 | `pnpm sdk:test` | Test the Node SDK |
 | `pnpm ext:dev` | The browser extension, with reloading |

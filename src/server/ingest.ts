@@ -15,6 +15,7 @@ import { domainOf, makeSnippet, normalizeSubject } from "@/lib/mail";
 import { colorOf, newId } from "@/lib/utils";
 import { and, eq, inArray, or, sql } from "drizzle-orm";
 import { recomputeThread } from "./aggregate";
+import { announceToMailbox } from "./push";
 import { publish } from "./realtime";
 import { dispatchWebhooks } from "./webhooks";
 
@@ -369,6 +370,19 @@ export async function ingestInbound(payload: InboundPayload, attachments: Inboun
   // Tell any open browser on this account, so the list fills in by itself.
   for (const entry of announce) {
     await publish({ type: "mail:received", ...entry });
+  }
+
+  // And wake the ones that are closed. Not awaited, for the same reason the
+  // webhooks below are not: a push service is somebody else's machine, and
+  // the worker holding this message open is waiting on us.
+  for (const entry of announce) {
+    void announceToMailbox(entry.orgId, entry.mailboxId, {
+      title: entry.from || "New mail",
+      body: entry.subject || "(no subject)",
+      url: `/mail/all/inbox?t=${encodeURIComponent(entry.threadId)}`,
+      // A long conversation replaces its own notice rather than stacking.
+      tag: `thread:${entry.threadId}`,
+    });
   }
 
   // And tell anything subscribed from outside. Not awaited: the worker that

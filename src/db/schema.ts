@@ -1056,3 +1056,46 @@ export const preference = pgTable("preference", {
   navCollapsed: boolean("nav_collapsed").notNull().default(false),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
 });
+
+/**
+ * One browser that has agreed to be told when mail arrives.
+ *
+ * A row per browser rather than per person: somebody signed in on a laptop and
+ * a phone has two, and turning it off on one must leave the other alone. The
+ * endpoint is the push service's own address for that browser, which is what
+ * makes it the natural key — a browser that re-subscribes gets the same one
+ * back, and re-registering must update a row rather than grow a second.
+ *
+ * The keys are the browser's half of the encryption: everything sent is
+ * encrypted to them, so the push service in the middle carries a payload it
+ * cannot read.
+ */
+export const pushSubscription = pgTable(
+  "push_subscription",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    endpoint: text("endpoint").notNull(),
+    p256dh: text("p256dh").notNull(),
+    auth: text("auth").notNull(),
+    /** Roughly which browser, so two devices can be told apart in a list. */
+    label: text("label"),
+    /**
+     * Consecutive failures. A push service that says the subscription is gone
+     * gets the row deleted outright; this counts the softer failures, so one
+     * that has stopped answering is eventually dropped rather than retried
+     * forever.
+     */
+    failures: integer("failures").notNull().default(0),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }).notNull().defaultNow(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("push_subscription_endpoint_idx").on(t.endpoint),
+    index("push_subscription_user_idx").on(t.userId),
+  ],
+);
+
+export type PushSubscription = typeof pushSubscription.$inferSelect;

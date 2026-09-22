@@ -59,6 +59,33 @@ export const env = {
   get inboundSecret() {
     return required("INBOUND_WEBHOOK_SECRET");
   },
+  /**
+   * Keys for the Web Push protocol, which the browser's push service uses to
+   * check that a message really came from this instance.
+   *
+   * Optional: without a pair, desktop notifications are simply not offered.
+   * `pnpm push:keys` prints one. The public half is handed to the browser on
+   * purpose — it is an identifier, not a secret — while the private half signs
+   * and must never leave the server.
+   */
+  push: {
+    get publicKey() {
+      return process.env.VAPID_PUBLIC_KEY ?? "";
+    },
+    get privateKey() {
+      return process.env.VAPID_PRIVATE_KEY ?? "";
+    },
+    /**
+     * A way to reach whoever runs this instance, which the push services ask
+     * for so they have somebody to contact about a misbehaving sender.
+     */
+    get subject() {
+      return process.env.VAPID_SUBJECT ?? "";
+    },
+    get configured() {
+      return Boolean(process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY);
+    },
+  },
   r2: {
     get accountId() {
       return required("R2_ACCOUNT_ID");

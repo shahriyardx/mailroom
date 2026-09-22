@@ -34,6 +34,7 @@ import { rememberImageChoice } from "@/server/image-trust";
 import { upsertLabel } from "@/server/labels";
 import { assertCan, can } from "@/server/permissions";
 import { type Appearance, saveAppearance } from "@/server/preferences";
+import { forgetBrowser, forgetEveryBrowser, pushToUsers, rememberBrowser } from "@/server/push";
 import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
 import type { EventType } from "@aws-sdk/client-sesv2";
 import { and, eq, inArray, ne, sql } from "drizzle-orm";
@@ -344,6 +345,59 @@ export async function saveAppearanceAction(patch: unknown): Promise<Appearance> 
   revalidatePath("/mail", "layout");
   revalidatePath("/settings", "layout");
   return next;
+}
+
+const browserSchema = z.object({
+  endpoint: z.string().url().max(2000),
+  p256dh: z.string().min(1).max(512),
+  auth: z.string().min(1).max(512),
+  label: z.string().max(80).optional(),
+});
+
+/**
+ * Registers this browser for desktop notifications.
+ *
+ * Saved against the signed-in person, never against an id the browser names:
+ * a subscription decides whose mail gets announced on this screen, so letting
+ * a caller choose the owner would be letting them read the subject lines of
+ * anybody they liked.
+ */
+export async function subscribeToPushAction(keys: unknown) {
+  const access = await requireAccess();
+  await rememberBrowser(access.userId, browserSchema.parse(keys));
+  revalidatePath("/settings/notifications");
+}
+
+/** Stops notifications on this one browser, leaving other devices alone. */
+export async function unsubscribeFromPushAction(endpoint: unknown) {
+  const access = await requireAccess();
+  await forgetBrowser(access.userId, z.string().min(1).max(2000).parse(endpoint));
+  revalidatePath("/settings/notifications");
+}
+
+/** Stops them everywhere, for the device that was lost rather than the one in hand. */
+export async function unsubscribeEverywhereAction() {
+  const access = await requireAccess();
+  await forgetEveryBrowser(access.userId);
+  revalidatePath("/settings/notifications");
+}
+
+/**
+ * Sends one notification to this person's own browsers, and says how many it
+ * reached.
+ *
+ * Worth having as a button: everything between the switch and a notice on
+ * screen belongs to somebody else — a push service, an operating system, a
+ * notification daemon — and any of them can swallow it silently.
+ */
+export async function testPushAction() {
+  const access = await requireAccess();
+  return pushToUsers([access.userId], {
+    title: "Mailroom",
+    body: "Notifications are working. This is what a new message will look like.",
+    url: "/mail/all/inbox",
+    tag: "mailroom-test",
+  });
 }
 
 /** The view the trash is being emptied from, which is all it may reach. */

@@ -37,6 +37,7 @@ const SIDEBAR = {
         { text: "API keys", link: "/guide/api-keys" },
         { text: "Test keys", link: "/guide/test-mode" },
         { text: "The send queue", link: "/guide/queue" },
+        { text: "Desktop notifications", link: "/guide/notifications" },
         { text: "Browser extension", link: "/guide/extension" },
       ],
     },
