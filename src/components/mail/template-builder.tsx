@@ -414,7 +414,12 @@ export function TemplateBuilder({
           </aside>
         )}
 
-        <div className="min-w-0 flex-1 overflow-y-auto bg-muted/30 px-6 py-6">
+        <div
+          className={cn(
+            "min-w-0 flex-1 overflow-y-auto",
+            pane === "design" && !previewing ? "" : "bg-muted/30 px-6 py-6",
+          )}
+        >
           {previewing ? (
             <div className="mx-auto max-w-[760px] overflow-hidden rounded-xl border border-border bg-card">
               <div className="border-border border-b px-4 py-2.5 text-[13px]">
@@ -442,8 +447,6 @@ export function TemplateBuilder({
             <Canvas
               design={design}
               selected={selected}
-              subject={details.subject}
-              onSubject={(value) => setDetails((current) => ({ ...current, subject: value }))}
               onSelect={(id) => {
                 setSelected(id);
                 setTab("block");
@@ -640,8 +643,6 @@ function HtmlPane({
 function Canvas({
   design,
   selected,
-  subject,
-  onSubject,
   onSelect,
   onPatch,
   onMove,
@@ -652,8 +653,6 @@ function Canvas({
 }: {
   design: EmailDesign;
   selected: string | null;
-  subject: string;
-  onSubject: (value: string) => void;
   onSelect: (id: string) => void;
   onPatch: (id: string, changes: Partial<Block>) => void;
   onMove: (id: string, by: number) => void;
@@ -667,31 +666,23 @@ function Canvas({
   const [over, setOver] = useState<number | null>(null);
 
   return (
-    <div className="mx-auto w-full" style={{ maxWidth: theme.width + 120 }}>
-      {/* Labelled in the field itself. The bar above holds the template's
-          name, which is a different thing that often says the same words, and
-          two identical boxes one under the other is a good way to type the
-          subject into the wrong one. */}
-      <div className="relative mb-5">
-        <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-3 text-[13px] text-muted-foreground">
-          Subject
-        </span>
-        <Input
-          value={subject}
-          onChange={(event) => onSubject(event.target.value)}
-          placeholder="What the reader sees in their inbox"
-          aria-label="Subject"
-          className="h-10 pl-[68px] text-[14px]"
-        />
-      </div>
-
-      <div className="rounded-2xl p-5 shadow-sm" style={{ backgroundColor: theme.background }}>
+    /* No frame around it. The page colour runs to the edges of the pane and
+       the card sits in it at the width it will really be, so what is on
+       screen is the email rather than a picture of one. */
+    <div className="min-h-full w-full py-8" style={{ backgroundColor: theme.background }}>
+      <div>
         {/* The card takes a drop of its own, so a block dragged onto an
             empty canvas — or into the room under the last block — lands
             rather than bouncing back to the palette. */}
         <div
           className="mx-auto overflow-hidden"
-          onDragOver={(event) => event.preventDefault()}
+          onDragOver={(event) => {
+            event.preventDefault();
+            if (event.target === event.currentTarget) setOver(design.blocks.length);
+          }}
+          onDragLeave={(event) => {
+            if (event.target === event.currentTarget) setOver(null);
+          }}
           onDrop={(event) => {
             const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
             if (kind) onAdd(kind, over ?? design.blocks.length);
@@ -768,10 +759,11 @@ function Canvas({
                   selected === block.id
                     ? "before:border-2 before:border-primary"
                     : "hover:before:border hover:before:border-primary/40",
-                  over === index && "shadow-[inset_0_2px_0_0_var(--color-primary)]",
-                  over === index + 1 && "shadow-[inset_0_-2px_0_0_var(--color-primary)]",
                 )}
               >
+                {over === index && <DropLine where="top" />}
+                {over === index + 1 && <DropLine where="bottom" />}
+
                 <BlockView
                   block={block}
                   theme={theme}
@@ -809,9 +801,29 @@ function Canvas({
               </div>
             ))
           )}
+
+          {over === design.blocks.length && design.blocks.length > 0 && (
+            <div className="relative">
+              <DropLine where="bottom" />
+            </div>
+          )}
         </div>
       </div>
     </div>
+  );
+}
+
+/** Where a dropped block will land. */
+function DropLine({ where }: { where: "top" | "bottom" }) {
+  return (
+    <span
+      className={cn(
+        "pointer-events-none absolute inset-x-0 z-30 h-0.5 bg-primary",
+        where === "top" ? "top-0" : "bottom-0",
+      )}
+    >
+      <span className="-top-[3px] -left-px absolute size-2 rounded-full bg-primary" />
+    </span>
   );
 }
 

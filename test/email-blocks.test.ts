@@ -54,11 +54,11 @@ describe("compiling a design", () => {
     assert.ok(!html.includes("<img"), "an empty image block is nothing, not a broken icon");
   });
 
-  it("sizes an image against the content width, not the page", () => {
+  it("sizes an image against the room it has, not against the page", () => {
     const block = { ...newBlock("image", "b1"), src: "https://x.test/a.png", width: 50 };
     const html = renderDesign(design(block as never));
-    // 600 wide, 32px of gutter either side, half of what is left.
-    assert.match(html, /width="268"/);
+    // An image has no gutter of its own, so half of the card's 600.
+    assert.match(html, /width="300"/);
   });
 
   it("gives a spacer a height a client cannot collapse", () => {

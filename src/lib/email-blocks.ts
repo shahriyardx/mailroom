@@ -236,6 +236,11 @@ function defaultPadding(kind: BlockKind): Padding {
   switch (kind) {
     case "spacer":
       return [0, 0, 0, 0];
+    // An image arrives wanting to be the full width of the card — a hero, a
+    // header, a screenshot. Gutters on it by default means every one of them
+    // starts by being told to stop having gutters.
+    case "image":
+      return [0, 0, 0, 0];
     case "divider":
       return [8, GUTTER, 22, GUTTER];
     case "footer":
