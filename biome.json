@@ -9,6 +9,8 @@
     "ignore": [
       "node_modules",
       ".next",
+      ".next-verify",
+      ".next-shots",
       ".test-build",
       "drizzle/**",
       "src/generated/**",

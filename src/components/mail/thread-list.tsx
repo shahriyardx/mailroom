@@ -303,6 +303,9 @@ export function ThreadList({
             {unread && (
               <span className="size-[7px] shrink-0 rounded-full bg-primary" aria-label="Unread" />
             )}
+            {item.isStarred && (
+              <Star className="size-3.5 shrink-0 fill-warn text-warn group-hover:invisible" />
+            )}
             {/* The row actions take the timestamp's place on hover. */}
             <span className="w-14 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums group-hover:invisible">
               {formatStamp(item.lastMessageAt)}
@@ -339,6 +342,12 @@ export function ThreadList({
             )}
             {item.hasAttachments && (
               <Paperclip className="size-3.5 shrink-0 text-muted-foreground" />
+            )}
+            {/* A star used to sit over the timestamp, which is how a starred
+                conversation came to be dated "21 Sep★". It stands in the line
+                now, like everything else on it. */}
+            {item.isStarred && (
+              <Star className="size-3.5 shrink-0 fill-warn text-warn group-hover:invisible" />
             )}
             {/* The row actions take the timestamp's place on hover. */}
             <span className="shrink-0 font-mono text-[11px] text-muted-foreground tabular-nums group-hover:invisible">
@@ -434,11 +443,6 @@ export function ThreadList({
             <Trash2 />
           </RowAction>
         </span>
-
-        {/* Starred rows keep their star visible when the row is at rest. */}
-        {item.isStarred && (
-          <Star className="absolute top-3 right-3 size-4 fill-warn text-warn group-hover:hidden" />
-        )}
       </li>
     );
   }

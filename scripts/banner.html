@@ -1,0 +1,146 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=Figtree:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap"
+      rel="stylesheet"
+    />
+    <style>
+      * { margin: 0; padding: 0; box-sizing: border-box; }
+      body {
+        width: 1280px;
+        height: 640px;
+        background: #0b0b0f;
+        color: #f4f4f5;
+        font-family: Figtree, system-ui, sans-serif;
+        overflow: hidden;
+        position: relative;
+      }
+      .glow {
+        position: absolute;
+        inset: -30% -10% auto -20%;
+        height: 900px;
+        background:
+          radial-gradient(60% 55% at 22% 30%, rgba(124, 116, 255, 0.28), transparent 70%),
+          radial-gradient(45% 45% at 78% 18%, rgba(56, 189, 168, 0.16), transparent 70%);
+        filter: blur(6px);
+      }
+      .grid {
+        position: absolute;
+        inset: 0;
+        background-image:
+          linear-gradient(rgba(255,255,255,0.035) 1px, transparent 1px),
+          linear-gradient(90deg, rgba(255,255,255,0.035) 1px, transparent 1px);
+        background-size: 48px 48px;
+        mask-image: radial-gradient(70% 70% at 30% 40%, #000 30%, transparent 100%);
+      }
+      .wrap {
+        position: relative;
+        height: 100%;
+        padding: 72px 76px;
+        display: flex;
+        flex-direction: column;
+      }
+      .mark {
+        display: flex;
+        align-items: center;
+        gap: 16px;
+      }
+      .logo {
+        width: 60px;
+        height: 60px;
+        border-radius: 18px;
+        background: linear-gradient(150deg, #8b83ff, #5b52e8);
+        display: grid;
+        place-items: center;
+        box-shadow: 0 10px 40px rgba(110, 100, 255, 0.45);
+      }
+      .logo svg { width: 30px; height: 30px; }
+      .name {
+        font-family: "Bricolage Grotesque", system-ui, sans-serif;
+        font-size: 34px;
+        font-weight: 600;
+        letter-spacing: -0.03em;
+      }
+      h1 {
+        margin-top: 64px;
+        font-family: "Bricolage Grotesque", system-ui, sans-serif;
+        font-size: 74px;
+        line-height: 1.02;
+        font-weight: 600;
+        letter-spacing: -0.035em;
+        max-width: 15ch;
+      }
+      h1 em {
+        font-style: normal;
+        background: linear-gradient(100deg, #a9a2ff, #6ee7c8);
+        -webkit-background-clip: text;
+        background-clip: text;
+        color: transparent;
+      }
+      p.sub {
+        margin-top: 26px;
+        font-size: 23px;
+        line-height: 1.5;
+        color: #a1a1aa;
+        max-width: 46ch;
+      }
+      .chips {
+        margin-top: auto;
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+      }
+      .chip {
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 14px;
+        color: #c4c4cc;
+        border: 1px solid rgba(255, 255, 255, 0.12);
+        background: rgba(255, 255, 255, 0.04);
+        border-radius: 999px;
+        padding: 8px 15px;
+      }
+      .corner {
+        position: absolute;
+        right: 76px;
+        top: 90px;
+        font-family: "IBM Plex Mono", monospace;
+        font-size: 15px;
+        color: #6f6f7b;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="glow"></div>
+    <div class="grid"></div>
+    <div class="wrap">
+      <div class="mark">
+        <span class="logo">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 13V7a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h9" />
+            <path d="m2 8 8.2 5.5a2 2 0 0 0 2.2 0L22 8" />
+          </svg>
+        </span>
+        <span class="name">Mailroom</span>
+      </div>
+
+      <h1>Your own mail,<br /><em>on your own domain</em></h1>
+      <p class="sub">
+        Self-hosted email for a company. Sends through Amazon SES, receives
+        through a Cloudflare Worker, keeps every message in your Postgres.
+      </p>
+
+      <div class="chips">
+        <span class="chip">unlimited mailboxes</span>
+        <span class="chip">threading · search · labels</span>
+        <span class="chip">roles &amp; teams</span>
+        <span class="chip">REST API + Node SDK</span>
+        <span class="chip">signed webhooks</span>
+      </div>
+    </div>
+    <span class="corner">github.com/shahriyardx/mailroom</span>
+  </body>
+</html>

@@ -1,3 +1,5 @@
+<img src="docs/public/brand/banner.png" alt="Mailroom — your own mail, on your own domain" width="100%">
+
 # Mailroom
 
 Self-hosted email. Sends through **Amazon SES**, receives through a
@@ -7,6 +9,8 @@ One instance per company. First sign-in becomes owner; everyone else joins by
 invitation. No public sign-up.
 
 ![built with Next.js, Postgres, SES and Cloudflare](https://img.shields.io/badge/stack-Next.js%2015%20%C2%B7%20Postgres%20%C2%B7%20SES%20%C2%B7%20Cloudflare-5a45d6)
+
+<img src="docs/public/shots/inbox.png" alt="The inbox: mailboxes by domain down the side, conversations with their labels in the list" width="100%">
 
 ## What you get
 
@@ -21,6 +25,17 @@ invitation. No public sign-up.
 - **Delivery reporting** — delivered, bounced, complained, automatic suppression
 - **A complete API** — 28 endpoints, scoped keys, signed webhooks
 - **A typed Node SDK**, `@shahriyardx/mailroom`
+
+## What it looks like
+
+|                                                         |                                                              |
+| ------------------------------------------------------- | ------------------------------------------------------------ |
+| <img src="docs/public/shots/conversation.png" alt="A conversation, with its labels beside the subject and the sender's SPF, DKIM and DMARC results under their name"> | <img src="docs/public/shots/compact.png" alt="The same list at compact density"> |
+| **A conversation.** Labels beside the subject, and what the sender's domain actually proved under their name. | **Compact density.** Sender and subject only, chosen per person and saved. |
+| <img src="docs/public/shots/settings-overview.png" alt="Settings overview: what has been sent and received in the last 30 days, and what SES said about it"> | <img src="docs/public/shots/settings-mailboxes.png" alt="Mailboxes across several domains and subdomains"> |
+| **Delivery you can see.** Sent, received, bounced and complained over a rolling 30 days, straight from SES. | **Mailboxes.** As many as you like, on any domain — and a subdomain of a verified domain needs no DNS of its own. |
+| <img src="docs/public/shots/settings-api-keys.png" alt="API keys, each with its own scopes and reach"> | <img src="docs/public/shots/mobile-inbox.png" alt="The inbox on a phone"> |
+| **Scoped API keys.** Per-endpoint scopes, and a reach limited to one domain or one mailbox. | **On a phone.** The same instance, one thing at a time. |
 
 ## Install
 

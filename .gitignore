@@ -10,6 +10,7 @@ next-env.d.ts
 worker/.wrangler
 .DS_Store
 .next-verify
+.next-shots
 src/generated/
 
 # Built test bundles
