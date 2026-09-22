@@ -1,4 +1,4 @@
-import { type Settings, getSettings } from "./settings";
+import { type Settings, getSettings, watchedMailboxIds, watchesNothing } from "./settings";
 import type { ApiIdentity, ApiList, ApiMailbox, ApiMessage, ApiThread, View } from "./types";
 
 /**
@@ -129,7 +129,11 @@ export async function listThreads(
   view: View,
   extra: { search?: string; cursor?: string | null; limit?: number; signal?: AbortSignal } = {},
 ): Promise<ListResult> {
-  const ids = settings.mailboxIds;
+  // Watching nothing is a real answer, and it is not the same as watching
+  // everything. Asking the server here would return the whole account.
+  if (watchesNothing(settings)) return { threads: [], nextCursor: null };
+
+  const ids = watchedMailboxIds(settings) ?? [];
 
   if (ids.length > 1) {
     const pages = await Promise.all(

@@ -109,7 +109,7 @@ export function Options() {
   }
 
   async function disconnect() {
-    await update({ baseUrl: "", apiKey: "", mailboxIds: [] });
+    await update({ baseUrl: "", apiKey: "", watchAll: true, mailboxIds: [] });
     setBaseUrl("");
     setApiKey("");
     setMailboxes([]);
@@ -125,29 +125,35 @@ export function Options() {
   }
 
   /**
-   * An empty list means every mailbox, and that is the only spelling of it.
+   * "Every mailbox" is its own switch, not the state of having ticked them all.
    *
-   * Storing the six addresses that happen to exist today would look identical
-   * on screen and behave differently tomorrow: the seventh address would
-   * never appear, and nothing here would say why. So ticking the last one
-   * collapses back to the empty list, and unticking "every mailbox" has to
-   * leave a real subset behind rather than a list that means its opposite.
+   * Those two look identical on the day they are chosen and differ on the day
+   * a seventh address is made — one picks it up, the other never will. Keeping
+   * them apart is also what makes an empty list mean what it says: none, which
+   * is a choice somebody is allowed to make rather than a slip to be corrected
+   * by turning everything back on.
    */
-  const watchingAll = settings.mailboxIds.length === 0;
+  const watchingAll = settings.watchAll;
+  const picked = new Set(settings.mailboxIds);
 
   function watchEvery(on: boolean) {
-    if (on) {
-      void update({ mailboxIds: [] });
-      return;
-    }
-    const first = mailboxes.find((mailbox) => mailbox.is_default) ?? mailboxes[0];
-    void update({ mailboxIds: first ? [first.id] : [] });
+    // Turning it off leaves the reader with their own list, which starts
+    // empty. Seeding it with today's addresses would be this screen deciding
+    // something it was not asked to decide.
+    void update(on ? { watchAll: true } : { watchAll: false, mailboxIds: [] });
   }
 
   function watchOne(id: string, on: boolean) {
-    const base = watchingAll ? mailboxes.map((mailbox) => mailbox.id) : settings!.mailboxIds;
-    const next = on ? [...new Set([...base, id])] : base.filter((entry) => entry !== id);
-    void update({ mailboxIds: next.length === mailboxes.length ? [] : next });
+    // Reaching for one address while "every mailbox" is on means that one,
+    // and not "all of them plus this one again".
+    if (watchingAll) {
+      void update({ watchAll: false, mailboxIds: on ? [id] : [] });
+      return;
+    }
+    const next = on
+      ? [...new Set([...settings!.mailboxIds, id])]
+      : settings!.mailboxIds.filter((entry) => entry !== id);
+    void update({ mailboxIds: next });
   }
 
   return (
@@ -260,7 +266,7 @@ export function Options() {
               <div className="my-1 h-px bg-border" />
 
               {mailboxes.map((mailbox) => {
-                const chosen = watchingAll || settings.mailboxIds.includes(mailbox.id);
+                const chosen = watchingAll || picked.has(mailbox.id);
                 return (
                   <label
                     key={mailbox.id}
@@ -284,6 +290,22 @@ export function Options() {
                 );
               })}
             </div>
+
+            {/* Both of these states are allowed. Neither is obvious from six
+                ticked or six empty boxes, so each one says what it means. */}
+            {!watchingAll && picked.size === 0 ? (
+              <p className="mt-3 flex items-start gap-2 rounded-[10px] border border-warn/30 bg-warn-soft px-3 py-2 text-[12px]">
+                <TriangleAlert className="mt-px size-3.5 shrink-0 text-warn" />
+                Nothing is picked, so the popup will be empty and no mail will be announced.
+              </p>
+            ) : null}
+
+            {!watchingAll && picked.size === mailboxes.length && mailboxes.length > 0 ? (
+              <p className="mt-3 text-[12px] text-muted-foreground">
+                That is every address there is today. An address added later will not appear unless{" "}
+                <strong className="font-medium">Every mailbox</strong> is on.
+              </p>
+            ) : null}
           </section>
         ) : null}
 

@@ -206,6 +206,7 @@ export default defineBackground(() => {
     const movedInstance =
       before.baseUrl !== after.baseUrl ||
       before.apiKey !== after.apiKey ||
+      before.watchAll !== after.watchAll ||
       JSON.stringify(before.mailboxIds ?? []) !== JSON.stringify(after.mailboxIds ?? []);
 
     if (movedInstance) {

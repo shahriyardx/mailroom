@@ -13,7 +13,7 @@ import {
 } from "@/lib/api";
 import { cx } from "@/lib/format";
 import { openTab, refreshBadge, useDebounced, useSettings, useTheme } from "@/lib/hooks";
-import { isConnected } from "@/lib/settings";
+import { isConnected, watchesNothing } from "@/lib/settings";
 import {
   type ApiMailbox,
   type ApiThread,
@@ -22,7 +22,17 @@ import {
   VIEW_LABEL,
   type View,
 } from "@/lib/types";
-import { ExternalLink, Inbox, Maximize2, Plug, RefreshCw, Search, Settings, X } from "lucide-react";
+import {
+  ExternalLink,
+  Inbox,
+  Mailbox as MailboxIcon,
+  Maximize2,
+  Plug,
+  RefreshCw,
+  Search,
+  Settings,
+  X,
+} from "lucide-react";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { browser } from "wxt/browser";
 
@@ -269,6 +279,23 @@ export function App({ inTab }: { inTab: boolean }) {
               </Button>
             }
           />
+        ) : watchesNothing(settings) ? (
+          /* Not the same as an empty inbox, and saying "all caught up" here
+             would be telling somebody their mail is read when it is hidden. */
+          <EmptyState
+            icon={<MailboxIcon />}
+            title="No mailboxes picked"
+            body="Nothing is being watched, so there is nothing to show."
+            action={
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => void browser.runtime.openOptionsPage()}
+              >
+                Pick mailboxes
+              </Button>
+            }
+          />
         ) : threads.length === 0 ? (
           <EmptyState
             icon={<Inbox />}
@@ -338,8 +365,9 @@ export function App({ inTab }: { inTab: boolean }) {
         }}
         loading={loading}
         mailboxes={mailboxes}
+        watchAll={settings.watchAll}
         chosen={settings.mailboxIds}
-        onChoose={(ids) => void update({ mailboxIds: ids })}
+        onChoose={(choice) => void update(choice)}
         onOpenApp={() => openTab(`${settings.baseUrl}/mail/all/inbox`)}
       />
 
@@ -367,10 +395,11 @@ interface HeaderProps {
   search: string;
   loading: boolean;
   mailboxes: ApiMailbox[];
+  watchAll: boolean;
   chosen: string[];
   onSearch: (value: string) => void;
   onSearching: (value: boolean) => void;
-  onChoose: (ids: string[]) => void;
+  onChoose: (choice: { watchAll: boolean; mailboxIds?: string[] }) => void;
   onRefresh: () => void;
   onOpenApp: () => void;
 }
@@ -381,6 +410,7 @@ function Header({
   search,
   loading,
   mailboxes,
+  watchAll,
   chosen,
   onSearch,
   onSearching,
@@ -427,7 +457,12 @@ function Header({
           <span className="ml-1 mr-1 text-[13.5px] font-semibold tracking-[-0.01em]">Mailroom</span>
 
           {mailboxes.length > 1 ? (
-            <MailboxPicker mailboxes={mailboxes} chosen={chosen} onChoose={onChoose} />
+            <MailboxPicker
+              mailboxes={mailboxes}
+              watchAll={watchAll}
+              chosen={chosen}
+              onChoose={onChoose}
+            />
           ) : null}
 
           <div className="ml-auto flex items-center gap-0.5">

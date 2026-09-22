@@ -72,13 +72,19 @@ one address.
 
 ### Which mailboxes it watches
 
-**Every mailbox** is the default, and it means every mailbox — including
-addresses you add months from now, without coming back to this screen.
+**Every mailbox** is its own switch, on by default, and it means every
+mailbox — including addresses you add months from now, without coming back to
+this screen.
 
-Picking addresses one by one gives you a fixed list instead, and a mailbox
-made later is not on it. Ticking the last missing one puts you back on "every
-mailbox" rather than quietly leaving you with today's list frozen under a
-heading that looks like it says "all".
+Turn it off and you get your own list, which starts empty. Tick the addresses
+you want; leave it empty and the extension watches nothing at all, shows an
+empty popup and announces nothing. That is allowed, and it says so on screen.
+
+The two are kept apart on purpose. "All of them, whatever they turn out to be"
+and "these six" look identical on the day you choose them and differ on the
+day a seventh address is made — so ticking every box by hand does **not**
+silently become "every mailbox", and unticking your last box does not silently
+become it either.
 
 ### The permission prompt
 

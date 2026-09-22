@@ -14,12 +14,14 @@ import { useEffect, useRef, useState } from "react";
 
 interface Props {
   mailboxes: ApiMailbox[];
-  /** Empty means every address the key reaches. */
+  /** Every address the key reaches, whatever they turn out to be. */
+  watchAll: boolean;
+  /** The addresses picked by hand, when `watchAll` is off. May be empty. */
   chosen: string[];
-  onChoose: (ids: string[]) => void;
+  onChoose: (choice: { watchAll: boolean; mailboxIds?: string[] }) => void;
 }
 
-export function MailboxPicker({ mailboxes, chosen, onChoose }: Props) {
+export function MailboxPicker({ mailboxes, watchAll, chosen, onChoose }: Props) {
   const [open, setOpen] = useState(false);
   const wrapper = useRef<HTMLDivElement>(null);
 
@@ -42,11 +44,18 @@ export function MailboxPicker({ mailboxes, chosen, onChoose }: Props) {
     };
   }, [open]);
 
-  const only = chosen.length === 1 ? mailboxes.find((box) => box.id === chosen[0]) : null;
-  const label = only ? only.address : "All mailboxes";
+  const only =
+    !watchAll && chosen.length === 1 ? mailboxes.find((box) => box.id === chosen[0]) : null;
+  const label = watchAll
+    ? "All mailboxes"
+    : only
+      ? only.address
+      : chosen.length === 0
+        ? "No mailboxes"
+        : `${chosen.length} mailboxes`;
 
-  function pick(ids: string[]) {
-    onChoose(ids);
+  function pick(choice: { watchAll: boolean; mailboxIds?: string[] }) {
+    onChoose(choice);
     setOpen(false);
   }
 
@@ -78,8 +87,8 @@ export function MailboxPicker({ mailboxes, chosen, onChoose }: Props) {
           <Row
             label="All mailboxes"
             hint={`Every address the key reaches — ${mailboxes.length} today`}
-            selected={chosen.length !== 1}
-            onClick={() => pick([])}
+            selected={watchAll}
+            onClick={() => pick({ watchAll: true })}
           />
 
           <div className="my-1 h-px bg-border" />
@@ -90,10 +99,23 @@ export function MailboxPicker({ mailboxes, chosen, onChoose }: Props) {
               label={mailbox.address}
               hint={mailbox.display_name ?? undefined}
               color={mailbox.color}
-              selected={chosen.length === 1 && chosen[0] === mailbox.id}
-              onClick={() => pick([mailbox.id])}
+              selected={!watchAll && chosen.length === 1 && chosen[0] === mailbox.id}
+              onClick={() => pick({ watchAll: false, mailboxIds: [mailbox.id] })}
             />
           ))}
+
+          {/* The settings screen can express a set; this menu picks one or
+              all, so a set chosen there is shown but not editable here. */}
+          {!watchAll && chosen.length !== 1 ? (
+            <>
+              <div className="my-1 h-px bg-border" />
+              <p className="px-2 py-1.5 text-[11px] text-muted-foreground">
+                {chosen.length === 0
+                  ? "No mailboxes are picked. Choose one above, or all of them."
+                  : `${chosen.length} picked in settings.`}
+              </p>
+            </>
+          ) : null}
         </div>
       ) : null}
     </div>

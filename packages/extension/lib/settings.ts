@@ -11,7 +11,17 @@ export interface Settings {
   /** Origin of the Mailroom instance, no trailing slash. */
   baseUrl: string;
   apiKey: string;
-  /** Which addresses to watch. Empty means every one the key reaches. */
+  /**
+   * Every address the key reaches, including ones added later.
+   *
+   * A separate answer from the list below, and not a shorthand for a full
+   * one: "all of them, whatever they turn out to be" and "these six" look the
+   * same on the day they are chosen and differ on the day a seventh address
+   * is made. An empty list with this off means none, which is a choice
+   * somebody is allowed to make.
+   */
+  watchAll: boolean;
+  /** The addresses to watch when `watchAll` is off. */
   mailboxIds: string[];
   notifications: boolean;
   /** How often the background asks for new mail. Minutes. */
@@ -25,6 +35,7 @@ export interface Settings {
 export const DEFAULTS: Settings = {
   baseUrl: "",
   apiKey: "",
+  watchAll: true,
   mailboxIds: [],
   notifications: true,
   pollMinutes: 2,
@@ -37,7 +48,23 @@ const KEY = "settings";
 export async function getSettings(): Promise<Settings> {
   const stored = await browser.storage.local.get(KEY);
   const value = (stored[KEY] ?? {}) as Partial<Settings>;
-  return { ...DEFAULTS, ...value };
+
+  // Written before `watchAll` existed, when a non-empty list was the only way
+  // to say "just these". Defaulting it to true would silently widen what a
+  // reader had narrowed.
+  const watchAll = value.watchAll ?? !value.mailboxIds?.length;
+
+  return { ...DEFAULTS, ...value, watchAll };
+}
+
+/** The addresses to ask about, or null for "no filter, every one of them". */
+export function watchedMailboxIds(settings: Settings): string[] | null {
+  return settings.watchAll ? null : settings.mailboxIds;
+}
+
+/** Nothing is being watched, so there is nothing to fetch or count. */
+export function watchesNothing(settings: Settings) {
+  return !settings.watchAll && settings.mailboxIds.length === 0;
 }
 
 export async function saveSettings(patch: Partial<Settings>): Promise<Settings> {
