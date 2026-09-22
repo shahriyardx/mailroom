@@ -205,11 +205,26 @@ export async function forwardingView(orgId: string): Promise<ForwardingView> {
   };
 }
 
+/**
+ * Cloudflare's refusal, with a guess at the cause and its own words kept.
+ *
+ * The guess used to be the whole message, which is fine until the guess is
+ * wrong: somebody who has already added the permission is then told to add
+ * the permission, and the one piece of evidence that would end the argument —
+ * what Cloudflare actually said — was thrown away.
+ */
 function explain(error: unknown) {
-  if (error instanceof CloudflareError && error.codes.includes(10000)) {
-    return new Error(
-      "Cloudflare rejected the token. It needs the account permission Email Routing Addresses -> Edit — not the zone permission of a similar name. Add it to the same token in Cloudflare; its value does not change, so nothing here needs reconnecting.",
-    );
+  if (error instanceof CloudflareError) {
+    const said = `Cloudflare said: ${error.message}${
+      error.codes.length > 0 ? ` (code ${error.codes.join(", ")})` : ""
+    }`;
+
+    if (error.codes.includes(10000)) {
+      return new Error(
+        `${said}. This usually means the token is missing the account permission Email Routing Addresses -> Edit — the account one, not the zone permission of a similar name. If you have added it: a token has to be saved through to the end in Cloudflare to take effect, and a token created fresh has a new value, which does need reconnecting on the Inbound worker page.`,
+      );
+    }
+    return new Error(said);
   }
   return error instanceof Error ? error : new Error("Cloudflare could not be reached");
 }
