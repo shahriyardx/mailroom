@@ -193,7 +193,10 @@ export interface EmailTheme {
   /** Content width in pixels. 600 is the number every client agrees on. */
   width: number;
   font: string;
-  /** Rounded corners on the card. Ignored by Outlook, which is fine. */
+  /**
+   * Rounded corners on the card. Off by default: Outlook squares them anyway,
+   * so a rounded template is one that arrives looking like two templates.
+   */
   radius: number;
 }
 
@@ -218,7 +221,7 @@ export const DEFAULT_THEME: EmailTheme = {
   link: "#4f46e5",
   width: 600,
   font: FONTS[0]!.value,
-  radius: 12,
+  radius: 0,
 };
 
 export function emptyDesign(): EmailDesign {
