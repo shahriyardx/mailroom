@@ -250,19 +250,31 @@ function ConnectCard() {
           Zone Settings is the one that is easy to miss: Cloudflare gates reading and turning on
           Email Routing behind it, not behind the Email Routing permission.
         </Note>
-        <Note className="mb-2">
-          Email Routing <em>Addresses</em> is an account permission and Email Routing <em>Rules</em>{" "}
-          is a zone one. They sit next to each other in Cloudflare's list and are not the same thing
-          — the first is what Forwarding needs, the second is what receiving needs.
-        </Note>
         <ul className="mb-3 space-y-1 font-mono text-[12px] text-muted-foreground">
           <li>Account → Workers Scripts → Edit</li>
           <li>Account → Workers R2 Storage → Edit</li>
-          <li>Account → Email Routing Addresses → Edit</li>
           <li>Zone → Zone → Read</li>
           <li>Zone → Zone Settings → Edit</li>
           <li>Zone → Email Routing Rules → Edit</li>
-          <li>Zone → DNS → Edit</li>
+        </ul>
+
+        {/* Separate, and second, because a token that stops at the five above
+            receives mail perfectly well. Each of these buys one extra feature
+            and can be added to the same token later, which keeps its value —
+            only a brand new token has to be pasted in here again. */}
+        <p className="mb-2 text-[13px] font-medium">Optional, for two extra things</p>
+        <ul className="mb-3 space-y-1.5 text-[12px] text-muted-foreground">
+          <li>
+            <span className="font-mono">Zone → DNS → Edit</span> — lets a subdomain of a domain
+            already receiving here get its MX records published for it. Without it, a subdomain
+            needs those records added by hand.
+          </li>
+          <li>
+            <span className="font-mono">Account → Email Routing Addresses → Edit</span> — lets{" "}
+            <strong>Settings → Forwarding</strong> add and verify the addresses a copy of your mail
+            is sent to. An <em>account</em> permission, not <em>Email Routing Rules</em>, the zone
+            one of a similar name above.
+          </li>
         </ul>
 
         <a

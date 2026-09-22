@@ -182,7 +182,7 @@ line and writes both variables into `.env`.
 
 **Settings → Inbound worker**
 
-Create a Cloudflare API token with these permissions:
+Create a Cloudflare API token with these five permissions:
 
 ```
 Account → Workers Scripts     → Edit
@@ -190,11 +190,15 @@ Account → Workers R2 Storage  → Edit
 Zone    → Zone                → Read
 Zone    → Zone Settings       → Edit
 Zone    → Email Routing Rules → Edit
-Zone    → DNS                 → Edit
 ```
 
 **Zone Settings is easy to miss.** Cloudflare gates turning Email Routing on
 behind it, not behind the Email Routing permission.
+
+Two more are optional, and can be added to the same token later:
+`Zone → DNS → Edit` publishes MX records for a subdomain of a domain already
+receiving here, and `Account → Email Routing Addresses → Edit` is what
+[forwarding](https://mailroom-docs.shahriyar.dev/guide/forwarding) needs.
 
 Paste the token, press **Deploy worker**, then **Receive mail here** on each
 domain.

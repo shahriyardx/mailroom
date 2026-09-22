@@ -203,6 +203,38 @@ export async function forwardingView(orgId: string): Promise<ForwardingView> {
 }
 
 /**
+ * A refusal from Cloudflare, sorted into the one distinction the page acts on.
+ *
+ * `permission` means the token cannot see the address list at all. That is a
+ * checkbox somebody has to tick in Cloudflare, not something this app can
+ * retry, so the page stops offering buttons that can only fail and says which
+ * permission to add instead.
+ */
+export class ForwardingAccessError extends Error {
+  kind: "permission" | "unreachable";
+
+  constructor(message: string, kind: "permission" | "unreachable") {
+    super(message);
+    this.kind = kind;
+  }
+}
+
+/** The same thing as plain data, for a server component to hand to a client one. */
+export interface ForwardingProblem {
+  kind: "permission" | "unreachable";
+  /** Cloudflare's own words, kept so a cause nobody anticipated is still visible. */
+  detail: string;
+}
+
+export function forwardingProblem(error: unknown): ForwardingProblem {
+  if (error instanceof ForwardingAccessError) return { kind: error.kind, detail: error.message };
+  return {
+    kind: "unreachable",
+    detail: error instanceof Error ? error.message : "Cloudflare could not be reached",
+  };
+}
+
+/**
  * Cloudflare's refusal, with a guess at the cause and its own words kept.
  *
  * The guess used to be the whole message, which is fine until the guess is
@@ -217,11 +249,12 @@ function explain(error: unknown) {
     }`;
 
     if (error.codes.includes(10000)) {
-      return new Error(
-        `${said}. This usually means the token is missing the account permission Email Routing Addresses -> Edit — the account one, not the zone permission of a similar name. If you have added it: a token has to be saved through to the end in Cloudflare to take effect, and a token created fresh has a new value, which does need reconnecting on the Inbound worker page.`,
+      return new ForwardingAccessError(
+        `${said}. The token is missing the account permission Email Routing Addresses -> Edit — the account one, not the zone permission of a similar name.`,
+        "permission",
       );
     }
-    return new Error(said);
+    return new ForwardingAccessError(said, "unreachable");
   }
   return error instanceof Error ? error : new Error("Cloudflare could not be reached");
 }

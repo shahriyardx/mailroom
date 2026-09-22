@@ -11,6 +11,29 @@ nowhere. It takes two steps: add the address you want mail copied to and let
 its owner verify it, then write a rule saying what to copy there. Neither
 happens on its own.
 
+## One permission first
+
+Receiving mail needs nothing from Cloudflare's address list, so the token you
+made for [receiving](/guide/receiving#the-cloudflare-token) almost certainly
+cannot manage forwarding addresses. The page tells you so on your first visit
+and asks for one more permission:
+
+```
+Account → Email Routing Addresses → Edit
+```
+
+It is an *account* permission, not **Email Routing Rules**, the *zone* one of
+a similar name that receiving already uses.
+
+Add it to the token you already have and press **I have added it** on the
+page. Editing a token in Cloudflare keeps its value, so there is nothing to
+paste into Mailroom again — only a token created from scratch has a new value,
+which does have to go back on **Settings → Inbound worker**.
+
+Until then the page still shows your rules and still lets you change them, but
+the address list is read-only: nothing this app does can add an address
+Cloudflare will not let it see.
+
 ## How it decides
 
 Rules sit at one of three widths:
@@ -67,18 +90,6 @@ for every domain on the account.
 An address marked **Gone** is one Cloudflare no longer has — somebody deleted
 the destination there. Its rules are kept rather than quietly dropped, so you
 can add the address again and carry on.
-
-::: warning The token needs one more permission
-Adding and verifying addresses needs **Account → Email Routing Addresses →
-Edit** on the Cloudflare token, on top of what [receiving](/guide/receiving)
-already needs. Without it the page says Cloudflare rejected the token.
-
-It is an *account* permission, not the *zone* one of a similar name that
-receiving already uses — [the token guide](/guide/receiving#the-cloudflare-token)
-has a picture of the whole list. Add it to the token you already have; editing
-a token's permissions does not change its value, so there is nothing to
-reconnect here. Creating a *new* token does, since a new token has a new value.
-:::
 
 ## How the worker knows
 

@@ -8,33 +8,43 @@ message to a Worker, which posts it to your instance. The Worker is deployed
 
 ## The Cloudflare token
 
-Create an API token with these permissions:
+Create an API token with these five permissions:
 
 ```
-Account → Workers Scripts         → Edit
-Account → Workers R2 Storage      → Edit
-Account → Email Routing Addresses → Edit
-Zone    → Zone                    → Read
-Zone    → Zone Settings           → Edit
-Zone    → Email Routing Rules     → Edit
-Zone    → DNS                     → Edit
+Account → Workers Scripts     → Edit
+Account → Workers R2 Storage  → Edit
+Zone    → Zone                → Read
+Zone    → Zone Settings       → Edit
+Zone    → Email Routing Rules → Edit
 ```
 
-![The seven permissions on the Cloudflare token, with Email Routing Addresses highlighted](/shots/cloudflare-token.png)
-
-**Email Routing Addresses** is an *account* permission, and a different thing
-from **Email Routing Rules**, the *zone* permission four lines below it. The
-account one is what [forwarding](/guide/forwarding) needs; the zone one is what
-receiving needs. Cloudflare lists them side by side and the names barely
-differ, which is why the picture is here.
-
-Leave the addresses one out and everything except forwarding still works.
+That is the whole list for receiving mail. A token with exactly these five
+deploys the worker, turns Email Routing on, and points each domain's catch-all
+at it.
 
 ::: warning Zone Settings is easy to miss
 Cloudflare gates *turning Email Routing on* behind **Zone Settings**, not
 behind the Email Routing permission. Without it the deploy succeeds and
 receiving silently never starts.
 :::
+
+### Two more, if you want them
+
+Neither is needed to receive mail. Add either one later to the token you
+already have — editing a token keeps its value, so nothing has to be pasted
+into Mailroom again. Only a *brand new* token has a new value.
+
+| Permission | Buys you | Without it |
+| --- | --- | --- |
+| `Zone → DNS → Edit` | MX records published automatically for a subdomain of a domain already receiving here | Add that subdomain's MX records by hand |
+| `Account → Email Routing Addresses → Edit` | [Forwarding](/guide/forwarding) — adding and verifying the addresses a copy of your mail goes to | The Forwarding page says which permission it wants and does nothing else |
+
+**Email Routing Addresses** is an *account* permission, and a different thing
+from **Email Routing Rules**, the *zone* permission it sits near. Cloudflare
+lists them side by side and the names barely differ, which is why there is a
+picture:
+
+![The Cloudflare token permission list, with Email Routing Addresses highlighted](/shots/cloudflare-token.png)
 
 Paste the token and press **Deploy worker**. The token is encrypted with a key
 derived from `BETTER_AUTH_SECRET` before it is stored.

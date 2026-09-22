@@ -202,3 +202,71 @@ describe("where mail for an address nobody owns is copied", () => {
     assert.deepEqual(await targetsForUnknownAddress("someone@stranger.test"), []);
   });
 });
+
+describe("a token that cannot see Cloudflare's address list", () => {
+  /*
+   * Receiving mail needs nothing from that list, so the token a working
+   * instance already has will not have the permission for it. Arriving at the
+   * forwarding page without it is the normal first visit — the page has to
+   * tell one missing checkbox apart from Cloudflare being down, because only
+   * one of the two is worth showing somebody a permission name for.
+   */
+  const realFetch = globalThis.fetch;
+
+  function cloudflareRefuses(code: number, message: string) {
+    globalThis.fetch = (async () =>
+      new Response(JSON.stringify({ success: false, errors: [{ code, message }], result: null }), {
+        status: 403,
+        headers: { "Content-Type": "application/json" },
+      })) as typeof fetch;
+  }
+
+  before(async () => {
+    // The token is stored encrypted under this, and nothing else in the test
+    // suite needs it, so it is set here rather than in the runner.
+    process.env.BETTER_AUTH_SECRET ??= "test-secret-for-forwarding-tests";
+
+    const { db } = await import("@/db");
+    const { integration } = await import("@/db/schema");
+    const { encryptSecret } = await import("@/lib/crypto");
+
+    await db.insert(integration).values({
+      id: newId("int"),
+      organizationId: account.orgId,
+      provider: "cloudflare",
+      secret: encryptSecret("cfut_pretend"),
+      accountId: "acc_pretend",
+      hint: "…tend",
+    });
+  });
+
+  after(() => {
+    globalThis.fetch = realFetch;
+  });
+
+  it("names it a permission problem when Cloudflare says 10000", async () => {
+    const { forwardingProblem, refreshForwardingAddresses } = await import("@/server/forwarding");
+    cloudflareRefuses(10000, "Authentication error");
+
+    const problem = await refreshForwardingAddresses(account.orgId).then(
+      () => null,
+      (error: unknown) => forwardingProblem(error),
+    );
+
+    assert.equal(problem?.kind, "permission");
+    assert.match(problem?.detail ?? "", /Email Routing Addresses/);
+  });
+
+  it("calls anything else unreachable, and keeps what Cloudflare said", async () => {
+    const { forwardingProblem, refreshForwardingAddresses } = await import("@/server/forwarding");
+    cloudflareRefuses(1000, "Something else entirely");
+
+    const problem = await refreshForwardingAddresses(account.orgId).then(
+      () => null,
+      (error: unknown) => forwardingProblem(error),
+    );
+
+    assert.equal(problem?.kind, "unreachable");
+    assert.match(problem?.detail ?? "", /Something else entirely/);
+  });
+});

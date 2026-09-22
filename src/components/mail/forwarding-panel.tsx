@@ -24,11 +24,23 @@ import {
   resendForwardingVerificationAction,
   setForwardOffAction,
 } from "@/server/actions";
-import type { ForwardingView } from "@/server/forwarding";
-import { AtSign, Forward, Globe, Inbox, Plus, RefreshCw, TriangleAlert, X } from "lucide-react";
+import type { ForwardingProblem, ForwardingView } from "@/server/forwarding";
+import {
+  AtSign,
+  ExternalLink,
+  Forward,
+  Globe,
+  Inbox,
+  Plus,
+  RefreshCw,
+  TriangleAlert,
+  X,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { toast } from "sonner";
+
+const TOKEN_URL = "https://dash.cloudflare.com/profile/api-tokens";
 
 /**
  * Where inbound mail is also sent.
@@ -39,13 +51,33 @@ import { toast } from "sonner";
  * not forward to an address until its owner has clicked a link in an email,
  * and until then a rule pointing at it does nothing.
  */
-export function ForwardingPanel({ view }: { view: ForwardingView }) {
+export function ForwardingPanel({
+  view,
+  problem,
+}: {
+  view: ForwardingView;
+  problem: ForwardingProblem | null;
+}) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
   const [typed, setTyped] = useState("");
 
   const verified = view.addresses.filter((entry) => entry.verified);
   const waiting = view.addresses.filter((entry) => !entry.verified);
+
+  /*
+   * Receiving mail needs nothing from Cloudflare's address list, so the token
+   * a working instance already has will not have that permission. Arriving
+   * here without it is the normal first visit, not a fault — but every button
+   * that touches an address can then only fail, so they are taken away and
+   * replaced with the one thing that helps: which permission to add.
+   *
+   * Rules stay editable throughout. They are rows in this database, and an
+   * address Cloudflare has already verified keeps forwarding without the app
+   * being able to see the list at all.
+   */
+  const blocked = problem?.kind === "permission";
+  const canManageAddresses = view.connected && !blocked;
 
   function run(work: () => Promise<{ ok: boolean; error?: string }>, done: string) {
     startTransition(async () => {
@@ -66,7 +98,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
         meta={view.addresses.length > 0 ? view.addresses.length : undefined}
         description="The forwarding destinations on your Cloudflare account. Anything added there appears here; anything added here is created there, and Cloudflare emails it a link to click."
         action={
-          view.addresses.length > 0 ? (
+          view.addresses.length > 0 && canManageAddresses ? (
             <Button
               variant="ghost"
               size="sm"
@@ -102,6 +134,38 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
             No Cloudflare token is connected, so no address can be verified and nothing will be
             forwarded. Connect one on <strong>Settings → Inbound worker</strong> first.
           </Warning>
+        ) : blocked ? (
+          <Warning>
+            <strong>One permission short.</strong> Your Cloudflare token can receive mail but cannot
+            manage forwarding addresses. Add this to it:
+            <code className="mt-2 mb-2 block rounded-lg bg-warn/10 px-2.5 py-1.5 font-mono text-[12px]">
+              Account → Email Routing Addresses → Edit
+            </code>
+            It is an <em>account</em> permission — not <em>Email Routing Rules</em>, the zone one of
+            a similar name that receiving already uses. Editing a token in place keeps its value, so
+            there is nothing to reconnect here; a token created fresh has a new value and does need
+            pasting in on <strong>Settings → Inbound worker</strong>.
+            <span className="mt-2.5 flex flex-wrap items-center gap-2">
+              <a
+                href={TOKEN_URL}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="inline-flex items-center gap-1 text-primary hover:underline"
+              >
+                Edit the token in Cloudflare
+                <ExternalLink className="size-3" />
+              </a>
+              <Button variant="outline" size="sm" disabled={busy} onClick={() => router.refresh()}>
+                <RefreshCw />I have added it
+              </Button>
+            </span>
+            <span className="mt-2 block text-muted-foreground">{problem?.detail}</span>
+          </Warning>
+        ) : problem ? (
+          <Warning>
+            Cloudflare could not be reached, so this list may be out of date. Nothing has been
+            changed. {problem.detail}
+          </Warning>
         ) : null}
 
         <form
@@ -132,9 +196,9 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
             onChange={(event) => setTyped(event.target.value)}
             placeholder="someone@example.com"
             className="min-w-0 flex-1"
-            disabled={!view.connected || busy}
+            disabled={!canManageAddresses || busy}
           />
-          <Button type="submit" disabled={!view.connected || busy || !typed.trim()}>
+          <Button type="submit" disabled={!canManageAddresses || busy || !typed.trim()}>
             Add address
           </Button>
         </form>
@@ -175,7 +239,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                   <Button
                     variant="outline"
                     size="sm"
-                    disabled={busy || !view.connected}
+                    disabled={busy || !canManageAddresses}
                     title="Removes it from Cloudflare and adds it back, which is the only resend Cloudflare offers"
                     onClick={() =>
                       run(
@@ -191,7 +255,7 @@ export function ForwardingPanel({ view }: { view: ForwardingView }) {
                 <Button
                   variant="ghost"
                   size="sm"
-                  disabled={busy}
+                  disabled={busy || !canManageAddresses}
                   title="Deletes the destination from Cloudflare too, along with every rule here that points at it"
                   onClick={() =>
                     run(() => removeForwardingAddressAction(entry.id), "Address removed")
