@@ -584,50 +584,63 @@ function renderBlock(block: Block, theme: EmailTheme): string {
       );
 
     case "youtube": {
-      // Nothing plays inside an email — every client strips iframes and
-      // script — so what goes out is the thumbnail, linked to the video.
-      // A fake play button drawn over it would be a lie about what happens
-      // when it is pressed; the caption says where the link goes instead.
+      // Nothing plays inside an email — every client strips the embed — so
+      // what goes out is the video's own thumbnail, linked to it.
       const id = youtubeId(block.url);
       if (!id) return "";
 
       const padding = block.style?.padding ?? defaultPadding("youtube");
       const room = theme.width - padding[1] - padding[3];
       const width = Math.round((room * clamp(block.width, 10, 100)) / 100);
+      const height = Math.round(width * 0.75);
       const radius = block.radius > 0 ? `border-radius:${clamp(block.radius, 0, 40)}px;` : "";
+
+      const thumb = youtubeThumb(id);
+      const watch = youtubeWatch(id);
+      const alt = attr(block.caption || "Watch the video");
+
       const caption = block.caption
         ? `<div style="${typography(block, theme, { size: 13, weight: 500 })};text-align:${block.align};padding-top:8px;">${escapeHtml(block.caption)}</div>`
         : "";
 
       /*
-       * The badge is lifted onto the thumbnail by a negative margin inside a
-       * cell of no height, so it overlays without taking a line of its own.
-       * Word, which is what Outlook renders with, ignores negative margins
-       * and would drop the badge underneath the picture — so Outlook is shown
-       * the thumbnail on its own instead. A missing badge is a picture; a
-       * badge in the wrong place is a mistake.
+       * With a badge, the thumbnail becomes the background of a cell and the
+       * badge sits in the middle of it. Overlaying with a negative margin is
+       * the obvious way and it does not survive contact with a mail client:
+       * the margin collapses, or is ignored, and the badge lands under the
+       * picture rather than on it.
        *
-       * It is drawn rather than fetched: a triangle in a red box needs no
-       * hosted image, and an image of a play button is one more thing to
-       * block, break or have to serve.
+       * A cell background is what email settled on, carried twice — the
+       * `background` attribute for the clients that read only that, and the
+       * CSS for the ones that read only this. Outlook reads neither, so it is
+       * given the same picture through VML, which Word does understand.
+       *
+       * The badge is drawn rather than fetched: a triangle in a red box needs
+       * no hosted image, and an image of a play button is one more thing to
+       * block, break, or have to serve.
        */
-      const thumbHeight = Math.round(width * 0.75);
-      const badge = block.playButton
-        ? `<!--[if !mso]><!--><div style="display:inline-block;width:100%;height:0;line-height:0;font-size:0;">
-<div style="margin-top:-${Math.round(thumbHeight / 2) + 24}px;text-align:center;">
-<span style="display:inline-block;width:68px;height:48px;line-height:48px;border-radius:12px;background-color:#ff0000;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;text-align:center;">&#9654;</span>
-</div>
-</div><!--<![endif]-->`
-        : "";
+      const play = `<a href="${attr(watch)}" style="text-decoration:none;"><span style="display:inline-block;width:68px;height:48px;line-height:48px;border-radius:12px;background-color:#ff0000;color:#ffffff;font-family:Arial,sans-serif;font-size:22px;text-align:center;text-decoration:none;">&#9654;</span></a>`;
 
-      return cell(
-        block,
-        `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${block.align}"><tr><td>
-<a href="${attr(youtubeWatch(id))}" style="text-decoration:none;"><img src="${attr(youtubeThumb(id))}" alt="${attr(block.caption || "Watch the video")}" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;${radius}border:0;outline:none;text-decoration:none;"></a>
-${badge}
-${caption}
-</td></tr></table>`,
-      );
+      const picture = block.playButton
+        ? `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${block.align}" width="${width}" style="width:${width}px;max-width:100%;">
+<tr><td background="${attr(thumb)}" bgcolor="#000000" width="${width}" height="${height}" valign="middle" align="center" style="width:${width}px;height:${height}px;background-image:url('${attr(thumb)}');background-position:center;background-size:cover;${radius}">
+<!--[if gte mso 9]>
+<v:rect xmlns:v="urn:schemas-microsoft-com:vml" fill="true" stroke="false" style="width:${width}px;height:${height}px;">
+<v:fill type="frame" src="${attr(thumb)}" color="#000000" />
+<v:textbox inset="0,0,0,0">
+<![endif]-->
+${play}
+<!--[if gte mso 9]>
+</v:textbox>
+</v:rect>
+<![endif]-->
+</td></tr>
+</table>`
+        : `<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="${block.align}"><tr><td>
+<a href="${attr(watch)}" style="text-decoration:none;"><img src="${attr(thumb)}" alt="${alt}" width="${width}" style="display:block;width:${width}px;max-width:100%;height:auto;${radius}border:0;outline:none;text-decoration:none;"></a>
+</td></tr></table>`;
+
+      return cell(block, `${picture}${caption}`);
     }
 
     case "table": {

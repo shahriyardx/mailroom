@@ -183,12 +183,16 @@ describe("a table", () => {
 describe("the play badge on a video", () => {
   const url = "https://youtu.be/dQw4w9WgXcQ";
 
-  it("is drawn rather than fetched, and hidden from the one client that would misplace it", () => {
+  it("sits in the middle of the thumbnail, carried every way a client might read it", () => {
     const html = renderDesign(design({ ...newBlock("youtube", "b1"), url } as never));
 
-    assert.match(html, /<!--\[if !mso\]><!-->/, "Word ignores the negative margin that lifts it");
     assert.match(html, /&#9654;/, "a triangle in a box needs no hosted image");
-    assert.ok(!html.includes("margin-top:-0px"), "it is lifted onto the middle of the picture");
+    // The attribute for the clients that read only that, the CSS for the ones
+    // that read only this, and VML for Word, which reads neither.
+    assert.match(html, /background="https:\/\/img\.youtube\.com/);
+    assert.match(html, /background-image:url\('https:\/\/img\.youtube\.com/);
+    assert.match(html, /<v:fill type="frame"/);
+    assert.match(html, /valign="middle" align="center"/);
   });
 
   it("is left off when it is switched off", () => {
@@ -201,12 +205,14 @@ describe("the play badge on a video", () => {
 });
 
 describe("the badge does not move what follows it", () => {
-  it("lifts inside a box that cannot collapse", () => {
+  it("takes up room rather than hanging out of its own box", () => {
     const block = { ...newBlock("youtube", "b1"), url: "https://youtu.be/dQw4w9WgXcQ" };
     const html = renderDesign(design(block as never));
 
-    // A plain block of no height lets the child's negative top margin collapse
-    // through it, which drags every block after the video up over the picture.
-    assert.match(html, /display:inline-block;width:100%;height:0/);
+    // The badge is inside a cell with a height, not lifted out of one by a
+    // negative margin — which collapses, and drags the rest of the email up
+    // over the picture.
+    assert.ok(!html.includes("margin-top:-"), "nothing is lifted by a negative margin");
+    assert.match(html, /height="\d+" valign="middle"/, "the cell reserves the picture's height");
   });
 });
