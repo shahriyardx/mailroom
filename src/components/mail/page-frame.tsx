@@ -34,7 +34,9 @@ export function PageHeader({
   return (
     <div className="mb-5 flex flex-wrap items-start gap-3">
       <div className="min-w-0 flex-1">
-        <h1 className="flex min-w-0 items-center gap-2.5 font-display text-[26px] font-semibold tracking-[-0.025em]">
+        {/* leading-none: the display face carries a tall default line box, and
+            the subtitle below it inherits that as a gap nobody asked for. */}
+        <h1 className="flex min-w-0 items-center gap-2.5 font-display text-[26px] font-semibold leading-none tracking-[-0.025em]">
           {title}
           {count !== undefined && count > 0 ? (
             <span className="rounded-md bg-muted px-1.5 py-0.5 font-sans text-[12px] font-medium text-muted-foreground">
@@ -43,7 +45,7 @@ export function PageHeader({
           ) : null}
         </h1>
         {description ? (
-          <p className="mt-1 text-[13px] text-muted-foreground">{description}</p>
+          <p className="mt-1.5 text-[13px] leading-none text-muted-foreground">{description}</p>
         ) : null}
       </div>
       {children ? <div className="flex shrink-0 items-center gap-2">{children}</div> : null}
