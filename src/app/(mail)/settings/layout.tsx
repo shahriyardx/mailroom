@@ -1,12 +1,17 @@
 import { SettingsShell } from "@/components/mail/settings-shell";
+import { VIEW_COOKIE, readView } from "@/lib/last-view";
 import { requireAccess } from "@/server/access";
 import { mailboxAdministration } from "@/server/grants";
 import { CAPABILITIES, can } from "@/server/permissions";
 import { workspaceSettings } from "@/server/workspace";
+import { cookies } from "next/headers";
 
 export default async function SettingsLayout({ children }: { children: React.ReactNode }) {
   const access = await requireAccess();
   const settings = await workspaceSettings(access.orgId);
+  // Read here rather than in the shell so the way out is right in the first
+  // paint, instead of correcting itself once the browser catches up.
+  const cameFrom = readView((await cookies()).get(VIEW_COOKIE)?.value);
   const allowed = Object.keys(CAPABILITIES).filter((capability) =>
     can(access, capability as keyof typeof CAPABILITIES),
   );
@@ -33,6 +38,7 @@ export default async function SettingsLayout({ children }: { children: React.Rea
       user={{ name: access.name ?? access.email, email: access.email }}
       allowed={allowed}
       features={{ inbox: settings.inboxEnabled, campaigns: settings.campaignsEnabled }}
+      cameFrom={cameFrom}
     >
       {children}
     </SettingsShell>

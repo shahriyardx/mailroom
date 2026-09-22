@@ -30,6 +30,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useState } from "react";
 
+import { rememberView } from "@/lib/last-view";
+
 /**
  * The campaigns side of the app.
  *
@@ -112,6 +114,10 @@ export function CampaignsShell({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: close the drawer on navigation
   useEffect(() => setNavOpen(false), [pathname]);
+
+  // So the way out of settings knows to come back here rather than to the
+  // inbox, on an instance where both halves are switched on.
+  useEffect(() => rememberView("campaigns"), []);
 
   const nav = (
     <div className="flex h-full flex-col">

@@ -58,6 +58,8 @@ import {
 import Link from "next/link";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+import { rememberView } from "@/lib/last-view";
 import { useComposer } from "./composer-provider";
 import { VersionNote } from "./version-note";
 
@@ -241,6 +243,10 @@ export function MailShell({
 
   // biome-ignore lint/correctness/useExhaustiveDependencies: close the drawer on navigation
   useEffect(() => setNavOpen(false), [pathname, params]);
+
+  // So the way out of settings knows to come back here rather than to the
+  // campaigns view, on an instance where both halves are switched on.
+  useEffect(() => rememberView("mail"), []);
 
   const activeKey = scopeKey(scope);
   const searchValue = params.get("q") ?? "";

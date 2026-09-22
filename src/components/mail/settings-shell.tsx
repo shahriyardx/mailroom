@@ -1,6 +1,7 @@
 "use client";
 
 import { Avatar, IconButton, Sheet, SheetContent, SheetTitle, Wordmark } from "@/components/kit";
+import { type View, wayOut } from "@/lib/last-view";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
@@ -153,6 +154,7 @@ export function SettingsShell({
   user,
   allowed,
   features,
+  cameFrom,
   children,
 }: {
   user: { name: string; email: string };
@@ -160,6 +162,8 @@ export function SettingsShell({
   allowed: string[];
   /** Which halves of the product this instance has switched on. */
   features: { inbox: boolean; campaigns: boolean };
+  /** Which of them they were in when they came here, if it was remembered. */
+  cameFrom: View | null;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -180,7 +184,14 @@ export function SettingsShell({
     ),
   })).filter((group) => group.items.length > 0);
 
-  const nav = <SettingsNavPanel pathname={pathname} user={user} groups={groups} />;
+  const nav = (
+    <SettingsNavPanel
+      pathname={pathname}
+      user={user}
+      groups={groups}
+      back={wayOut(features, cameFrom)}
+    />
+  );
 
   return (
     <div className="flex h-dvh overflow-hidden bg-card">
@@ -224,10 +235,13 @@ function SettingsNavPanel({
   pathname,
   user,
   groups,
+  back,
 }: {
   pathname: string;
   user: { name: string; email: string };
   groups: { title?: string; items: NavItem[] }[];
+  /** Where settings was opened from, which is the only way out of it. */
+  back: { href: string; label: string };
 }) {
   return (
     <>
@@ -237,11 +251,11 @@ function SettingsNavPanel({
 
       <div className="px-2.5 pb-4">
         <Link
-          href="/mail/all/inbox"
+          href={back.href}
           className="flex items-center gap-2.5 rounded-[10px] px-2.5 py-[7px] text-[13px] text-sidebar-foreground transition-colors hover:bg-sidebar-accent hover:text-foreground"
         >
           <ArrowLeft className="size-[17px] shrink-0" />
-          Back to mail
+          {back.label}
         </Link>
       </div>
 
