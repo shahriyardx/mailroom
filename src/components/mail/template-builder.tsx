@@ -28,7 +28,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/kit";
-import type { Broadcast, Template } from "@/db/schema";
+import type { AutomationStep, Broadcast, Template } from "@/db/schema";
 import {
   type Align,
   type Block,
@@ -65,11 +65,14 @@ import { slugify, templateVariables } from "@/lib/template";
 import { useSubmit } from "@/lib/use-submit";
 import { cn, newId } from "@/lib/utils";
 import {
+  audienceSizeAction,
   createTemplateAction,
   deleteTemplateAction,
   sendTemplateTestAction,
   sendableMailboxesAction,
+  startBroadcastAction,
   updateBroadcastAction,
+  updateStepAction,
   updateTemplateAction,
 } from "@/server/actions";
 import {
@@ -190,6 +193,11 @@ interface Details {
   slug: string;
   description: string;
   subject: string;
+  /** Campaign-only, and ignored by a template. */
+  subjectB: string;
+  listId: string;
+  mailboxId: string;
+  segmentId: string;
 }
 
 /**
@@ -201,9 +209,26 @@ interface Details {
  * screen that knows which of the two it has rather than two screens that will
  * drift.
  */
+/**
+ * Everything a campaign needs that a template does not.
+ *
+ * Passed in whole rather than fetched here: this is a client component, and a
+ * builder that went looking for its own lists would flash an empty picker on
+ * every open. The page already knows all of it.
+ */
+export interface CampaignContext {
+  lists: { id: string; name: string; subscribed: number }[];
+  segments: { id: string; listId: string; name: string; size: number }[];
+  mailboxes: { id: string; address: string }[];
+  /** Null means the footer of this send will have no address in it. */
+  postalAddress: string | null;
+}
+
 export type BuilderTarget =
   | { kind: "template"; template: Template | null }
-  | { kind: "broadcast"; broadcast: Broadcast; listName: string };
+  | { kind: "broadcast"; broadcast: Broadcast; campaign: CampaignContext }
+  /** One email out of an automation's series. */
+  | { kind: "step"; step: AutomationStep; automationName: string; position: number };
 
 export function TemplateBuilder({
   template,
@@ -215,16 +240,36 @@ export function TemplateBuilder({
   return <Builder target={{ kind: "template", template }} basePath={basePath} />;
 }
 
+/**
+ * One step of an automation, in the same builder.
+ *
+ * A step is a template with a delay in front of it. Giving it a worse editor
+ * than a one-off campaign would be a strange thing to decide on purpose.
+ */
+export function StepBuilder({
+  step,
+  automationName,
+  position,
+  basePath,
+}: {
+  step: AutomationStep;
+  automationName: string;
+  position: number;
+  basePath: string;
+}) {
+  return <Builder target={{ kind: "step", step, automationName, position }} basePath={basePath} />;
+}
+
 export function BroadcastBuilder({
   broadcast,
-  listName,
+  campaign,
   basePath,
 }: {
   broadcast: Broadcast;
-  listName: string;
+  campaign: CampaignContext;
   basePath: string;
 }) {
-  return <Builder target={{ kind: "broadcast", broadcast, listName }} basePath={basePath} />;
+  return <Builder target={{ kind: "broadcast", broadcast, campaign }} basePath={basePath} />;
 }
 
 /** How many steps back the builder remembers. */
@@ -321,15 +366,27 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
   const [busy, submit] = useSubmit();
 
   const template = target.kind === "template" ? target.template : null;
-  const source = target.kind === "template" ? target.template : target.broadcast;
+  const step = target.kind === "step" ? target.step : null;
+  const source =
+    target.kind === "template"
+      ? target.template
+      : target.kind === "step"
+        ? target.step
+        : target.broadcast;
   // A broadcast that has gone is a record of what went, not a draft.
   const locked = target.kind === "broadcast" && target.broadcast.status !== "draft";
+
+  const campaign = target.kind === "broadcast" ? target.broadcast : null;
 
   const [details, setDetails] = useState<Details>({
     name: template?.name ?? "",
     slug: template?.slug ?? "",
     description: template?.description ?? "",
     subject: source?.subject ?? "",
+    subjectB: campaign?.subjectB ?? "",
+    listId: campaign?.listId ?? "",
+    mailboxId: campaign?.mailboxId ?? "",
+    segmentId: campaign?.segmentId ?? "",
   });
 
   const { design, setDesign, undo, redo, canUndo, canRedo } = useHistory(
@@ -490,10 +547,31 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
   function save() {
     const body = handwritten ? { design: null, html, text: source?.text ?? undefined } : { design };
 
+    if (target.kind === "step") {
+      submit(async () => {
+        const result = await updateStepAction(target.step.id, {
+          subject: details.subject,
+          ...body,
+        });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        saved.current = JSON.stringify({ details, design, html });
+        toast.success("Email saved");
+        router.refresh();
+      });
+      return;
+    }
+
     if (target.kind === "broadcast") {
       submit(async () => {
         const result = await updateBroadcastAction(target.broadcast.id, {
           subject: details.subject,
+          subjectB: details.subjectB.trim() || null,
+          listId: details.listId || undefined,
+          mailboxId: details.mailboxId || undefined,
+          segmentId: details.segmentId || null,
           ...body,
         });
         if (!result.ok) {
@@ -555,12 +633,16 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           onClick={() => (dirty ? setLeaving(true) : router.push(basePath))}
         >
           <ArrowLeft />
-          {target.kind === "broadcast" ? "Campaigns" : "Templates"}
+          {target.kind === "broadcast"
+            ? "Campaigns"
+            : target.kind === "step"
+              ? target.automationName
+              : "Templates"}
         </Button>
 
         <span className="h-5 w-px bg-border" />
 
-        {target.kind === "broadcast" ? (
+        {target.kind !== "template" ? (
           /* A broadcast has no name of its own — the subject is what it is
              called everywhere it is listed, so that is what goes here. */
           <Input
@@ -595,8 +677,15 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
 
         {target.kind === "broadcast" && (
           <span className="truncate text-[12.5px] text-muted-foreground">
-            to {target.listName}
+            to{" "}
+            {target.campaign.lists.find((entry) => entry.id === details.listId)?.name ?? "a list"}
             {locked && " · already sent"}
+          </span>
+        )}
+
+        {target.kind === "step" && (
+          <span className="truncate text-[12.5px] text-muted-foreground">
+            email {target.position + 1}
           </span>
         )}
 
@@ -835,12 +924,23 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
               )}
 
               {tab === "details" &&
-                (target.kind === "broadcast" ? (
-                  <BroadcastDetails
+                (target.kind === "step" ? (
+                  <StepDetails
+                    step={target.step}
                     subject={details.subject}
                     onSubject={(subject) => setDetails((current) => ({ ...current, subject }))}
-                    listName={target.listName}
+                    variables={variables}
+                  />
+                ) : target.kind === "broadcast" ? (
+                  <BroadcastDetails
+                    id={target.broadcast.id}
+                    details={details}
+                    onChange={(changes) => setDetails((current) => ({ ...current, ...changes }))}
+                    context={target.campaign}
                     status={target.broadcast.status}
+                    followUp={target.broadcast.resendOfId !== null}
+                    dirty={dirty}
+                    onSave={save}
                     variables={variables}
                   />
                 ) : (
@@ -2818,42 +2918,366 @@ function PageStyle({
   );
 }
 
-/** What a broadcast has instead of a name and a slug. */
-function BroadcastDetails({
+/**
+ * What one automation email has instead of a name and a slug.
+ *
+ * The delay is the only thing here a campaign has no equivalent of, and it is
+ * the whole point of the series: "three days after the last one" is what makes
+ * this a sequence rather than five separate sends.
+ */
+function StepDetails({
+  step,
   subject,
   onSubject,
-  listName,
-  status,
   variables,
 }: {
+  step: AutomationStep;
   subject: string;
   onSubject: (value: string) => void;
-  listName: string;
-  status: string;
   variables: string[];
 }) {
+  const [delay, setDelay] = useState(step.delayMinutes);
+  const [busy, submit] = useSubmit();
+
+  function saveDelay(value: number | undefined) {
+    const minutes = value ?? 0;
+    setDelay(minutes);
+    submit(async () => {
+      const result = await updateStepAction(step.id, { delayMinutes: minutes });
+      if (!result.ok) toast.error(result.error);
+    });
+  }
+
   return (
     <div>
-      <Section title="Campaign">
+      <Section title="Email">
         <Row label="Subject">
           <Input
             value={subject}
             onChange={(event) => onSubject(event.target.value)}
-            readOnly={status !== "draft"}
             className="h-8 text-[12.5px]"
           />
         </Row>
-        <Row label="To">
-          <span className="text-[12.5px]">{listName}</span>
+
+        {/* Counted from the email before it, or from the moment somebody joins
+            for the first one. Zero on the first is a welcome email. */}
+        <Row label="Wait">
+          <span className="flex items-center gap-2">
+            <NumberField
+              value={delay}
+              onChange={saveDelay}
+              min={0}
+              max={525_600}
+              label="Minutes to wait"
+            />
+            <span className="text-[12px] text-muted-foreground">min</span>
+          </span>
         </Row>
+
+        <Note>
+          {delay === 0
+            ? step.position === 0
+              ? "Sent as soon as somebody joins the list."
+              : "Sent straight after the email before it."
+            : `Sent ${humanDelay(delay)} after ${step.position === 0 ? "somebody joins" : "the email before it"}.`}
+        </Note>
+      </Section>
+
+      <Section title="Variables">
+        {variables.length === 0 ? (
+          <p className="text-[12px] leading-relaxed text-muted-foreground">
+            None. An automation email can use <code className="font-mono">{"{{ name }}"}</code> and
+            the other fields you hold against each subscriber.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {variables.map((name) => (
+              <code
+                key={name}
+                className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px] text-muted-foreground"
+              >
+                {name}
+              </code>
+            ))}
+          </div>
+        )}
+      </Section>
+    </div>
+  );
+}
+
+/** Minutes, in the unit somebody would have said it in. */
+export function humanDelay(minutes: number) {
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 60 * 24) {
+    const hours = Math.round((minutes / 60) * 10) / 10;
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  const days = Math.round((minutes / 1440) * 10) / 10;
+  return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/**
+ * What a broadcast has instead of a name and a slug.
+ *
+ * Everything that decides where a campaign goes lives here, including the
+ * button that sends it. It used to live on the campaigns list, one screen
+ * away, which meant the answer to "how do I send this" was "go somewhere
+ * else" — and the list it was going to could not be changed at all.
+ */
+function BroadcastDetails({
+  id,
+  details,
+  onChange,
+  context,
+  status,
+  followUp,
+  dirty,
+  onSave,
+  variables,
+}: {
+  id: string;
+  details: Details;
+  onChange: (changes: Partial<Details>) => void;
+  context: CampaignContext;
+  status: string;
+  /** True when this campaign takes its audience from another one. */
+  followUp: boolean;
+  dirty: boolean;
+  onSave: () => void;
+  variables: string[];
+}) {
+  const router = useRouter();
+  const [busy, submit] = useSubmit();
+  const [sending, setSending] = useState(false);
+  const [when, setWhen] = useState("");
+  const [size, setSize] = useState<number | null>(null);
+
+  const draft = status === "draft";
+  const list = context.lists.find((entry) => entry.id === details.listId);
+  const mine = context.segments.filter((entry) => entry.listId === details.listId);
+  const testing = details.subjectB.trim().length > 0;
+
+  /*
+   * How many people this would go to, asked of the server.
+   *
+   * Counted there rather than guessed here because a segment is a question
+   * only the database can answer — and the number somebody wants before they
+   * press Send is the real one, not the size of the whole list.
+   *
+   * The aim on screen is sent with the question rather than left for the
+   * server to read off the saved row: the list can be changed and not yet
+   * saved, and a count describing the row as it was two edits ago is worse
+   * than no count at all.
+   */
+  const { listId, segmentId } = details;
+  useEffect(() => {
+    if (!draft) return;
+    let alive = true;
+    void audienceSizeAction(id, { listId, segmentId: segmentId || null }).then((result) => {
+      if (alive && result.ok) setSize(result.size);
+    });
+    return () => {
+      alive = false;
+    };
+  }, [id, draft, listId, segmentId]);
+
+  function send() {
+    submit(async () => {
+      const result = await startBroadcastAction(id, when || undefined);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      setSending(false);
+      toast.success(
+        result.scheduled
+          ? `Scheduled for ${result.recipients} people`
+          : `Sending to ${result.recipients} people`,
+      );
+      router.refresh();
+    });
+  }
+
+  return (
+    <div>
+      {/* Sending is the one thing here that cannot be undone, so it is asked
+          about rather than done. The number is in the question because "send
+          to everyone" and "send to eleven thousand people" are different
+          decisions. */}
+      <ConfirmDialog
+        open={sending}
+        onOpenChange={(next) => !next && setSending(false)}
+        title={when ? "Schedule this campaign?" : "Send this campaign now?"}
+        description={details.subject}
+        consequences={
+          <>
+            It goes to {size === null ? "everybody who matches" : `${size} people`}
+            {list ? ` on ${list.name}` : ""}
+            {details.segmentId ? " in that segment" : ""}. This cannot be called back once it
+            starts.
+            {!context.postalAddress && (
+              <>
+                {" "}
+                No postal address is set, so the footer will not carry one — US CAN-SPAM asks for it
+                in commercial mail.
+              </>
+            )}
+          </>
+        }
+        confirmLabel={when ? "Schedule it" : "Send it"}
+        onConfirm={send}
+      />
+
+      <Section title="Campaign">
+        <Row label="Subject">
+          <Input
+            value={details.subject}
+            onChange={(event) => onChange({ subject: event.target.value })}
+            readOnly={!draft}
+            className="h-8 text-[12.5px]"
+          />
+        </Row>
+
+        {/* A second subject line is how a test is started: there is nothing to
+            switch on, because filling this in is the switch. */}
+        <Row label="Subject B">
+          <Input
+            value={details.subjectB}
+            onChange={(event) => onChange({ subjectB: event.target.value })}
+            readOnly={!draft}
+            placeholder="Off — fill in to A/B test"
+            className="h-8 text-[12.5px]"
+          />
+        </Row>
+
+        <Row label="List">
+          {draft && !followUp ? (
+            <Select
+              value={details.listId}
+              onValueChange={(value) =>
+                // A segment belongs to one list, so it cannot survive the move.
+                onChange({ listId: value, segmentId: "" })
+              }
+            >
+              <SelectTrigger className="h-8 text-[12.5px]">
+                <SelectValue placeholder="Pick a list" />
+              </SelectTrigger>
+              <SelectContent>
+                {context.lists.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.name} · {entry.subscribed}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-[12.5px]">{list?.name ?? "a list"}</span>
+          )}
+        </Row>
+
+        {draft && !followUp && (
+          <Row label="Segment">
+            <Select
+              value={details.segmentId || "all"}
+              onValueChange={(value) => onChange({ segmentId: value === "all" ? "" : value })}
+            >
+              <SelectTrigger className="h-8 text-[12.5px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">Everybody on the list</SelectItem>
+                {mine.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.name} · {entry.size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Row>
+        )}
+
+        <Row label="From">
+          {draft ? (
+            <Select
+              value={details.mailboxId}
+              onValueChange={(value) => onChange({ mailboxId: value })}
+            >
+              <SelectTrigger className="h-8 text-[12.5px]">
+                <SelectValue placeholder="Pick an address" />
+              </SelectTrigger>
+              <SelectContent>
+                {context.mailboxes.map((entry) => (
+                  <SelectItem key={entry.id} value={entry.id}>
+                    {entry.address}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          ) : (
+            <span className="text-[12.5px]">
+              {context.mailboxes.find((entry) => entry.id === details.mailboxId)?.address ?? "—"}
+            </span>
+          )}
+        </Row>
+
         <Row label="Status">
           <span className="text-[12.5px] capitalize">{status}</span>
         </Row>
-        <Note>
-          {status === "draft"
-            ? "Nothing goes out until you press Send on the campaigns screen."
-            : "This has already started. What went out is what went out, so it cannot be edited."}
-        </Note>
+
+        {draft && (
+          <>
+            {/* Empty means now. A separate "send later" mode would be a switch
+                that has to agree with a date field, and they never do. */}
+            <Row label="Send at">
+              <Input
+                type="datetime-local"
+                value={when}
+                onChange={(event) => setWhen(event.target.value)}
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+
+            <Button
+              variant="solid"
+              className="w-full"
+              disabled={busy || !details.listId || !details.mailboxId}
+              onClick={() => {
+                // Sending what is on screen, not what was last saved. Anything
+                // else means a typo fixed a second ago goes out anyway.
+                if (dirty) onSave();
+                setSending(true);
+              }}
+            >
+              <Send className="size-3.5" />
+              {when ? "Schedule" : "Send now"}
+            </Button>
+
+            <Note>
+              {followUp
+                ? "This goes only to the people who were sent the original and never opened it."
+                : size === null
+                  ? "Nothing goes out until you press Send."
+                  : `Nothing goes out until you press Send. ${size} ${size === 1 ? "person" : "people"} would get it.`}
+              {testing &&
+                " The audience is split in half: one side gets Subject, the other Subject B."}
+            </Note>
+
+            {!context.postalAddress && (
+              <Note className="text-warn">
+                No postal address is set for this instance. Commercial email is required to carry
+                one under US CAN-SPAM, and Gmail's bulk sender rules look for it. Settings →
+                Company.
+              </Note>
+            )}
+          </>
+        )}
+
+        {!draft && (
+          <Note>
+            This has already started. What went out is what went out, so it cannot be edited.
+          </Note>
+        )}
       </Section>
 
       <Section title="Variables">

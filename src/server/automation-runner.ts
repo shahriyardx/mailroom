@@ -64,7 +64,14 @@ async function enrol(): Promise<number> {
         and(
           eq(listMember.listId, job.listId),
           eq(listMember.status, "subscribed"),
-          sql`coalesce(${listMember.consentAt}, ${listMember.createdAt}) >= ${job.createdAt}`,
+          /*
+           * Only people who joined after the automation was switched on.
+           *
+           * The date goes in as text and is cast, not handed over as a Date:
+           * inside a raw fragment there is no column to tell the driver what
+           * type it should be, and postgres-js refuses it outright.
+           */
+          sql`coalesce(${listMember.consentAt}, ${listMember.createdAt}) >= ${job.createdAt.toISOString()}::timestamptz`,
           sql`not exists (
             select 1 from automation_run
             where automation_run.automation_id = ${job.id}

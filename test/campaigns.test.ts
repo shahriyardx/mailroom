@@ -29,9 +29,12 @@ after(async () => {
 
 beforeEach(async () => {
   const { db } = await import("@/db");
-  const { broadcast, broadcastRecipient, listMember, mailingList } = await import("@/db/schema");
+  const { broadcast, broadcastClick, broadcastRecipient, listMember, mailingList, segment } =
+    await import("@/db/schema");
+  await db.delete(broadcastClick);
   await db.delete(broadcastRecipient);
   await db.delete(broadcast);
+  await db.delete(segment);
   await db.delete(listMember);
   await db.delete(mailingList);
 });
@@ -404,5 +407,477 @@ describe("a broadcast written in the builder", () => {
     // What went out is what went out. A record that can be edited afterwards
     // is not a record.
     await assert.rejects(() => updateBroadcast(account.orgId, id, { subject: "Changed" }));
+  });
+});
+
+describe("aiming a campaign at part of a list", () => {
+  it("counts only the people a segment matches", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { createSegment, findSegment, segmentSize } = await import("@/server/segments");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [
+        { address: "ada@example.com", fields: { plan: "pro" } },
+        { address: "bob@example.com", fields: { plan: "free" } },
+        { address: "cyd@example.com", fields: { plan: "pro" } },
+      ],
+      "import",
+    );
+
+    const id = await createSegment(account.orgId, {
+      listId,
+      name: "Paying",
+      rules: [{ field: "fields.plan", op: "is", value: "pro" }],
+    });
+
+    const row = await findSegment(account.orgId, id);
+    assert.ok(row);
+    assert.equal(await segmentSize(account.orgId, row), 2);
+  });
+
+  it("counts somebody with no value as not matching the value", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { createSegment, findSegment, segmentSize } = await import("@/server/segments");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "ada@example.com", fields: { plan: "free" } }, { address: "bob@example.com" }],
+      "import",
+    );
+
+    // "plan is not free" has to include the person with no plan recorded.
+    // Leaving them out is the bug that makes a segment quietly too small.
+    const id = await createSegment(account.orgId, {
+      listId,
+      name: "Not free",
+      rules: [{ field: "fields.plan", op: "is_not", value: "free" }],
+    });
+
+    const row = await findSegment(account.orgId, id);
+    assert.ok(row);
+    assert.equal(await segmentSize(account.orgId, row), 1);
+  });
+
+  it("sends only to the segment", async () => {
+    const { addMembers, createBroadcast, startBroadcast } = await import("@/server/campaigns");
+    const { createSegment } = await import("@/server/segments");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [
+        { address: "ada@example.com", fields: { city: "London" } },
+        { address: "bob@example.com", fields: { city: "Berlin" } },
+      ],
+      "import",
+    );
+
+    const segmentId = await createSegment(account.orgId, {
+      listId,
+      name: "London",
+      rules: [{ field: "fields.city", op: "is", value: "London" }],
+    });
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Hello London",
+      segmentId,
+    });
+
+    const result = await startBroadcast(account.orgId, id, null);
+    assert.equal(result.recipients, 1);
+  });
+
+  it("refuses a segment that belongs to another list", async () => {
+    const { createBroadcast } = await import("@/server/campaigns");
+    const { createSegment } = await import("@/server/segments");
+
+    const one = await aList("One");
+    const two = await aList("Two");
+    const segmentId = await createSegment(account.orgId, { listId: two, name: "Elsewhere" });
+
+    // Otherwise it sends to nobody, silently, and looks like a bug in the send.
+    await assert.rejects(() =>
+      createBroadcast(account.orgId, {
+        listId: one,
+        mailboxId: account.mailboxId,
+        subject: "Wrong",
+        segmentId,
+      }),
+    );
+  });
+
+  it("drops the segment when the list is changed underneath it", async () => {
+    const { createBroadcast, findBroadcast, updateBroadcast } = await import("@/server/campaigns");
+    const { createSegment } = await import("@/server/segments");
+
+    const one = await aList("One");
+    const two = await aList("Two");
+    const segmentId = await createSegment(account.orgId, { listId: one, name: "Here" });
+
+    const id = await createBroadcast(account.orgId, {
+      listId: one,
+      mailboxId: account.mailboxId,
+      subject: "Moving",
+      segmentId,
+    });
+
+    await updateBroadcast(account.orgId, id, { listId: two });
+    const row = await findBroadcast(account.orgId, id);
+    assert.equal(row?.listId, two);
+    assert.equal(row?.segmentId, null);
+  });
+});
+
+describe("testing two subject lines", () => {
+  it("splits the audience in half and remembers which half each person was in", async () => {
+    const { addMembers, createBroadcast, startBroadcast, updateBroadcast } = await import(
+      "@/server/campaigns"
+    );
+    const { db } = await import("@/db");
+    const { broadcastRecipient } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      Array.from({ length: 40 }, (_, at) => ({ address: `person${at}@example.com` })),
+      "import",
+    );
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "One way of saying it",
+    });
+    await updateBroadcast(account.orgId, id, { subjectB: "Another way" });
+    await startBroadcast(account.orgId, id, null);
+
+    const rows = await db
+      .select({ variant: broadcastRecipient.variant })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, id));
+
+    const b = rows.filter((row) => row.variant === "b").length;
+    // A hash, not a coin toss: forty people will not split exactly, but a
+    // split that lands outside a quarter either way is not a split.
+    assert.ok(b > 10 && b < 30, `expected a rough half, got ${b} of 40`);
+  });
+
+  it("puts everybody in one half when there is nothing to test", async () => {
+    const { addMembers, createBroadcast, startBroadcast } = await import("@/server/campaigns");
+    const { db } = await import("@/db");
+    const { broadcastRecipient } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "ada@example.com" }, { address: "bob@example.com" }],
+      "import",
+    );
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Only one",
+    });
+    await startBroadcast(account.orgId, id, null);
+
+    const rows = await db
+      .select({ variant: broadcastRecipient.variant })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, id));
+    assert.ok(rows.every((row) => row.variant === "a"));
+  });
+});
+
+describe("sending it again to the people who never opened it", () => {
+  it("takes its audience from the first send, not the list", async () => {
+    const { addMembers, createBroadcast, resendToNonOpeners, startBroadcast } = await import(
+      "@/server/campaigns"
+    );
+    const { db } = await import("@/db");
+    const { broadcast, broadcastRecipient } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "ada@example.com" }, { address: "bob@example.com" }],
+      "import",
+    );
+
+    const first = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Round one",
+    });
+    await startBroadcast(account.orgId, first, null);
+
+    // Pretend the send finished and one of them opened it.
+    const rows = await db
+      .select({ id: broadcastRecipient.id })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, first));
+    await db
+      .update(broadcastRecipient)
+      .set({ status: "sent", sentAt: new Date() })
+      .where(eq(broadcastRecipient.broadcastId, first));
+    await db
+      .update(broadcastRecipient)
+      .set({ openedAt: new Date() })
+      .where(eq(broadcastRecipient.id, rows[0]!.id));
+    await db.update(broadcast).set({ status: "sent" }).where(eq(broadcast.id, first));
+
+    // Somebody who joined after the first send was never given it, so a
+    // reminder about it would be a reminder about nothing.
+    await addMembers(account.orgId, listId, [{ address: "new@example.com" }], "import");
+
+    const again = await resendToNonOpeners(account.orgId, first);
+    assert.equal(again.audience, 1);
+
+    const started = await startBroadcast(account.orgId, again.id, null);
+    assert.equal(started.recipients, 1);
+  });
+
+  it("refuses when everybody opened it", async () => {
+    const { addMembers, createBroadcast, resendToNonOpeners, startBroadcast } = await import(
+      "@/server/campaigns"
+    );
+    const { db } = await import("@/db");
+    const { broadcast, broadcastRecipient } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const listId = await aList();
+    await addMembers(account.orgId, listId, [{ address: "ada@example.com" }], "import");
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Everybody read it",
+    });
+    await startBroadcast(account.orgId, id, null);
+    await db
+      .update(broadcastRecipient)
+      .set({ status: "sent", sentAt: new Date(), openedAt: new Date() })
+      .where(eq(broadcastRecipient.broadcastId, id));
+    await db.update(broadcast).set({ status: "sent" }).where(eq(broadcast.id, id));
+
+    await assert.rejects(() => resendToNonOpeners(account.orgId, id));
+  });
+});
+
+describe("copying a campaign", () => {
+  it("copies the message and none of the send", async () => {
+    const { addMembers, createBroadcast, duplicateBroadcast, findBroadcast, startBroadcast } =
+      await import("@/server/campaigns");
+
+    const listId = await aList();
+    await addMembers(account.orgId, listId, [{ address: "ada@example.com" }], "import");
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Worth repeating",
+      html: "<p>Hello</p>",
+    });
+    await startBroadcast(account.orgId, id, null);
+
+    const made = await duplicateBroadcast(account.orgId, id);
+    const copy = await findBroadcast(account.orgId, made);
+
+    assert.equal(copy?.html, "<p>Hello</p>");
+    assert.equal(copy?.subject, "Worth repeating (copy)");
+    // A copy that kept its schedule or its numbers would be a lie about
+    // something that never went out.
+    assert.equal(copy?.status, "draft");
+    assert.equal(copy?.startedAt, null);
+  });
+});
+
+describe("making people confirm before they count", () => {
+  it("leaves a new signup pending on a double opt-in list", async () => {
+    const { membersView, subscribe, updateList } = await import("@/server/campaigns");
+
+    const listId = await aList();
+    await updateList(account.orgId, listId, { doubleOptIn: true });
+
+    const result = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+    assert.equal(result.status, "pending");
+
+    const [row] = await membersView(account.orgId, listId);
+    assert.equal(row?.status, "pending");
+  });
+
+  it("leaves a pending person out of a send", async () => {
+    const { createBroadcast, startBroadcast, subscribe, updateList } = await import(
+      "@/server/campaigns"
+    );
+
+    const listId = await aList();
+    await updateList(account.orgId, listId, { doubleOptIn: true });
+    await subscribe(account.orgId, listId, { address: "ada@example.com" }, "signup form");
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Not for them yet",
+    });
+
+    // Nobody confirmed, so there is nobody to send to — and being told that
+    // is better than the send going out to one unconfirmed address.
+    await assert.rejects(() => startBroadcast(account.orgId, id, null));
+  });
+
+  it("subscribes them when the link is clicked, and says so once", async () => {
+    const { confirmByToken, confirmToken, membersView, subscribe, updateList } = await import(
+      "@/server/campaigns"
+    );
+
+    const listId = await aList();
+    await updateList(account.orgId, listId, { doubleOptIn: true });
+    const made = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+
+    const first = await confirmByToken(confirmToken(made.id));
+    assert.equal(first?.fresh, true);
+
+    const [row] = await membersView(account.orgId, listId);
+    assert.equal(row?.status, "subscribed");
+
+    // A link scanner follows every URL in a message before the reader sees
+    // it, so the second visit is usually not even a person.
+    const again = await confirmByToken(confirmToken(made.id));
+    assert.equal(again?.fresh, false);
+    assert.equal((await membersView(account.orgId, listId))[0]?.status, "subscribed");
+  });
+
+  it("refuses an unsubscribe token as a confirmation", async () => {
+    const { confirmByToken, subscribe, unsubscribeToken, updateList } = await import(
+      "@/server/campaigns"
+    );
+
+    const listId = await aList();
+    await updateList(account.orgId, listId, { doubleOptIn: true });
+    const made = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+
+    // Two signatures over different strings, so one cannot stand in for the
+    // other — a confirmation link that unsubscribed would be found late.
+    assert.equal(await confirmByToken(unsubscribeToken(made.id)), null);
+  });
+
+  it("subscribes straight away when the list does not ask", async () => {
+    const { membersView, subscribe } = await import("@/server/campaigns");
+
+    const listId = await aList();
+    const result = await subscribe(
+      account.orgId,
+      listId,
+      { address: "ada@example.com" },
+      "signup form",
+    );
+    assert.equal(result.status, "subscribed");
+    assert.equal((await membersView(account.orgId, listId))[0]?.status, "subscribed");
+  });
+});
+
+describe("what a campaign did", () => {
+  it("counts opens, clicks and the people it lost", async () => {
+    const {
+      addMembers,
+      broadcastReport,
+      createBroadcast,
+      startBroadcast,
+      unsubscribeByToken,
+      unsubscribeToken,
+    } = await import("@/server/campaigns");
+    const { db } = await import("@/db");
+    const { broadcastClick, broadcastRecipient } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const { newId } = await import("@/lib/utils");
+
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [
+        { address: "ada@example.com" },
+        { address: "bob@example.com" },
+        { address: "cyd@example.com" },
+      ],
+      "import",
+    );
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Measured",
+    });
+    await startBroadcast(account.orgId, id, null);
+
+    await db
+      .update(broadcastRecipient)
+      .set({ status: "sent", sentAt: new Date() })
+      .where(eq(broadcastRecipient.broadcastId, id));
+
+    const rows = await db
+      .select({ id: broadcastRecipient.id, memberId: broadcastRecipient.listMemberId })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, id));
+
+    await db
+      .update(broadcastRecipient)
+      .set({ openedAt: new Date() })
+      .where(eq(broadcastRecipient.id, rows[0]!.id));
+    await db
+      .update(broadcastRecipient)
+      .set({ openedAt: new Date(), clickedAt: new Date() })
+      .where(eq(broadcastRecipient.id, rows[1]!.id));
+    await db.insert(broadcastClick).values({
+      id: newId("bcc"),
+      organizationId: account.orgId,
+      broadcastId: id,
+      recipientId: rows[1]!.id,
+      url: "https://example.test/post",
+      clicks: 3,
+    });
+
+    await unsubscribeByToken(unsubscribeToken(rows[2]!.memberId));
+
+    const report = await broadcastReport(account.orgId, id);
+    assert.ok(report);
+    assert.equal(report.sent, 3);
+    assert.equal(report.opened, 2);
+    assert.equal(report.clicked, 1);
+    assert.equal(report.unsubscribed, 1);
+    // People, not clicks: a newsletter forwarded round an office would
+    // otherwise turn one reader into a crowd.
+    assert.equal(report.links[0]?.people, 1);
+    assert.equal(report.links[0]?.clicks, 3);
   });
 });

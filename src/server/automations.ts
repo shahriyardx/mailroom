@@ -5,7 +5,6 @@ import {
   automation,
   automationRun,
   automationStep,
-  listMember,
   mailbox,
   mailingList,
 } from "@/db/schema";
@@ -115,11 +114,18 @@ export async function removeAutomation(orgId: string, id: string) {
 /* Steps                                                                      */
 /* -------------------------------------------------------------------------- */
 
-/** Appends an email to the end of the series. */
+/**
+ * Puts an email into the series, at the end or anywhere in it.
+ *
+ * Inserting shifts everything after it down, so the positions stay
+ * contiguous. Runs waiting on a later step move with it, which is the right
+ * answer: somebody part-way through a series should get the email that was
+ * added in front of the one they are waiting for, not skip it.
+ */
 export async function addStep(
   orgId: string,
   automationId: string,
-  input: { subject: string; delayMinutes?: number },
+  input: { subject: string; delayMinutes?: number; position?: number },
 ) {
   const row = await db.query.automation.findFirst({
     where: and(eq(automation.id, automationId), eq(automation.organizationId, orgId)),
@@ -132,15 +138,67 @@ export async function addStep(
     .from(automationStep)
     .where(eq(automationStep.automationId, automationId));
 
+  const end = last?.howMany ?? 0;
+  const at = Math.min(Math.max(0, Math.round(input.position ?? end)), end);
+
+  if (at < end) {
+    await db
+      .update(automationStep)
+      .set({ position: sql`${automationStep.position} + 1` })
+      .where(
+        and(
+          eq(automationStep.automationId, automationId),
+          sql`${automationStep.position} >= ${at}`,
+        ),
+      );
+    await db
+      .update(automationRun)
+      .set({ step: sql`${automationRun.step} + 1` })
+      .where(
+        and(eq(automationRun.automationId, automationId), sql`${automationRun.step} >= ${at}`),
+      );
+  }
+
   const id = newId("ats");
   await db.insert(automationStep).values({
     id,
     automationId,
-    position: last?.howMany ?? 0,
+    position: at,
     delayMinutes: Math.max(0, Math.round(input.delayMinutes ?? 0)),
     subject: input.subject.trim() || "Untitled",
   });
   return id;
+}
+
+/**
+ * Swaps an email with the one above or below it.
+ *
+ * Two updates through a position nothing else occupies, because the order is
+ * a unique index and a direct swap would collide halfway through it.
+ */
+export async function moveStep(orgId: string, stepId: string, by: -1 | 1) {
+  const step = await stepOf(orgId, stepId);
+  if (!step) throw new Error("No such step");
+
+  const target = step.position + by;
+  if (target < 0) return;
+
+  const neighbour = await db.query.automationStep.findFirst({
+    where: and(
+      eq(automationStep.automationId, step.automationId),
+      eq(automationStep.position, target),
+    ),
+    columns: { id: true },
+  });
+  if (!neighbour) return;
+
+  const parked = -1;
+  await db.update(automationStep).set({ position: parked }).where(eq(automationStep.id, stepId));
+  await db
+    .update(automationStep)
+    .set({ position: step.position })
+    .where(eq(automationStep.id, neighbour.id));
+  await db.update(automationStep).set({ position: target }).where(eq(automationStep.id, stepId));
 }
 
 export async function updateStep(

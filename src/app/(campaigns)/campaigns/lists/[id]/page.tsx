@@ -1,4 +1,5 @@
 import { ListDetailPanel } from "@/components/mail/list-detail-panel";
+import { env } from "@/lib/env";
 import { listsView, membersView } from "@/server/campaigns";
 import { requireCapability } from "@/server/permissions";
 import { notFound } from "next/navigation";
@@ -13,5 +14,5 @@ export default async function ListDetailPage({ params }: { params: Promise<{ id:
   if (!list) notFound();
 
   const members = await membersView(access.orgId, id);
-  return <ListDetailPanel list={list} members={members} />;
+  return <ListDetailPanel list={list} members={members} appUrl={env.appUrl} />;
 }

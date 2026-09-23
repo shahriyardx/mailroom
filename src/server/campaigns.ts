@@ -818,10 +818,26 @@ async function audienceFor(
  * it is the number somebody needs before they press Send, and "we will tell
  * you afterwards" is not an acceptable answer to "how many is this".
  */
-export async function audienceSize(orgId: string, broadcastId: string) {
+export async function audienceSize(
+  orgId: string,
+  broadcastId: string,
+  /**
+   * The aim as it stands on screen, which is not always the saved one.
+   *
+   * A number beside a Send button that describes the row as it was two edits
+   * ago is worse than no number, so the caller says what it is looking at
+   * rather than the server assuming nothing has changed.
+   */
+  aim?: { listId?: string; segmentId?: string | null },
+) {
   const row = await findBroadcast(orgId, broadcastId);
   if (!row) return 0;
-  const people = await audienceFor(orgId, row);
+
+  const people = await audienceFor(orgId, {
+    listId: aim?.listId || row.listId,
+    segmentId: aim?.segmentId === undefined ? row.segmentId : aim.segmentId,
+    resendOfId: row.resendOfId,
+  });
   return people.length;
 }
 

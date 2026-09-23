@@ -22,10 +22,11 @@ import { Empty, PageHeader, Row, SearchBox, Surface, Toolbar } from "@/component
 import {
   cancelBroadcastAction,
   createBroadcastAction,
+  duplicateBroadcastAction,
   startBroadcastAction,
 } from "@/server/actions";
 import type { BroadcastRow } from "@/server/campaigns";
-import { Megaphone, Plus } from "lucide-react";
+import { Copy, Megaphone, Plus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
@@ -172,8 +173,8 @@ export function BroadcastsPanel({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  {/* Opens it in the builder. A draft is written there; one
-                      that has gone is read there. */}
+                  {/* One address for both: a draft opens in the builder, and
+                      anything that has started opens as its report. */}
                   <Link
                     href={`/campaigns/broadcasts/${entry.id}`}
                     className="truncate font-medium text-[13.5px] hover:underline"
@@ -226,6 +227,28 @@ export function BroadcastsPanel({
                   Stop
                 </Button>
               ) : null}
+
+              {/* The second campaign is almost always the first one again with
+                  a different subject, so copying is a button rather than a
+                  thing to rebuild. */}
+              <Button
+                variant="ghost"
+                size="sm"
+                disabled={busy}
+                title="Copies the message into a new draft."
+                onClick={() =>
+                  startTransition(async () => {
+                    const made = await duplicateBroadcastAction(entry.id);
+                    if (!made.ok) {
+                      toast.error(made.error);
+                      return;
+                    }
+                    router.push(`/campaigns/broadcasts/${made.id}`);
+                  })
+                }
+              >
+                <Copy />
+              </Button>
             </Row>
           ))
         )}

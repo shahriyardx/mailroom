@@ -1,6 +1,7 @@
 "use client";
 
 import { Input } from "@/components/kit";
+import { cn } from "@/lib/utils";
 import { Search } from "lucide-react";
 
 /**
@@ -87,8 +88,15 @@ export function SearchBox({
  * state the same size as the full one, so a screen does not appear to grow as
  * it fills.
  */
-export function Surface({ children }: { children: React.ReactNode }) {
-  return <div className="overflow-hidden rounded-2xl border border-border bg-card">{children}</div>;
+export function Surface({
+  children,
+  className,
+}: { children: React.ReactNode; className?: string }) {
+  return (
+    <div className={cn("overflow-hidden rounded-2xl border border-border bg-card", className)}>
+      {children}
+    </div>
+  );
 }
 
 export function Empty({
@@ -118,9 +126,14 @@ export function Empty({
 }
 
 /** One row in a Surface. Separated by a line rather than a gap, like a table. */
-export function Row({ children }: { children: React.ReactNode }) {
+export function Row({ children, className }: { children: React.ReactNode; className?: string }) {
   return (
-    <div className="flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0 hover:bg-muted/30">
+    <div
+      className={cn(
+        "flex items-center gap-3 border-border border-b px-4 py-3 last:border-b-0 hover:bg-muted/30",
+        className,
+      )}
+    >
       {children}
     </div>
   );

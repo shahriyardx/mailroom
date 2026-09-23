@@ -15,6 +15,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   Activity,
   FileText,
+  Filter,
   Gauge,
   Globe,
   Image as ImageIcon,
@@ -26,6 +27,7 @@ import {
   Settings,
   ShieldOff,
   Webhook,
+  Workflow,
 } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -64,7 +66,9 @@ interface Item {
 const NAV: Item[] = [
   { href: "/campaigns", label: "Overview", icon: Gauge },
   { href: "/campaigns/broadcasts", label: "Campaigns", icon: Megaphone },
+  { href: "/campaigns/automations", label: "Automations", icon: Workflow },
   { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
+  { href: "/campaigns/segments", label: "Segments", icon: Filter, needs: "rules:manage" },
   { href: "/campaigns/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
   { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
   { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },

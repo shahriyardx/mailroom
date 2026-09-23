@@ -28,6 +28,7 @@ import { requireAccess } from "@/server/access";
 import {
   addStep,
   createAutomation,
+  moveStep,
   removeAutomation,
   removeStep,
   updateAutomation,
@@ -1777,10 +1778,13 @@ export async function removeSegmentAction(id: string) {
 }
 
 /** How many people a draft would go to, asked from the builder before sending. */
-export async function audienceSizeAction(broadcastId: string) {
+export async function audienceSizeAction(
+  broadcastId: string,
+  aim?: { listId?: string; segmentId?: string | null },
+) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
-  return { ok: true as const, size: await audienceSize(access.orgId, broadcastId) };
+  return { ok: true as const, size: await audienceSize(access.orgId, broadcastId, aim) };
 }
 
 export async function duplicateBroadcastAction(id: string) {
@@ -1903,4 +1907,15 @@ export async function removeStepAction(stepId: string) {
   assertCan(access, "mail:send");
   await removeStep(access.orgId, stepId);
   return { ok: true as const };
+}
+
+export async function moveStepAction(stepId: string, by: -1 | 1) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    await moveStep(access.orgId, stepId, by);
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That could not be moved");
+  }
 }

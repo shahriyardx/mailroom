@@ -13,6 +13,7 @@ import {
   Field,
   Input,
   Note,
+  Switch,
   Textarea,
 } from "@/components/kit";
 import { Empty, PageHeader, Row, SearchBox, Surface, Toolbar } from "@/components/mail/page-frame";
@@ -21,9 +22,10 @@ import {
   removeListAction,
   removeListMemberAction,
   setListMemberStatusAction,
+  updateListAction,
 } from "@/server/actions";
 import type { ListRow as ListSummary, MemberRow } from "@/server/campaigns";
-import { ArrowLeft, FileUp, Trash2, UserPlus, Users } from "lucide-react";
+import { ArrowLeft, Check, Copy, FileUp, Trash2, UserPlus, Users } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
@@ -40,9 +42,12 @@ import { toast } from "sonner";
 export function ListDetailPanel({
   list,
   members,
+  appUrl,
 }: {
   list: ListSummary;
   members: MemberRow[];
+  /** Where this instance answers, so the signup link can be shown in full. */
+  appUrl: string;
 }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
@@ -114,8 +119,10 @@ export function ListDetailPanel({
       <PageHeader
         title={list.name}
         description={`${list.subscribed.toLocaleString()} subscribed${
-          list.total > list.subscribed
-            ? ` · ${(list.total - list.subscribed).toLocaleString()} not`
+          list.pending > 0 ? ` · ${list.pending.toLocaleString()} not confirmed` : ""
+        }${
+          list.total > list.subscribed + list.pending
+            ? ` · ${(list.total - list.subscribed - list.pending).toLocaleString()} gone`
             : ""
         }`}
       >
@@ -125,6 +132,8 @@ export function ListDetailPanel({
         </Button>
         {add}
       </PageHeader>
+
+      <JoiningSettings list={list} appUrl={appUrl} />
 
       {members.length > 0 ? (
         <Toolbar>
@@ -163,12 +172,14 @@ export function ListDetailPanel({
                     tone={
                       person.status === "subscribed"
                         ? "ok"
-                        : person.status === "unsubscribed"
-                          ? "warn"
-                          : "danger"
+                        : person.status === "pending"
+                          ? "neutral"
+                          : person.status === "unsubscribed"
+                            ? "warn"
+                            : "danger"
                     }
                   >
-                    {person.status}
+                    {person.status === "pending" ? "not confirmed" : person.status}
                   </Badge>
                 </div>
                 <div className="mt-0.5 text-[12px] text-muted-foreground">
@@ -351,5 +362,83 @@ export function ListDetailPanel({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+/**
+ * How people are allowed to join this list.
+ *
+ * Both switches are off on a fresh list and both change what somebody signing
+ * up experiences, so they are stated as sentences rather than labels — a
+ * toggle called "Double opt-in" tells somebody who has not run a list before
+ * exactly nothing about what will happen.
+ */
+function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }) {
+  const router = useRouter();
+  const [busy, startTransition] = useTransition();
+  const [copied, setCopied] = useState(false);
+
+  const signupUrl = `${appUrl}/subscribe/${list.id}`;
+
+  function change(patch: { doubleOptIn?: boolean; publicSignup?: boolean }) {
+    startTransition(async () => {
+      const result = await updateListAction(list.id, patch);
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      router.refresh();
+    });
+  }
+
+  return (
+    <Surface className="mb-3">
+      <Row className="items-start">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-medium">Make people confirm by email</div>
+          <div className="mt-0.5 text-[12px] text-muted-foreground">
+            They land as "not confirmed" and hear nothing until they click a link. It halves a list
+            and it is the only thing that stops a stranger signing somebody else up — which is where
+            spam complaints come from.
+          </div>
+        </div>
+        <Switch
+          checked={list.doubleOptIn}
+          disabled={busy}
+          onCheckedChange={(next) => change({ doubleOptIn: next })}
+          aria-label="Make people confirm by email"
+        />
+      </Row>
+
+      <Row className="items-start">
+        <div className="min-w-0 flex-1">
+          <div className="text-[13px] font-medium">Give this list a signup page</div>
+          <div className="mt-0.5 text-[12px] text-muted-foreground">
+            A page anybody can open and put their address into, with no account. Off, the address
+            below returns a 404.
+          </div>
+          {list.publicSignup && (
+            <button
+              type="button"
+              onClick={() => {
+                void navigator.clipboard.writeText(signupUrl);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1600);
+              }}
+              className="mt-2 flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+            >
+              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
+              {signupUrl}
+            </button>
+          )}
+        </div>
+        <Switch
+          checked={list.publicSignup}
+          disabled={busy}
+          onCheckedChange={(next) => change({ publicSignup: next })}
+          aria-label="Give this list a signup page"
+        />
+      </Row>
+    </Surface>
   );
 }

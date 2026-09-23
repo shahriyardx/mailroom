@@ -1,9 +1,9 @@
+import { CampaignReport } from "@/components/mail/campaign-report";
 import { BroadcastBuilder } from "@/components/mail/template-builder";
-import { db } from "@/db";
-import { mailingList } from "@/db/schema";
-import { findBroadcast } from "@/server/campaigns";
+import { broadcastReport, findBroadcast, listsView, sendableMailboxes } from "@/server/campaigns";
 import { requireCapability } from "@/server/permissions";
-import { eq } from "drizzle-orm";
+import { segmentsView } from "@/server/segments";
+import { workspaceSettings } from "@/server/workspace";
 import { notFound } from "next/navigation";
 
 // Written out rather than re-exported: Next reads this at build time and only
@@ -11,11 +11,12 @@ import { notFound } from "next/navigation";
 export const dynamic = "force-dynamic";
 
 /*
- * One broadcast, in the same builder a template uses.
+ * One campaign — either the thing being written, or the record of what it did.
  *
- * A broadcast and a template are the same document with different paperwork
- * around it, and somebody writing one to a list should not have a worse
- * editor than somebody saving one for later.
+ * The same URL for both, because they are the same object at two points in its
+ * life and nobody wants to learn two addresses for it. A draft opens in the
+ * builder; anything that has started opens as a report, since what went out is
+ * what went out and an editor over it would be offering to change history.
  */
 export default async function BroadcastPage({ params }: { params: Promise<{ id: string }> }) {
   const access = await requireCapability("mail:send");
@@ -24,16 +25,37 @@ export default async function BroadcastPage({ params }: { params: Promise<{ id: 
   const row = await findBroadcast(access.orgId, id);
   if (!row) notFound();
 
-  const [list] = await db
-    .select({ name: mailingList.name })
-    .from(mailingList)
-    .where(eq(mailingList.id, row.listId))
-    .limit(1);
+  if (row.status !== "draft") {
+    const report = await broadcastReport(access.orgId, id);
+    if (!report) notFound();
+    return <CampaignReport report={report} basePath="/campaigns/broadcasts" />;
+  }
+
+  const [lists, segments, mailboxes, settings] = await Promise.all([
+    listsView(access.orgId),
+    segmentsView(access.orgId),
+    sendableMailboxes(access.orgId),
+    workspaceSettings(access.orgId),
+  ]);
 
   return (
     <BroadcastBuilder
       broadcast={row}
-      listName={list?.name ?? "a list"}
+      campaign={{
+        lists: lists.map((entry) => ({
+          id: entry.id,
+          name: entry.name,
+          subscribed: entry.subscribed,
+        })),
+        segments: segments.map((entry) => ({
+          id: entry.id,
+          listId: entry.listId,
+          name: entry.name,
+          size: entry.size,
+        })),
+        mailboxes,
+        postalAddress: settings.postalAddress,
+      }}
       basePath="/campaigns/broadcasts"
     />
   );
