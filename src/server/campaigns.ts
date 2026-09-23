@@ -876,9 +876,9 @@ export async function exportMembers(
 export async function createBroadcast(
   orgId: string,
   input: {
-    /** Left out while the campaign is only being written. */
+    /** Both left out while the campaign is only being written. */
     listId?: string | null;
-    mailboxId: string;
+    mailboxId?: string | null;
     subject: string;
     html?: string;
     text?: string;
@@ -898,13 +898,15 @@ export async function createBroadcast(
           columns: { id: true },
         })
       : null,
-    db.query.mailbox.findFirst({
-      where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
-      columns: { id: true },
-    }),
+    input.mailboxId
+      ? db.query.mailbox.findFirst({
+          where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
+          columns: { id: true },
+        })
+      : null,
   ]);
   if (input.listId && !list) throw new Error("No such list");
-  if (!box) throw new Error("No such mailbox");
+  if (input.mailboxId && !box) throw new Error("No such mailbox");
 
   /*
    * A template is copied, not referenced. A broadcast is a thing that was
@@ -931,7 +933,7 @@ export async function createBroadcast(
     id,
     organizationId: orgId,
     listId: input.listId ?? null,
-    mailboxId: input.mailboxId,
+    mailboxId: input.mailboxId ?? null,
     segmentId: input.segmentId ?? null,
     subject: subject || from.subject || "",
     html: input.html ?? from.html ?? null,
@@ -1050,8 +1052,9 @@ export async function startBroadcast(orgId: string, broadcastId: string, when?: 
   });
   if (!row) throw new Error("No such broadcast");
   if (row.status !== "draft") throw new Error("That broadcast has already been started");
-  // The one place a list stops being optional.
+  // Where the two optional halves of a draft stop being optional.
   if (!row.listId) throw new Error("Choose a list for this campaign before sending it");
+  if (!row.mailboxId) throw new Error("Choose an address to send this campaign from");
 
   const audience = await audienceFor(orgId, row);
   if (audience.length === 0) {

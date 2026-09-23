@@ -1140,3 +1140,18 @@ describe("a campaign before it has an audience", () => {
     assert.equal(rows.find((row) => row.id === id)?.listName, null);
   });
 });
+
+describe("a campaign before it has an address", () => {
+  it("refuses to send until one is chosen", async () => {
+    const { addMembers, createBroadcast, startBroadcast, updateBroadcast } = await import(
+      "@/server/campaigns"
+    );
+    const listId = await aList();
+    await addMembers(account.orgId, listId, [{ address: "ada@example.com" }], "import");
+
+    const id = await createBroadcast(account.orgId, { subject: "Hello" });
+    await updateBroadcast(account.orgId, id, { listId });
+
+    await assert.rejects(() => startBroadcast(account.orgId, id), /address/);
+  });
+});

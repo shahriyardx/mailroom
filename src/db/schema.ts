@@ -1456,10 +1456,15 @@ export const broadcast = pgTable(
      * required to send, and refused there instead.
      */
     listId: text("list_id").references(() => mailingList.id, { onDelete: "cascade" }),
-    /** Which address it comes from; also what decides the sending domain. */
-    mailboxId: text("mailbox_id")
-      .notNull()
-      .references(() => mailbox.id, { onDelete: "cascade" }),
+    /**
+     * Which address it comes from. Null while it is still being written.
+     *
+     * A draft is where the thinking happens, and demanding a verified sending
+     * address before a single word can be typed means nothing can be drafted
+     * on the day an instance is installed. It is required to send, and
+     * refused there instead.
+     */
+    mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
 
     /** Narrows the list to part of it. Null means everybody on the list. */
     segmentId: text("segment_id").references(() => segment.id, { onDelete: "set null" }),
@@ -1616,9 +1621,15 @@ export const automation = pgTable(
     listId: text("list_id").references(() => mailingList.id, { onDelete: "cascade" }),
     /** One from-address for the whole series: a welcome note and its follow-up
         arriving from two different people reads as two different companies. */
-    mailboxId: text("mailbox_id")
-      .notNull()
-      .references(() => mailbox.id, { onDelete: "cascade" }),
+    /**
+     * Which address it comes from. Null while it is still being written.
+     *
+     * A draft is where the thinking happens, and demanding a verified sending
+     * address before a single word can be typed means nothing can be drafted
+     * on the day an instance is installed. It is required to send, and
+     * refused there instead.
+     */
+    mailboxId: text("mailbox_id").references(() => mailbox.id, { onDelete: "cascade" }),
 
     name: text("name").notNull(),
     /**

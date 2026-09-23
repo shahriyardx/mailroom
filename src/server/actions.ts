@@ -1640,9 +1640,9 @@ export async function removeListMemberAction(memberId: string) {
 }
 
 export async function createBroadcastAction(input: {
-  /** Null while it is only being written. Required to send, not to draft. */
+  /** Both null while it is only being written. Required to send, not to draft. */
   listId?: string | null;
-  mailboxId: string;
+  mailboxId?: string | null;
   subject: string;
   html?: string;
   text?: string;
@@ -1851,7 +1851,11 @@ export async function resendToNonOpenersAction(id: string) {
 /* Automations                                                                */
 /* -------------------------------------------------------------------------- */
 
-export async function createAutomationAction(input: { mailboxId: string; name: string }) {
+export async function createAutomationAction(input: {
+  /** Null while the flow is only being drawn. Required to switch it on. */
+  mailboxId?: string | null;
+  name: string;
+}) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
   try {

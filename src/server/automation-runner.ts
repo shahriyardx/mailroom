@@ -465,6 +465,14 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       const budget = await sendBudget(job.orgId);
       if (budget.remaining <= 0) continue;
 
+      /*
+       * Cannot happen — switching one on refuses without an address — but the
+       * column allows null so a flow can be drawn before anybody has made a
+       * mailbox, and a runner that assumed otherwise would crash rather than
+       * leave the run where it is.
+       */
+      if (!job.mailboxId) continue;
+
       // An email. Anything below here sends.
       const url = unsubscribeUrl(member.id);
       /*

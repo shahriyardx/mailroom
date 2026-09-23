@@ -822,3 +822,47 @@ describe("letting somebody out early", () => {
     assert.deepEqual(settled?.tags, ["customer"]);
   });
 });
+
+describe("a flow before it has an address", () => {
+  it("is created with no mailbox at all", async () => {
+    const { createAutomation, findAutomation } = await import("@/server/automations");
+    const id = await createAutomation(account.orgId, { name: "Welcome" });
+
+    const row = await findAutomation(account.orgId, id);
+    assert.equal(row?.mailboxId, null);
+    assert.equal(row?.status, "draft");
+  });
+
+  it("refuses to switch on until one is chosen", async () => {
+    const { addNode, createAutomation, updateAutomation } = await import("@/server/automations");
+    const { createList } = await import("@/server/campaigns");
+
+    const listId = await createList(account.orgId, "Newsletter");
+    const id = await createAutomation(account.orgId, { name: "Welcome" });
+    await updateAutomation(account.orgId, id, { trigger: "subscribed", listId });
+    await addNode(account.orgId, id, { kind: "wait" });
+
+    await assert.rejects(
+      () => updateAutomation(account.orgId, id, { status: "active" }),
+      /address/,
+    );
+  });
+
+  it("switches on once it has one", async () => {
+    const { addNode, createAutomation, findAutomation, updateAutomation } = await import(
+      "@/server/automations"
+    );
+    const { createList } = await import("@/server/campaigns");
+
+    const listId = await createList(account.orgId, "Newsletter");
+    const id = await createAutomation(account.orgId, { name: "Welcome" });
+    await updateAutomation(account.orgId, id, { trigger: "subscribed", listId });
+    await addNode(account.orgId, id, { kind: "wait" });
+    await updateAutomation(account.orgId, id, {
+      mailboxId: account.mailboxId,
+      status: "active",
+    });
+
+    assert.equal((await findAutomation(account.orgId, id))?.status, "active");
+  });
+});

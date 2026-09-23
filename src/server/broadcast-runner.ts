@@ -57,6 +57,14 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
 
   for (const job of running) {
     /*
+     * Cannot happen — starting one refuses without an address — but the
+     * column allows null so that a draft can exist before anybody has made a
+     * mailbox, and a runner that assumed otherwise would be a crash rather
+     * than a stuck campaign.
+     */
+    if (!job.mailboxId) continue;
+
+    /*
      * The hourly ceiling, if this instance set one.
      *
      * Checked per pass rather than once, because an automation sending

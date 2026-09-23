@@ -71,7 +71,10 @@ export function AutomationsPanel({
   async function create() {
     setBusy(true);
     try {
-      const made = await createAutomationAction(draft);
+      const made = await createAutomationAction({
+        name: draft.name,
+        mailboxId: draft.mailboxId || null,
+      });
       if (!made.ok) throw new Error(made.error);
       setMaking(false);
       router.push(`/campaigns/automations/${made.id}`);
@@ -95,7 +98,6 @@ export function AutomationsPanel({
             setDraft({ name: "", mailboxId: mailboxes[0]?.id ?? "" });
             setMaking(true);
           }}
-          disabled={mailboxes.length === 0}
         >
           <Plus />
           New automation
@@ -145,9 +147,13 @@ export function AutomationsPanel({
               />
             </Field>
 
-            <Field label="From">
+            <Field
+              label="From"
+              hint={mailboxes.length === 0 ? "None yet — add one later" : undefined}
+            >
               <Select
                 value={draft.mailboxId}
+                disabled={mailboxes.length === 0}
                 onValueChange={(value) => setDraft((current) => ({ ...current, mailboxId: value }))}
               >
                 <SelectTrigger>
@@ -164,9 +170,9 @@ export function AutomationsPanel({
             </Field>
 
             <Note>
-              One address for the whole series: a welcome note and its follow-up arriving from two
-              different people reads as two different companies. You pick what starts it — a list
-              somebody joins, or an event your own code posts — on the canvas.
+              {mailboxes.length === 0
+                ? "There are no sending addresses yet, so this is left blank — draw the flow now and pick one before you switch it on. What starts it is chosen on the canvas too."
+                : "One address for the whole series: a welcome note and its follow-up arriving from two different people reads as two different companies. You pick what starts it — a list somebody joins, or an event your own code posts — on the canvas."}
             </Note>
           </div>
 
@@ -174,11 +180,7 @@ export function AutomationsPanel({
             <Button variant="ghost" onClick={() => setMaking(false)}>
               Cancel
             </Button>
-            <Button
-              variant="solid"
-              onClick={create}
-              disabled={busy || !draft.name.trim() || !draft.mailboxId}
-            >
+            <Button variant="solid" onClick={create} disabled={busy || !draft.name.trim()}>
               Make it
             </Button>
           </DialogFooter>
@@ -231,14 +233,8 @@ export function AutomationsPanel({
       ) : (
         <BlankSlate
           icon={<Workflow />}
-          title={
-            mailboxes.length === 0
-              ? "Add a mailbox first"
-              : lists.length === 0
-                ? "Make a list first"
-                : "No automations yet"
-          }
-          hint="A welcome series when somebody joins, or a flow your own code starts: a trial ending, an order shipping."
+          title="No automations yet"
+          hint="A welcome series when somebody joins, or a flow your own code starts: a trial ending, an order shipping. Draw it now; pick the address and the list before you switch it on."
         />
       )}
     </Panel>

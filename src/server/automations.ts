@@ -39,21 +39,33 @@ import { normaliseEventName } from "./custom-events";
  * starts this" in a dialog before anybody has seen the canvas is asking it
  * where the answer cannot be seen in context.
  */
-export async function createAutomation(orgId: string, input: { mailboxId: string; name: string }) {
+export async function createAutomation(
+  orgId: string,
+  input: { mailboxId?: string | null; name: string },
+) {
   const name = input.name.trim();
   if (!name) throw new Error("Give the automation a name");
 
-  const box = await db.query.mailbox.findFirst({
-    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
-    columns: { id: true },
-  });
-  if (!box) throw new Error("No such mailbox");
+  /*
+   * An address is optional here and required to switch it on.
+   *
+   * Drawing a flow is the work, and on a fresh instance there is no verified
+   * sending address to pick — so demanding one up front meant nothing could
+   * be designed on the day somebody installed this.
+   */
+  const box = input.mailboxId
+    ? await db.query.mailbox.findFirst({
+        where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
+        columns: { id: true },
+      })
+    : null;
+  if (input.mailboxId && !box) throw new Error("No such mailbox");
 
   const id = newId("aut");
   await db.insert(automation).values({
     id,
     organizationId: orgId,
-    mailboxId: input.mailboxId,
+    mailboxId: input.mailboxId ?? null,
     name,
   });
   return id;
@@ -160,6 +172,10 @@ export async function updateAutomation(
    * with it the two ways a trigger can be half-answered.
    */
   if (input.status === "active") {
+    // The one place an address stops being optional.
+    if (!(input.mailboxId ?? row.mailboxId)) {
+      throw new Error("Choose an address for this automation to send from first");
+    }
     if (!trigger || !listId) throw new Error("Choose what starts this automation first");
     if (trigger === "event" && !eventName) throw new Error("Choose which event starts it");
     if (!row.entryNodeId) throw new Error("Put something on the canvas first");

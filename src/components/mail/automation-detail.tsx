@@ -160,11 +160,11 @@ export function AutomationDetail({
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
           <Select
-            value={automation.mailboxId}
+            value={automation.mailboxId ?? ""}
             onValueChange={(value) => change({ mailboxId: value })}
           >
             <SelectTrigger className="h-8 w-[160px] shrink-0 text-[12.5px] lg:w-[200px]">
-              <SelectValue />
+              <SelectValue placeholder="Pick an address" />
             </SelectTrigger>
             <SelectContent>
               {mailboxes.map((row) => (

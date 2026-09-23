@@ -77,15 +77,6 @@ export function BroadcastsPanel({
   const [subject, setSubject] = useState("");
   const [templateId, setTemplateId] = useState("none");
 
-  /*
-   * A campaign needs an address to come from and nothing else.
-   *
-   * It used to need a list too, which meant somebody with an idea and no
-   * audience yet could not write anything down. Writing is the work; who it
-   * goes to is a decision that keeps until the moment before sending, and
-   * that is where it is asked for instead.
-   */
-  const ready = mailboxes.length > 0;
   const chosen = lists.find((entry) => entry.id === listId);
 
   const shown = useMemo(() => {
@@ -113,7 +104,15 @@ export function BroadcastsPanel({
   }
 
   const create = (
-    <Button variant="solid" size="md" disabled={!ready} onClick={() => setOpen(true)}>
+    /*
+     * Never disabled.
+     *
+     * Writing one used to need a list and a sending address, neither of which
+     * exists on the day an instance is installed — so somebody with an idea
+     * had nowhere to put it. Who it goes to and who it comes from are asked
+     * for at the moment before sending instead.
+     */
+    <Button variant="solid" size="md" onClick={() => setOpen(true)}>
       <Plus />
       Create campaign
     </Button>
@@ -191,12 +190,10 @@ export function BroadcastsPanel({
             icon={<Megaphone />}
             title="No campaigns yet"
             hint={
-              ready
-                ? "Reach everybody on a list at once. Write one and it is saved as a draft until you send it — you can decide who it goes to later."
-                : "Make an address first — a campaign has to come from somewhere."
+              "Reach everybody on a list at once. Write one and it is saved as a draft until you send it — who it goes to and who it comes from can both be decided later."
             }
           >
-            {ready ? create : null}
+            {create}
           </Empty>
         ) : shown.length === 0 ? (
           <Empty
@@ -306,7 +303,7 @@ export function BroadcastsPanel({
               startTransition(async () => {
                 const result = await createBroadcastAction({
                   listId: listId === LATER ? null : listId,
-                  mailboxId,
+                  mailboxId: mailboxId || null,
                   subject,
                   templateId: templateId === "none" ? null : templateId,
                 });
@@ -340,10 +337,17 @@ export function BroadcastsPanel({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field label="From">
-                <Select value={mailboxId} onValueChange={setMailboxId}>
+              <Field
+                label="From"
+                hint={mailboxes.length === 0 ? "None yet — add one later" : undefined}
+              >
+                <Select
+                  value={mailboxId}
+                  onValueChange={setMailboxId}
+                  disabled={mailboxes.length === 0}
+                >
                   <SelectTrigger>
-                    <SelectValue />
+                    <SelectValue placeholder="Pick an address" />
                   </SelectTrigger>
                   <SelectContent>
                     {mailboxes.map((box) => (
