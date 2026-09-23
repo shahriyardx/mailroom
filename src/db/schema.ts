@@ -1017,6 +1017,36 @@ export const sendJob = pgTable(
  * calls the API: changing a receipt should not need a deploy, and the same
  * receipt should read the same whichever service sent it.
  */
+/**
+ * Files an account has uploaded to use in its own mail.
+ *
+ * An image in an email is fetched from the open internet by whoever opens the
+ * message, days later, from a machine that has never heard of this instance.
+ * So these are served by id from a route that asks nobody to log in — the id
+ * is the only thing standing between a file and a stranger, which is why it
+ * is a random one rather than a number or a name.
+ */
+export const media = pgTable(
+  "media",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    filename: text("filename").notNull(),
+    contentType: text("content_type").notNull().default("application/octet-stream"),
+    sizeBytes: integer("size_bytes").notNull().default(0),
+    /** Object key inside the R2 bucket. */
+    r2Key: text("r2_key").notNull(),
+    /** Known for an image, so the builder can size it without loading it. */
+    width: integer("width"),
+    height: integer("height"),
+    uploadedBy: text("uploaded_by").references(() => user.id, { onDelete: "set null" }),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("media_org_idx").on(t.organizationId, t.createdAt)],
+);
+
 export const template = pgTable(
   "template",
   {
@@ -1151,6 +1181,7 @@ export type SendJob = typeof sendJob.$inferSelect;
 export type SendJobStatus = (typeof sendJobStatusEnum.enumValues)[number];
 export type DeliveryStatus = (typeof deliveryStatusEnum.enumValues)[number];
 export type Template = typeof template.$inferSelect;
+export type Media = typeof media.$inferSelect;
 
 /**
  * How one person likes the app to look. Kept per user rather than per member,

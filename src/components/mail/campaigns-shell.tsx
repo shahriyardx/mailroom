@@ -17,6 +17,7 @@ import {
   FileText,
   Gauge,
   Globe,
+  Image as ImageIcon,
   KeyRound,
   ListChecks,
   Megaphone,
@@ -71,6 +72,7 @@ const GROUPS: { title?: string; items: Item[] }[] = [
         icon: FileText,
         needs: "rules:manage",
       },
+      { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
     ],
   },
   {

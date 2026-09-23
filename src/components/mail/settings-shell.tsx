@@ -16,6 +16,7 @@ import {
   Forward,
   Gauge,
   Globe,
+  Image as ImageIcon,
   Inbox,
   KeyRound,
   ListChecks,
@@ -79,6 +80,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
         feature: "inbox",
       },
       { href: "/settings/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
+      { href: "/settings/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
       { href: "/settings/metrics", label: "Metrics", icon: BarChart3, needs: "mail:read" },
       { href: "/settings/logs", label: "Email log", icon: ScrollText, needs: "mail:read" },
       {

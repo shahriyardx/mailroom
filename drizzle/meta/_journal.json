@@ -232,6 +232,13 @@
       "when": 1789976530306,
       "tag": "0032_template_design",
       "breakpoints": true
+    },
+    {
+      "idx": 33,
+      "version": "7",
+      "when": 1789976590306,
+      "tag": "0033_media",
+      "breakpoints": true
     }
   ]
 }

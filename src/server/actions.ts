@@ -21,6 +21,7 @@ import { WILDCARD, isScope } from "@/lib/api-scopes";
 import { readDesign } from "@/lib/email-blocks";
 import { coveringDomain, domainOf, makeSnippet, parseAddressList } from "@/lib/mail";
 import { parseSchedule } from "@/lib/schedule";
+import { renderTemplateParts, templateVariables } from "@/lib/template";
 import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
@@ -70,6 +71,8 @@ import { type SubdomainReceiving, ensureSubdomainReceiving } from "./inbound";
 import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./inbound";
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
+import { sendableMailboxesFor } from "./mailboxes";
+import { forgetMedia } from "./media";
 import { cancelJobForMessage } from "./outbox";
 import { deliverMessage } from "./send";
 import { markCanceled } from "./sent";
@@ -1304,6 +1307,93 @@ export async function deleteTemplateAction(id: string) {
   assertCan(access, "rules:manage");
   await deleteTemplate(access.orgId, id);
   revalidatePath("/settings/templates");
+}
+
+/**
+ * Sends the template to one address, to be looked at.
+ *
+ * Variables are filled with their own names in brackets rather than left as
+ * they are: a test send is for seeing the layout, and `{{ name }}` sitting in
+ * a sentence is the one thing that will not be in the real one. It also goes
+ * through the ordinary send path, so if the address, the domain or SES is
+ * going to refuse it, it is refused here rather than in front of a list.
+ */
+export async function sendTemplateTestAction(input: {
+  mailboxId: string;
+  to: string;
+  subject: string;
+  html: string;
+  text?: string | null;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+
+  const boxes = await sendableMailboxesFor(access);
+  const box = boxes.find((entry) => entry.id === input.mailboxId);
+  if (!box) return { ok: false as const, error: "You cannot send from that mailbox" };
+
+  const address = input.to.trim();
+  if (!address.includes("@")) return { ok: false as const, error: "That is not an address" };
+
+  const names = templateVariables(input.subject, input.html, input.text);
+  const stand = Object.fromEntries(names.map((name) => [name, `[${name}]`]));
+
+  let subject = input.subject;
+  let html = input.html;
+  let text = input.text ?? null;
+  try {
+    const filled = renderTemplateParts({ subject: input.subject, html: input.html, text }, stand);
+    subject = filled.subject;
+    html = filled.html ?? input.html;
+    text = filled.text;
+  } catch {
+    // A variable this cannot fill is not a reason to refuse to show somebody
+    // their own template; it goes out with the placeholder still in it.
+  }
+
+  try {
+    await deliverMessage({
+      orgId: access.orgId,
+      mailboxId: box.id,
+      to: [{ address, name: "" }],
+      subject: subject || "(no subject)",
+      html,
+      text,
+      senderUserId: access.userId,
+    });
+    return { ok: true as const };
+  } catch (error) {
+    return {
+      ok: false as const,
+      error: error instanceof Error ? error.message : "It could not be sent",
+    };
+  }
+}
+
+/** The mailboxes this person may send a test from. */
+export async function sendableMailboxesAction() {
+  const access = await requireAccess();
+  const boxes = await sendableMailboxesFor(access);
+  return boxes.map((box) => ({ id: box.id, address: box.address, name: box.displayName }));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Media                                                                      */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Takes a file out of the library and leaves the object where it is.
+ *
+ * Mail that already went out points at that address, and will for as long as
+ * anybody keeps the message. Removing the bytes would put a broken image into
+ * something that was correct when it was sent.
+ */
+export async function deleteMediaAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await forgetMedia(access.orgId, id);
+  revalidatePath("/settings/media");
+  revalidatePath("/campaigns/media");
 }
 
 /* -------------------------------------------------------------------------- */

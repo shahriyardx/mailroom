@@ -36,6 +36,7 @@ const SIDEBAR = {
         { text: "Forwarding", link: "/guide/forwarding" },
         { text: "Campaigns", link: "/guide/campaigns" },
         { text: "Metrics", link: "/guide/metrics" },
+        { text: "Templates and media", link: "/guide/templates" },
         { text: "Features", link: "/guide/features" },
         { text: "Mailboxes and people", link: "/guide/mailboxes" },
         { text: "API keys", link: "/guide/api-keys" },

@@ -3,6 +3,13 @@
 import {
   Button,
   ConfirmDialog,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  Field,
   IconButton,
   Input,
   Note,
@@ -42,7 +49,13 @@ import {
 import { slugify, templateVariables } from "@/lib/template";
 import { useSubmit } from "@/lib/use-submit";
 import { cn, newId } from "@/lib/utils";
-import { createTemplateAction, deleteTemplateAction, updateTemplateAction } from "@/server/actions";
+import {
+  createTemplateAction,
+  deleteTemplateAction,
+  sendTemplateTestAction,
+  sendableMailboxesAction,
+  updateTemplateAction,
+} from "@/server/actions";
 import {
   AlignCenter,
   AlignLeft,
@@ -66,6 +79,7 @@ import {
   MousePointerClick,
   Plus,
   Quote as QuoteIcon,
+  Send,
   Table2,
   Trash2,
   Type,
@@ -76,9 +90,10 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmailFrame } from "./email-frame";
+import { MediaPicker } from "./media-panel";
 import { RichEditor } from "./rich-editor";
 
 /**
@@ -194,12 +209,43 @@ export function TemplateBuilder({
   const [pane, setPane] = useState<"design" | "html">(handwritten ? "html" : "design");
   const [converting, setConverting] = useState(false);
 
+  /*
+   * What was last saved, as a string, so "has this changed" is one comparison
+   * rather than a flag every edit has to remember to set — and so undoing an
+   * edit by hand leaves the page clean again, which a flag never does.
+   */
+  const saved = useRef(
+    JSON.stringify({
+      details: {
+        name: template?.name ?? "",
+        slug: template?.slug ?? "",
+        description: template?.description ?? "",
+        subject: template?.subject ?? "",
+      },
+      design: readDesign(template?.design) ?? emptyDesign(),
+      html: template?.html ?? "",
+    }),
+  );
+
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"block" | "page" | "details">("details");
   const [previewing, setPreviewing] = useState(false);
   const [removing, setRemoving] = useState(false);
+  const [leaving, setLeaving] = useState(false);
+  const [testing, setTesting] = useState(false);
 
   const block = design.blocks.find((entry) => entry.id === selected) ?? null;
+
+  const dirty = JSON.stringify({ details, design, html }) !== saved.current;
+
+  // The browser's own warning, for the ways out this page never sees: a
+  // closed tab, a typed address, a reload.
+  useEffect(() => {
+    if (!dirty) return;
+    const warn = (event: BeforeUnloadEvent) => event.preventDefault();
+    window.addEventListener("beforeunload", warn);
+    return () => window.removeEventListener("beforeunload", warn);
+  }, [dirty]);
 
   const compiled = useMemo(
     () => (handwritten ? html : renderDesign(design)),
@@ -304,10 +350,12 @@ export function TemplateBuilder({
       try {
         if (template) {
           await updateTemplateAction(template.id, payload);
+          saved.current = JSON.stringify({ details, design, html });
           toast.success("Template saved");
           router.refresh();
         } else {
           const created = await createTemplateAction(payload);
+          saved.current = JSON.stringify({ details, design, html });
           toast.success("Template created");
           router.replace(`${basePath}/${created.id}`);
         }
@@ -323,11 +371,13 @@ export function TemplateBuilder({
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* -- the bar ------------------------------------------------------- */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-border border-b px-4">
-        <Button variant="ghost" size="sm" asChild>
-          <Link href={basePath}>
-            <ArrowLeft />
-            Templates
-          </Link>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => (dirty ? setLeaving(true) : router.push(basePath))}
+        >
+          <ArrowLeft />
+          Templates
         </Button>
 
         <span className="h-5 w-px bg-border" />
@@ -370,14 +420,19 @@ export function TemplateBuilder({
             Preview
           </Button>
 
+          <Button variant="outline" size="sm" pill onClick={() => setTesting(true)}>
+            <Send />
+            Test send
+          </Button>
+
           {template && (
             <IconButton label="Delete template" size="sm" onClick={() => setRemoving(true)}>
               <Trash2 className="size-4" />
             </IconButton>
           )}
 
-          <Button variant="solid" size="sm" pill onClick={save} disabled={busy}>
-            {busy ? "Saving…" : template ? "Save" : "Create"}
+          <Button variant="solid" size="sm" pill onClick={save} disabled={busy || !dirty}>
+            {busy ? "Saving…" : !template ? "Create" : dirty ? "Save" : "Saved"}
           </Button>
         </div>
       </header>
@@ -523,6 +578,24 @@ export function TemplateBuilder({
         )}
       </div>
 
+      <TestSend
+        open={testing}
+        onOpenChange={setTesting}
+        subject={details.subject}
+        html={compiled}
+        text={handwritten ? (template?.text ?? null) : designToText(design)}
+      />
+
+      <ConfirmDialog
+        open={leaving}
+        onOpenChange={setLeaving}
+        title="Leave without saving?"
+        description="This template has changes that have not been saved."
+        consequences="They are only in this tab. Leaving loses them."
+        confirmLabel="Leave"
+        onConfirm={() => router.push(basePath)}
+      />
+
       <ConfirmDialog
         open={converting}
         onOpenChange={setConverting}
@@ -552,6 +625,119 @@ export function TemplateBuilder({
         }}
       />
     </div>
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Sending one to yourself                                                    */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Mails the template to one address, through the ordinary send path.
+ *
+ * The preview is a browser rendering HTML written for mail clients, which is
+ * the one thing it cannot tell you about. This is the only way to find out
+ * what Gmail does with it, and it goes out through the same code a real send
+ * uses, so a refused address or an unverified domain is refused here rather
+ * than in front of a list.
+ */
+function TestSend({
+  open,
+  onOpenChange,
+  subject,
+  html,
+  text,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  subject: string;
+  html: string;
+  text: string | null;
+}) {
+  const [boxes, setBoxes] = useState<{ id: string; address: string; name: string }[] | null>(null);
+  const [from, setFrom] = useState("");
+  const [to, setTo] = useState("");
+  const [busy, submit] = useSubmit();
+
+  useEffect(() => {
+    if (!open || boxes) return;
+    void sendableMailboxesAction().then((rows) => {
+      setBoxes(rows);
+      if (rows[0]) setFrom((current) => current || rows[0]!.id);
+    });
+  }, [open, boxes]);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[460px]">
+        <DialogHeader>
+          <DialogTitle>Send yourself a copy</DialogTitle>
+          <DialogDescription>
+            Variables are filled with their own names, so you can see where they land.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-3">
+          <Field label="From">
+            <Select value={from} onValueChange={setFrom}>
+              <SelectTrigger>
+                <SelectValue placeholder={boxes === null ? "Loading…" : "Pick a mailbox"} />
+              </SelectTrigger>
+              <SelectContent>
+                {(boxes ?? []).map((box) => (
+                  <SelectItem key={box.id} value={box.id} className="font-mono text-[12.5px]">
+                    {box.address}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="To">
+            <Input
+              value={to}
+              onChange={(event) => setTo(event.target.value)}
+              placeholder="you@example.com"
+              type="email"
+            />
+          </Field>
+
+          {boxes !== null && boxes.length === 0 && (
+            <Note>There is no mailbox you can send from yet.</Note>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" pill onClick={() => onOpenChange(false)}>
+            Cancel
+          </Button>
+          <Button
+            variant="solid"
+            pill
+            disabled={busy || !from || !to.includes("@")}
+            onClick={() =>
+              submit(async () => {
+                const result = await sendTemplateTestAction({
+                  mailboxId: from,
+                  to,
+                  subject,
+                  html,
+                  text,
+                });
+                if (!result.ok) {
+                  toast.error(result.error);
+                  return;
+                }
+                toast.success(`Sent to ${to}`);
+                onOpenChange(false);
+              })
+            }
+          >
+            {busy ? "Sending…" : "Send"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -1433,6 +1619,7 @@ function Inspector({
   onStyle: (changes: Partial<BlockStyle>) => void;
 }) {
   const style = block.style ?? {};
+  const [picking, setPicking] = useState(false);
 
   /** Every block gets these; only the content section differs. */
   const shared = (
@@ -1614,14 +1801,38 @@ function Inspector({
 
         {block.type === "image" && (
           <>
+            <Row label="Picture">
+              <Button
+                variant="outline"
+                size="sm"
+                pill
+                className="w-full"
+                onClick={() => setPicking(true)}
+              >
+                <ImageIcon />
+                {block.src ? "Change" : "Choose from media"}
+              </Button>
+            </Row>
             <Row label="URL">
               <Input
                 value={block.src}
                 onChange={(event) => onPatch({ src: event.target.value })}
-                placeholder="https://"
+                placeholder="https:// or choose above"
                 className="h-8 font-mono text-[12px]"
               />
             </Row>
+            <MediaPicker
+              open={picking}
+              onOpenChange={setPicking}
+              onPick={(item) =>
+                onPatch({
+                  src: item.url,
+                  // A name is a better starting point than nothing, and it is
+                  // what somebody would have typed for a logo or a header.
+                  alt: block.alt || item.filename.replace(/\.[^.]+$/, ""),
+                })
+              }
+            />
             <Row label="Alt text">
               <Input
                 value={block.alt}
