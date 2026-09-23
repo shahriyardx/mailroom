@@ -39,15 +39,41 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
   const [colour, setColour] = useState("#000000");
 
   function remember() {
+    const node = ref.current;
     const selection = window.getSelection();
-    range.current = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+    if (!node || !selection || selection.rangeCount === 0) return;
+
+    const current = selection.getRangeAt(0);
+    // Only a selection inside this editor. A caret left somewhere else is not
+    // something to put back here.
+    range.current = node.contains(current.commonAncestorContainer) ? current : range.current;
   }
 
-  function restore() {
-    if (!range.current) return;
-    const selection = window.getSelection();
-    selection?.removeAllRanges();
-    selection?.addRange(range.current);
+  /**
+   * Colours what is selected, and keeps hold of it.
+   *
+   * Applying a colour rewrites the markup underneath: text nodes are split and
+   * a span goes in. The range that was saved before that points at nodes which
+   * no longer exist, so putting it back a second time selects nothing — which
+   * is why the first pick worked and every one after it did not. The live
+   * selection is taken again afterwards, so the next pick has something to
+   * apply to.
+   */
+  function applyColour(colour: string) {
+    const node = ref.current;
+    if (!node) return;
+
+    node.focus();
+    if (range.current) {
+      const selection = window.getSelection();
+      selection?.removeAllRanges();
+      selection?.addRange(range.current);
+    }
+
+    document.execCommand("styleWithCSS", false, "true");
+    document.execCommand("foreColor", false, colour);
+    onChange(node.innerHTML);
+    remember();
   }
 
   useEffect(() => {
@@ -111,10 +137,7 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
           // a drag: each application rewrites the selection, and doing that a
           // hundred times on the way across the square nests a hundred spans
           // and loses what was selected on the first one.
-          onCommit={(next) => {
-            restore();
-            exec("foreColor", next);
-          }}
+          onCommit={applyColour}
           trigger={
             <button
               type="button"
