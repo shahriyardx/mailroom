@@ -59,9 +59,14 @@ interface Item {
  * are listed here rather than left three clicks away behind a gear, because
  * somebody sending a broadcast checks their domain and their logs far more
  * often than they change a password.
+ *
+ * Neither group is named. The second one used to say "Sending", which is
+ * true of every screen in this sidebar and so tells nobody anything: a rule
+ * across the gap says the same thing without claiming to be a category.
  */
-const GROUPS: { title?: string; items: Item[] }[] = [
+const GROUPS: { id: string; items: Item[] }[] = [
   {
+    id: "campaigns",
     items: [
       { href: "/campaigns", label: "Overview", icon: Gauge },
       { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
@@ -76,7 +81,7 @@ const GROUPS: { title?: string; items: Item[] }[] = [
     ],
   },
   {
-    title: "Sending",
+    id: "operations",
     items: [
       { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
       { href: "/campaigns/metrics", label: "Metrics", icon: Activity, needs: "mail:read" },
@@ -134,18 +139,13 @@ export function CampaignsShell({
         </div>
       ) : null}
 
-      <nav className="min-h-0 flex-1 space-y-4 overflow-y-auto px-2.5 pb-3">
-        {GROUPS.map((group) => {
+      <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2.5 pb-3">
+        {GROUPS.map((group, index) => {
           const items = group.items.filter((item) => !item.needs || allowed.includes(item.needs));
           if (items.length === 0) return null;
 
           return (
-            <div key={group.title ?? "top"}>
-              {group.title ? (
-                <p className="mb-1 px-2.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                  {group.title}
-                </p>
-              ) : null}
+            <div key={group.id} className={cn(index > 0 && "border-border/70 border-t pt-3")}>
               <ul className="space-y-0.5">
                 {items.map((item) => {
                   const active =
