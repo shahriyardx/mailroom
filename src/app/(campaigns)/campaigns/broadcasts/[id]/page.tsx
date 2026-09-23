@@ -1,6 +1,12 @@
 import { CampaignReport } from "@/components/mail/campaign-report";
 import { BroadcastBuilder } from "@/components/mail/template-builder";
-import { broadcastReport, findBroadcast, listsView, sendableMailboxes } from "@/server/campaigns";
+import {
+  broadcastReport,
+  fieldNamesByList,
+  findBroadcast,
+  listsView,
+  sendableMailboxes,
+} from "@/server/campaigns";
 import { requireCapability } from "@/server/permissions";
 import { segmentsView } from "@/server/segments";
 import { workspaceSettings } from "@/server/workspace";
@@ -31,11 +37,12 @@ export default async function BroadcastPage({ params }: { params: Promise<{ id: 
     return <CampaignReport report={report} basePath="/campaigns/broadcasts" />;
   }
 
-  const [lists, segments, mailboxes, settings] = await Promise.all([
+  const [lists, segments, mailboxes, settings, fields] = await Promise.all([
     listsView(access.orgId),
     segmentsView(access.orgId),
     sendableMailboxes(access.orgId),
     workspaceSettings(access.orgId),
+    fieldNamesByList(access.orgId),
   ]);
 
   return (
@@ -46,6 +53,7 @@ export default async function BroadcastPage({ params }: { params: Promise<{ id: 
           id: entry.id,
           name: entry.name,
           subscribed: entry.subscribed,
+          fields: fields[entry.id] ?? [],
         })),
         segments: segments.map((entry) => ({
           id: entry.id,

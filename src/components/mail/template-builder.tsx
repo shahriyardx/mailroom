@@ -217,7 +217,8 @@ interface Details {
  * every open. The page already knows all of it.
  */
 export interface CampaignContext {
-  lists: { id: string; name: string; subscribed: number }[];
+  /** `fields` is the merge fields the people on that list actually carry. */
+  lists: { id: string; name: string; subscribed: number; fields: string[] }[];
   segments: { id: string; listId: string; name: string; size: number }[];
   mailboxes: { id: string; address: string }[];
   /** Null means the footer of this send will have no address in it. */
@@ -228,7 +229,7 @@ export type BuilderTarget =
   | { kind: "template"; template: Template | null }
   | { kind: "broadcast"; broadcast: Broadcast; campaign: CampaignContext }
   /** One email out of an automation's flow. */
-  | { kind: "step"; step: AutomationNode; automationName: string };
+  | { kind: "step"; step: AutomationNode; automationName: string; mergeFields: string[] };
 
 export function TemplateBuilder({
   template,
@@ -250,13 +251,18 @@ export function TemplateBuilder({
 export function StepBuilder({
   step,
   automationName,
+  mergeFields,
   basePath,
 }: {
   step: AutomationNode;
   automationName: string;
+  /** What the people this flow writes to actually carry, for the chips. */
+  mergeFields: string[];
   basePath: string;
 }) {
-  return <Builder target={{ kind: "step", step, automationName }} basePath={basePath} />;
+  return (
+    <Builder target={{ kind: "step", step, automationName, mergeFields }} basePath={basePath} />
+  );
 }
 
 export function BroadcastBuilder({
@@ -925,7 +931,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
                   <StepDetails
                     subject={details.subject}
                     onSubject={(subject) => setDetails((current) => ({ ...current, subject }))}
-                    variables={variables}
+                    mergeFields={target.mergeFields}
                   />
                 ) : target.kind === "broadcast" ? (
                   <BroadcastDetails
@@ -1965,6 +1971,52 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+/**
+ * What can be written into a subject or a body, and copied with one click.
+ *
+ * Merge fields are invisible otherwise: a field exists because a CSV had a
+ * column named after it, and nobody is going to guess that `{{plan}}` works
+ * before they have ever seen it written down. The two that are always there
+ * come first, then whatever the people on this list actually carry.
+ */
+function MergeFields({ fields }: { fields: string[] }) {
+  const all = [
+    "name",
+    "address",
+    ...fields.filter((name) => {
+      const key = name.toLowerCase().replace(/[\s_-]/g, "");
+      return key !== "name" && key !== "address";
+    }),
+  ];
+
+  return (
+    <Row label="Merge in">
+      <div className="flex flex-wrap gap-1">
+        {all.map((name) => (
+          <button
+            key={name}
+            type="button"
+            title={`Copy {{${name}}}`}
+            className="rounded border border-border bg-muted/40 px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+            onClick={() => {
+              navigator.clipboard
+                .writeText(`{{${name}}}`)
+                .then(() => toast.success(`{{${name}}} copied`))
+                .catch(() => toast.error("That could not be copied"));
+            }}
+          >
+            {name}
+          </button>
+        ))}
+      </div>
+      <p className="mt-1 text-[11px] text-muted-foreground">
+        Empty for somebody becomes nothing. Write{" "}
+        <code className="font-mono">{"{{plan|free}}"}</code> to say something else instead.
+      </p>
+    </Row>
+  );
+}
+
 /** Pixels of travel per step. Low enough to aim, high enough not to jitter. */
 const SCRUB = 3;
 
@@ -2924,11 +2976,11 @@ function PageStyle({
 function StepDetails({
   subject,
   onSubject,
-  variables,
+  mergeFields,
 }: {
   subject: string;
   onSubject: (value: string) => void;
-  variables: string[];
+  mergeFields: string[];
 }) {
   return (
     <div>
@@ -2946,24 +2998,8 @@ function StepDetails({
         </Note>
       </Section>
 
-      <Section title="Variables">
-        {variables.length === 0 ? (
-          <p className="text-[12px] leading-relaxed text-muted-foreground">
-            None. An automation email can use <code className="font-mono">{"{{ name }}"}</code> and
-            the other fields you hold against each subscriber.
-          </p>
-        ) : (
-          <div className="flex flex-wrap gap-1.5">
-            {variables.map((name) => (
-              <code
-                key={name}
-                className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px] text-muted-foreground"
-              >
-                {name}
-              </code>
-            ))}
-          </div>
-        )}
+      <Section title="Merge fields">
+        <MergeFields fields={mergeFields} />
       </Section>
     </div>
   );
@@ -3102,6 +3138,8 @@ function BroadcastDetails({
             className="h-8 text-[12.5px]"
           />
         </Row>
+
+        <MergeFields fields={list?.fields ?? []} />
 
         <Row label="List">
           {draft && !followUp ? (

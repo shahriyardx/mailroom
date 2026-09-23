@@ -96,7 +96,7 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
        */
       const member = await db.query.listMember.findFirst({
         where: eq(listMember.id, target.listMemberId),
-        columns: { id: true, address: true, name: true, status: true },
+        columns: { id: true, address: true, name: true, status: true, fields: true },
       });
 
       if (!member || member.status !== "subscribed") {
@@ -120,7 +120,7 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
             member,
           ),
           html: job.html
-            ? withFooter(merge(job.html, member), { ...footer, unsubscribeUrl: url }, true)
+            ? withFooter(merge(job.html, member, true), { ...footer, unsubscribeUrl: url }, true)
             : null,
           text: job.text
             ? withFooter(merge(job.text, member), { ...footer, unsubscribeUrl: url }, false)

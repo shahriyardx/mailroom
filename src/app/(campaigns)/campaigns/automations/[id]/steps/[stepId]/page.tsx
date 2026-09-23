@@ -1,5 +1,6 @@
 import { StepBuilder } from "@/components/mail/template-builder";
 import { findAutomation } from "@/server/automations";
+import { fieldNamesByList } from "@/server/campaigns";
 import { requireCapability } from "@/server/permissions";
 import { notFound } from "next/navigation";
 
@@ -20,7 +21,19 @@ export default async function StepPage({
   const step = row.nodes.find((entry) => entry.id === stepId && entry.kind === "email");
   if (!step) notFound();
 
+  /*
+   * An automation started by an event has no list of its own, so there is
+   * nothing to read field names off. The two that are always there are still
+   * offered; the rest appear once the flow is pointed at a list.
+   */
+  const fields = row.listId ? ((await fieldNamesByList(access.orgId))[row.listId] ?? []) : [];
+
   return (
-    <StepBuilder step={step} automationName={row.name} basePath={`/campaigns/automations/${id}`} />
+    <StepBuilder
+      step={step}
+      automationName={row.name}
+      mergeFields={fields}
+      basePath={`/campaigns/automations/${id}`}
+    />
   );
 }

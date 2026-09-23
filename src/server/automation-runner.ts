@@ -454,22 +454,30 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
 
       // An email. Anything below here sends.
       const url = unsubscribeUrl(member.id);
+      /*
+       * The fields as they are now, not as the row was read.
+       *
+       * A Set a field box earlier in this same pass has already changed them,
+       * and an email that greets somebody by the plan they were on before the
+       * flow upgraded them is the sort of thing they notice.
+       */
+      const person = { address: member.address, name: member.name, fields };
       try {
         const sent = await deliverMessage({
           orgId: job.orgId,
           mailboxId: job.mailboxId,
           to: [{ address: member.address, name: member.name }],
-          subject: merge(node.subject ?? "", member),
+          subject: merge(node.subject ?? "", person),
           html: node.html
             ? withFooter(
-                merge(node.html, member),
+                merge(node.html, person, true),
                 { unsubscribeUrl: url, postalAddress: site?.postalAddress ?? null },
                 true,
               )
             : null,
           text: node.text
             ? withFooter(
-                merge(node.text, member),
+                merge(node.text, person),
                 { unsubscribeUrl: url, postalAddress: site?.postalAddress ?? null },
                 false,
               )
@@ -492,7 +500,7 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
           listMemberId: member.id,
           messageId: sent.messageId,
           address: member.address,
-          subject: merge(node.subject ?? "", member),
+          subject: merge(node.subject ?? "", person),
         });
 
         pass.sent += 1;

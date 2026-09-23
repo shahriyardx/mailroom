@@ -209,13 +209,45 @@ accident.
 A broadcast is saved as a **draft** first. Sending is a separate press, because
 it is the one thing here that cannot be taken back.
 
-Three placeholders are filled in per person:
+Anything in double braces is filled in per person, in the subject and in the
+body:
 
 | | |
 | --- | --- |
-| <code v-pre>{{name}}</code> | Their name, or their address if you have no name |
+| <code v-pre>{{name}}</code> | Their name, or **there** if you have none |
 | <code v-pre>{{address}}</code> | Their email address |
+| <code v-pre>{{plan}}</code>, <code v-pre>{{city}}</code>, … | Any merge field they carry |
 | <code v-pre>{{unsubscribe}}</code> | The link that takes them off this list |
+
+Merge fields are whatever an import, an API call or an automation's **Set a
+field** box put on somebody. The builder lists the ones the people on this
+list actually have, next to the subject — click one to copy it.
+
+Capitalisation and spacing do not matter: a column headed `Plan Name` is
+reached by <code v-pre>{{plan name}}</code>, <code v-pre>{{plan_name}}</code>
+or <code v-pre>{{planname}}</code>. An export's header is not something
+anybody should have to reproduce exactly in a subject line.
+
+### When somebody does not have it
+
+Say what to use instead after a `|`:
+
+```
+Your {{plan|free}} plan renews on the {{renews|1st}}
+```
+
+With no fallback, a field nobody has becomes **nothing** — the sentence closes
+up around it. What it never does is reach the reader as `{{plan}}`, which is
+the one outcome that cannot be explained away.
+
+::: tip Send yourself a test first
+A fallback is only ever exercised by the people who are missing the field, and
+they are the ones you are not looking at while you write.
+:::
+
+Values are escaped on their way into an HTML body, so a city of
+`<b>London</b>` arrives as text rather than as markup. They came from a
+spreadsheet somebody else exported; they are not trusted to be HTML.
 
 Leave <code v-pre>{{unsubscribe}}</code> out and a plain one is added at the bottom. There is no
 way to send without it, and that is deliberate.

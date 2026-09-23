@@ -7,11 +7,74 @@
  * at the bottom of the email" is one copy too many.
  */
 
-/** `{{name}}` and `{{address}}`, filled from the member row. */
-export function merge(template: string, person: { address: string; name: string | null }) {
-  return template
-    .replaceAll("{{address}}", person.address)
-    .replaceAll("{{name}}", person.name ?? person.address);
+/** Somebody a message is about to be addressed to. */
+export interface MergePerson {
+  address: string;
+  name: string | null;
+  /** Whatever else the import, the API or a Set a field box put on them. */
+  fields?: Record<string, string> | null;
+}
+
+/**
+ * Placeholders left for the footer to deal with rather than blanked here.
+ *
+ * `merge` runs before `withFooter`, and an unknown placeholder becomes empty
+ * — so without this the unsubscribe link would be erased on the way past and
+ * the footer would have nothing left to replace.
+ */
+const RESERVED = new Set(["unsubscribe"]);
+
+/** When a field is missing and the writer named no fallback. */
+const FALLBACKS: Record<string, string> = {
+  /*
+   * Not the address. "Hi pat@example.com," is the single most recognisable
+   * sign of a mail merge going wrong, and it is worse than not using a name
+   * at all — which is what this says instead.
+   */
+  name: "there",
+};
+
+/**
+ * `Plan Name`, `plan_name` and `planname` are the same field.
+ *
+ * Merge fields come from whatever header a CSV exported from somewhere else
+ * happened to carry, and nobody writing a subject line wants to reproduce its
+ * capitalisation exactly. Matched the same way the importer reads a header.
+ */
+function fieldKey(name: string) {
+  return name.toLowerCase().replace(/[\s_-]/g, "");
+}
+
+/** `{{field}}`, or `{{field|what to say when it is empty}}`. */
+const PLACEHOLDER = /\{\{\s*([\w .-]+?)\s*(?:\|([^}]*))?\}\}/g;
+
+/**
+ * Fills a subject or a body in for one person.
+ *
+ * Every field on them is available, not only their name and address: a plan, a
+ * city, an order number — whatever the import carried or an automation set.
+ * An unknown field becomes the fallback after the `|`, or nothing at all. It
+ * is never left on screen as `{{plan}}`, because that reaches the reader.
+ *
+ * `html` escapes what is substituted. Field values arrive from CSV files and
+ * from API calls, and a value with a `<` in it must not be able to close a tag
+ * in an email that has already been sent to a few thousand people.
+ */
+export function merge(template: string, person: MergePerson, html = false): string {
+  const bag = new Map<string, string>();
+  for (const [name, value] of Object.entries(person.fields ?? {})) {
+    if (typeof value === "string" && value.trim()) bag.set(fieldKey(name), value.trim());
+  }
+  // The columns win over a field of the same name: those are the real ones.
+  bag.set("address", person.address);
+  if (person.name?.trim()) bag.set("name", person.name.trim());
+
+  return template.replace(PLACEHOLDER, (whole, rawName: string, rawFallback?: string) => {
+    const key = fieldKey(rawName);
+    if (RESERVED.has(key)) return whole;
+    const value = bag.get(key) ?? rawFallback?.trim() ?? FALLBACKS[key] ?? "";
+    return html ? escapeHtml(value) : value;
+  });
 }
 
 /** The few characters that would otherwise break out of an attribute or a tag. */

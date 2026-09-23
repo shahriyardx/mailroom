@@ -22,11 +22,84 @@ describe("filling in a recipient", () => {
     assert.equal(out, "Hello Ada at ada@example.com");
   });
 
-  it("falls back to the address when there is no name", () => {
-    // "Hello ," is worse than "Hello ada@example.com" — a blank greeting reads
-    // as a broken mail merge, which is exactly what it is.
+  it('says "there" rather than the address when there is no name', () => {
+    // "Hello ada@example.com" is the most recognisable sign of a mail merge
+    // going wrong, and it is worse than not using a name at all.
     const out = merge("Hello {{name}}", { address: "ada@example.com", name: null });
-    assert.equal(out, "Hello ada@example.com");
+    assert.equal(out, "Hello there");
+  });
+
+  it("fills in any other field the person carries", () => {
+    const out = merge("Your {{plan}} plan in {{city}}", {
+      address: "ada@example.com",
+      name: "Ada",
+      fields: { plan: "Pro", city: "London" },
+    });
+    assert.equal(out, "Your Pro plan in London");
+  });
+
+  it("does not care how the field was capitalised or spaced", () => {
+    // A CSV exported from somewhere else carries whatever header it carries.
+    const out = merge("{{plan_name}} / {{PLANNAME}} / {{plan name}}", {
+      address: "ada@example.com",
+      name: null,
+      fields: { "Plan Name": "Pro" },
+    });
+    assert.equal(out, "Pro / Pro / Pro");
+  });
+
+  it("uses the fallback after the pipe when the field is empty", () => {
+    const out = merge("Your {{plan|free}} plan", {
+      address: "ada@example.com",
+      name: null,
+      fields: {},
+    });
+    assert.equal(out, "Your free plan");
+  });
+
+  it("leaves nothing behind for a field nobody has", () => {
+    // The one thing it must never do is reach the reader as "{{plan}}".
+    const out = merge("Hi{{plan}}", { address: "ada@example.com", name: null });
+    assert.equal(out, "Hi");
+  });
+
+  it("leaves the unsubscribe placeholder for the footer", () => {
+    const out = merge("Bye {{unsubscribe}}", { address: "ada@example.com", name: null });
+    assert.equal(out, "Bye {{unsubscribe}}");
+  });
+
+  it("escapes a field value on its way into HTML", () => {
+    // Field values come from CSV files and API calls. One with a tag in it
+    // must not be able to close ours in mail that has already gone out.
+    const out = merge(
+      "<p>{{plan}}</p>",
+      {
+        address: "ada@example.com",
+        name: null,
+        fields: { plan: '<script>alert("x")</script>' },
+      },
+      true,
+    );
+    assert.ok(!out.includes("<script>"));
+    assert.ok(out.includes("&lt;script&gt;"));
+  });
+
+  it("does not escape the same value in a plain text body", () => {
+    const out = merge("{{note}}", {
+      address: "ada@example.com",
+      name: null,
+      fields: { note: "5 > 3" },
+    });
+    assert.equal(out, "5 > 3");
+  });
+
+  it("lets the real name win over a field called name", () => {
+    const out = merge("{{name}}", {
+      address: "ada@example.com",
+      name: "Ada",
+      fields: { name: "Wrong" },
+    });
+    assert.equal(out, "Ada");
   });
 });
 

@@ -541,6 +541,38 @@ export async function membersView(orgId: string, listId: string, limit = 200) {
   );
 }
 
+/**
+ * Which merge fields the people on each list actually carry.
+ *
+ * Read from the rows rather than from a schema, because there is no schema:
+ * a field arrives because a CSV had a column named after it, because an API
+ * call sent it, or because a Set a field box wrote it. Nobody declares them.
+ *
+ * Without this the feature is invisible — somebody has to already know that
+ * `{{plan}}` will work before they will ever type it.
+ */
+export async function fieldNamesByList(orgId: string): Promise<Record<string, string[]>> {
+  const rows = await db
+    .select({
+      listId: listMember.listId,
+      name: sql<string>`jsonb_object_keys(${listMember.fields})`,
+    })
+    .from(listMember)
+    .where(eq(listMember.organizationId, orgId))
+    .groupBy(listMember.listId, sql`2`)
+    .orderBy(listMember.listId, sql`2`);
+
+  const byList: Record<string, string[]> = {};
+  for (const row of rows) {
+    if (!row.name) continue;
+    // A handful is a help and forty is a wall of chips nobody reads.
+    const seen = byList[row.listId] ?? [];
+    byList[row.listId] = seen;
+    if (seen.length < 24) seen.push(row.name);
+  }
+  return byList;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Broadcasts                                                                 */
 /* -------------------------------------------------------------------------- */
