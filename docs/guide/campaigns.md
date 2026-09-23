@@ -95,6 +95,31 @@ None of its answers say whether the address was already on the list. "You are
 already subscribed" on a public form is a way to find out who is on it, one
 guess at a time.
 
+### Putting the form on your own site
+
+The same page, in an iframe. Turn the signup page on and the snippet is under
+the switch, ready to paste:
+
+```html
+<iframe src="https://your-instance/subscribe/lst_123?embed=1"
+        title="Subscribe" width="100%" height="320"
+        style="border:0" loading="lazy"></iframe>
+```
+
+`?embed=1` drops the card, the centring and the background, so it takes the
+styling of the page around it instead of looking like a window onto somewhere
+else.
+
+An iframe rather than a form you paste and point at us. A pasted form sends
+the reader away from the page they were on to see "you are subscribed" on your
+instance; the frame answers where it stands. It also keeps working when the
+form changes.
+
+::: tip It needs no JavaScript
+The frame is a plain HTML form that posts to itself, so it works behind a
+content blocker and on a static site.
+:::
+
 ### Double opt-in
 
 Turn on **Make people confirm by email** and a new signup lands as

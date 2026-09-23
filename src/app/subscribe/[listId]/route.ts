@@ -1,4 +1,4 @@
-import { PUBLIC_HEADERS, publicPage, safe } from "@/lib/public-page";
+import { EMBED_HEADERS, PUBLIC_HEADERS, publicPage, safe } from "@/lib/public-page";
 import { publicList, subscribe } from "@/server/campaigns";
 import { workspaceSettings } from "@/server/workspace";
 import { NextResponse } from "next/server";
@@ -19,6 +19,17 @@ export const dynamic = "force-dynamic";
 
 type Params = { params: Promise<{ listId: string }> };
 
+/**
+ * Whether this is the copy that lives in an iframe on somebody's own site.
+ *
+ * A query flag rather than a second route, because the form posts to itself
+ * and a form with no `action` keeps the query string — so the answer page
+ * stays inside the frame without anything having to carry the flag along.
+ */
+function embedded(request: Request) {
+  return new URL(request.url).searchParams.get("embed") === "1";
+}
+
 function form(list: { id: string; name: string; description: string | null }, problem?: string) {
   return `<h1>${safe(list.name)}</h1>
     ${list.description ? `<p>${safe(list.description)}</p>` : ""}
@@ -35,15 +46,17 @@ function form(list: { id: string; name: string; description: string | null }, pr
     leave again.</p>`;
 }
 
-export async function GET(_request: Request, { params }: Params) {
+export async function GET(request: Request, { params }: Params) {
   const { listId } = await params;
   const list = await publicList(listId);
   if (!list) return new NextResponse("Not found", { status: 404 });
 
+  const inFrame = embedded(request);
   const { brandName } = await workspaceSettings(list.organizationId);
-  return new NextResponse(publicPage(list.name, form(list), brandName), {
+  // The brand line is the host page's job when this is on the host's page.
+  return new NextResponse(publicPage(list.name, form(list), inFrame ? null : brandName, inFrame), {
     status: 200,
-    headers: PUBLIC_HEADERS,
+    headers: inFrame ? EMBED_HEADERS : PUBLIC_HEADERS,
   });
 }
 
@@ -52,7 +65,10 @@ export async function POST(request: Request, { params }: Params) {
   const list = await publicList(listId);
   if (!list) return new NextResponse("Not found", { status: 404 });
 
+  const inFrame = embedded(request);
   const { brandName } = await workspaceSettings(list.organizationId);
+  const brand = inFrame ? null : brandName;
+  const headers = inFrame ? EMBED_HEADERS : PUBLIC_HEADERS;
   const body = await request.formData();
   const address = String(body.get("address") ?? "");
   const name = String(body.get("name") ?? "").trim() || null;
@@ -65,9 +81,10 @@ export async function POST(request: Request, { params }: Params) {
       publicPage(
         list.name,
         form(list, error instanceof Error ? error.message : "That did not work"),
-        brandName,
+        brand,
+        inFrame,
       ),
-      { status: 400, headers: PUBLIC_HEADERS },
+      { status: 400, headers },
     );
   }
 
@@ -92,8 +109,8 @@ export async function POST(request: Request, { params }: Params) {
            <p><strong>${safe(address)}</strong> is on ${safe(list.name)}.</p>
            <p class="quiet">Every email carries a one-click link to leave again.</p>`;
 
-  return new NextResponse(publicPage(list.name, said, brandName), {
+  return new NextResponse(publicPage(list.name, said, brand, inFrame), {
     status: 200,
-    headers: PUBLIC_HEADERS,
+    headers,
   });
 }

@@ -38,6 +38,7 @@ import type { SegmentRow } from "@/server/segments";
 import {
   ArrowLeft,
   Check,
+  Code,
   Copy,
   Download,
   FileUp,
@@ -424,9 +425,24 @@ export function ListDetailPanel({
 function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState<"url" | "embed" | null>(null);
 
   const signupUrl = `${appUrl}/subscribe/${list.id}`;
+  /*
+   * An iframe rather than a form posting across origins.
+   *
+   * A pasted form would send somebody away from the site they were reading to
+   * see "you are subscribed" on ours, which is a worse thing to do to a
+   * reader than a box that answers where it stands. It is also the version
+   * that keeps working when the form changes.
+   */
+  const embedSnippet = `<iframe src="${signupUrl}?embed=1" title="Subscribe to ${list.name}" width="100%" height="320" style="border:0" loading="lazy"></iframe>`;
+
+  function take(what: "url" | "embed", value: string) {
+    void navigator.clipboard.writeText(value);
+    setCopied(what);
+    setTimeout(() => setCopied(null), 1600);
+  }
 
   function change(patch: { doubleOptIn?: boolean; publicSignup?: boolean }) {
     startTransition(async () => {
@@ -470,18 +486,33 @@ function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }
             A page anybody can open and put their address into, with no account.
           </div>
           {list.publicSignup && (
-            <button
-              type="button"
-              onClick={() => {
-                void navigator.clipboard.writeText(signupUrl);
-                setCopied(true);
-                setTimeout(() => setCopied(false), 1600);
-              }}
-              className="mt-2 flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
-            >
-              {copied ? <Check className="size-3" /> : <Copy className="size-3" />}
-              {signupUrl}
-            </button>
+            <div className="mt-2 space-y-1.5">
+              <button
+                type="button"
+                onClick={() => take("url", signupUrl)}
+                className="flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+              >
+                {copied === "url" ? <Check className="size-3" /> : <Copy className="size-3" />}
+                {signupUrl}
+              </button>
+
+              {/* The same form, for a site rather than a link. Offered here
+                  because this is where somebody is when they decide people
+                  should be able to sign up. */}
+              <button
+                type="button"
+                onClick={() => take("embed", embedSnippet)}
+                className="flex w-full items-start gap-1.5 rounded-lg bg-muted px-2 py-1 text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+              >
+                <span className="mt-0.5 shrink-0">
+                  {copied === "embed" ? <Check className="size-3" /> : <Code className="size-3" />}
+                </span>
+                <span className="min-w-0 break-all">{embedSnippet}</span>
+              </button>
+              <p className="text-[11.5px] text-muted-foreground">
+                Paste that into your own site to put the form on it.
+              </p>
+            </div>
           )}
         </div>
         <Switch

@@ -44,8 +44,21 @@ const STYLE = `
            text-transform: uppercase; color: var(--quiet); }
 `;
 
+/*
+ * The same page with the frame taken off, for sitting inside somebody else's.
+ *
+ * An embedded form has to look like part of the page around it, and a
+ * centred card on its own grey background inside a box on a white site looks
+ * like exactly what it is. The background goes transparent so it takes the
+ * host page's, and the card loses its border and its centring.
+ */
+const EMBEDDED = `
+  body { min-height: 0; display: block; padding: 0; background: transparent; }
+  main { max-width: none; border: 0; border-radius: 0; padding: 0; background: transparent; }
+`;
+
 /** One self-contained page, ready to hand back as text/html. */
-export function publicPage(title: string, body: string, brand?: string | null) {
+export function publicPage(title: string, body: string, brand?: string | null, embedded = false) {
   /*
    * The company's name above the card, when it has one.
    *
@@ -62,7 +75,7 @@ export function publicPage(title: string, body: string, brand?: string | null) {
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex">
 <title>${safe(title)}</title>
-<style>${STYLE}</style>
+<style>${STYLE}${embedded ? EMBEDDED : ""}</style>
 </head>
 <body><main>${heading}${body}</main></body>
 </html>`;
@@ -72,4 +85,16 @@ export function publicPage(title: string, body: string, brand?: string | null) {
 export const PUBLIC_HEADERS = {
   "Content-Type": "text/html; charset=utf-8",
   "Cache-Control": "no-store",
+};
+
+/**
+ * The embedded form, said out loud.
+ *
+ * Nothing here blocks framing today, so this changes no behaviour — it is
+ * here so that the day somebody adds a frame-ancestors rule to the app, the
+ * one page that is supposed to be in an iframe already says so.
+ */
+export const EMBED_HEADERS = {
+  ...PUBLIC_HEADERS,
+  "Content-Security-Policy": "frame-ancestors *",
 };
