@@ -1,6 +1,7 @@
 import { readFile, writeFile } from "node:fs/promises";
 import { join } from "node:path";
 import { defineConfig } from "vitepress";
+import { DOC_SECTIONS, siteLink } from "../../src/lib/docs-nav";
 
 /**
  * The product name, in one place.
@@ -14,95 +15,23 @@ const REPO = "https://github.com/shahriyardx/mailroom";
 const SITE = "https://mailroom-docs.shahriyar.dev";
 
 /**
- * The sidebar, lifted out so the llms.txt generator can walk exactly what the
- * site navigates by. One list, so a page cannot be in the menu and missing
- * from the machine-readable index.
+ * The sidebar, from the list the app also navigates by.
+ *
+ * One list in `src/lib/docs-nav.ts` rather than one here and one there: the
+ * application serves these same pages to whoever is signed in, and a page
+ * that is in one menu and missing from the other is drift nobody sees until
+ * a link goes nowhere. The llms.txt generator walks it too, so the
+ * machine-readable index cannot fall out of step either.
  */
-const SIDEBAR = {
-  "/guide/": [
-    {
-      text: "Getting started",
-      items: [
-        { text: "What it is", link: "/guide/" },
-        { text: "How it fits together", link: "/guide/architecture" },
-        { text: "Self-hosting it", link: "/guide/self-hosting" },
-      ],
-    },
-    {
-      text: "Running it",
-      items: [
-        { text: "Sending domains", link: "/guide/domains" },
-        { text: "Receiving mail", link: "/guide/receiving" },
-        { text: "Forwarding", link: "/guide/forwarding" },
-        { text: "Campaigns", link: "/guide/campaigns" },
-        { text: "Automations", link: "/guide/automations" },
-        { text: "Metrics", link: "/guide/metrics" },
-        { text: "Templates and media", link: "/guide/templates" },
-        { text: "Features", link: "/guide/features" },
-        { text: "Mailboxes and people", link: "/guide/mailboxes" },
-        { text: "API keys", link: "/guide/api-keys" },
-        { text: "Test keys", link: "/guide/test-mode" },
-        { text: "The send queue", link: "/guide/queue" },
-        { text: "Desktop notifications", link: "/guide/notifications" },
-        { text: "Browser extension", link: "/guide/extension" },
-      ],
-    },
-  ],
-
-  "/api/": [
-    {
-      text: "Using the API",
-      items: [
-        { text: "Overview", link: "/api/" },
-        { text: "Scopes and reach", link: "/api/scopes" },
-        { text: "Pagination", link: "/api/pagination" },
-        { text: "Errors", link: "/api/errors" },
-        { text: "Idempotency and limits", link: "/api/idempotency" },
-      ],
-    },
-    {
-      text: "Endpoints",
-      items: [
-        { text: "Emails", link: "/api/emails" },
-        { text: "Templates", link: "/api/templates" },
-        { text: "Threads", link: "/api/threads" },
-        { text: "Messages and files", link: "/api/messages" },
-        { text: "Mailboxes", link: "/api/mailboxes" },
-        { text: "Domains", link: "/api/domains" },
-        { text: "Labels and contacts", link: "/api/labels" },
-        { text: "Blocked addresses", link: "/api/suppressions" },
-        { text: "Events", link: "/api/events" },
-        { text: "Webhooks", link: "/api/webhooks" },
-        { text: "Statistics", link: "/api/stats" },
-      ],
-    },
-  ],
-
-  "/sdk/": [
-    {
-      text: "Node SDK",
-      items: [
-        { text: "Getting started", link: "/sdk/" },
-        { text: "Sending", link: "/sdk/sending" },
-        { text: "Reading mail", link: "/sdk/reading" },
-        { text: "Managing the account", link: "/sdk/managing" },
-        { text: "Errors and retries", link: "/sdk/errors" },
-      ],
-    },
-  ],
-
-  "/webhooks/": [
-    {
-      text: "Webhooks",
-      items: [
-        { text: "Overview", link: "/webhooks/" },
-        { text: "The events", link: "/webhooks/events" },
-        { text: "Verifying a call", link: "/webhooks/verifying" },
-        { text: "Retries and replays", link: "/webhooks/retries" },
-      ],
-    },
-  ],
-};
+const SIDEBAR = Object.fromEntries(
+  DOC_SECTIONS.map((section) => [
+    `/${section.key}/`,
+    section.groups.map((group) => ({
+      text: group.title,
+      items: group.pages.map((page) => ({ text: page.title, link: siteLink(page.path) })),
+    })),
+  ]),
+);
 
 /** Every page in the sidebar, flattened, in the order the menu shows them. */
 function sidebarPages(): { text: string; link: string }[] {

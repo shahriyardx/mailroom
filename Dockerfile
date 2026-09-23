@@ -34,6 +34,9 @@ COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
 COPY next.config.ts postcss.config.mjs tsconfig.json ./
 COPY src ./src
 COPY public ./public
+# The Markdown only — .dockerignore keeps the rest of the docs site out. The
+# app reads these at request time to serve its own documentation.
+COPY docs ./docs
 COPY drizzle ./drizzle
 COPY scripts ./scripts
 COPY worker ./worker

@@ -70,7 +70,7 @@ import { toast } from "sonner";
 const CUSTOM = "custom";
 
 /** Where the full API reference lives, so this screen does not have to be it. */
-const DOCS_URL = "https://mailroom-docs.shahriyar.dev/api/";
+const DOCS_URL = "/docs/api";
 
 // CodeMirror is worth loading for one sample on screen, and not before.
 const CodeBlock = dynamic(() => import("./code-block").then((module) => module.CodeBlock), {

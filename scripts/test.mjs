@@ -42,6 +42,7 @@ const DOUBLES = {
 /** Framework modules that cannot load outside `next dev`, stood in for. */
 const STUBS = {
   "next/server": join(root, "test/fakes/next-server.ts"),
+  "next/link": join(root, "test/fakes/next-link.tsx"),
 };
 
 const shims = {
@@ -86,6 +87,9 @@ await esbuild.build({
   format: "esm",
   target: "node22",
   sourcemap: "inline",
+  // The documentation renderer is JSX, and a test that renders it needs the
+  // modern transform rather than a React import in every file.
+  jsx: "automatic",
   // Everything from node_modules stays where it is; only our own code is
   // pulled in, which is what the aliases above are for.
   packages: "external",

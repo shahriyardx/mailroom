@@ -80,7 +80,7 @@ export async function setupState(orgId: string): Promise<SetupState> {
       detail: sesConfigured
         ? `Keys found, region ${env.aws.region}.`
         : "Set AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then restart. Leave them empty only if this instance uses an IAM role.",
-      href: "https://mailroom-docs.shahriyar.dev/guide/self-hosting",
+      href: "/docs/guide/self-hosting",
       done: sesConfigured,
     },
     {

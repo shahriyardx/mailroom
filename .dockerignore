@@ -19,8 +19,13 @@ node_modules
 # The docs site and the SDK are published on their own and are no part of the
 # app image. Their manifests are still needed: the lockfile covers every
 # workspace member, and --frozen-lockfile checks all of them.
+#
+# The Markdown is the exception. The app serves the documentation itself, so
+# those pages are part of the image even though VitePress and its theme are
+# not: an instance behind a firewall has to be able to read its own manual.
 docs
 !docs/package.json
+!docs/**/*.md
 packages
 !packages/*/package.json
 

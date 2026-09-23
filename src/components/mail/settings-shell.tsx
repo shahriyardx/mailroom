@@ -141,12 +141,7 @@ const GROUPS: { title?: string; items: NavItem[] }[] = [
       { href: "/settings/account", label: "Account", icon: User },
       { href: "/settings/notifications", label: "Notifications", icon: Bell },
       { href: "/settings/appearance", label: "Appearance", icon: Palette },
-      {
-        href: "https://mailroom-docs.shahriyar.dev",
-        label: "Documentation",
-        icon: BookOpen,
-        external: true,
-      },
+      { href: "/docs", label: "Documentation", icon: BookOpen },
     ],
   },
 ];

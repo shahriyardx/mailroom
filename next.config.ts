@@ -14,6 +14,14 @@ const config: NextConfig = {
   // Baked in rather than read at boot: what is running is decided when the
   // image is built, and nothing at runtime can tell you otherwise.
   env: { APP_VERSION: version },
+  /*
+   * The documentation is read from `docs/` at request time, and nothing
+   * imports it, so the tracer that decides what goes into the standalone
+   * output would otherwise leave every page of it behind.
+   */
+  outputFileTracingIncludes: {
+    "/docs/[[...slug]]": ["./docs/**/*.md"],
+  },
   experimental: {
     serverActions: { bodySizeLimit: "25mb" },
   },

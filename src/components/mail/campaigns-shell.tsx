@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  BookOpen,
   FileText,
   Gauge,
   Globe,
@@ -78,6 +79,15 @@ const NAV: Item[] = [
   { href: "/campaigns/blocked", label: "Blocklist", icon: ShieldOff, needs: "rules:manage" },
   { href: "/campaigns/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
   { href: "/campaigns/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
+  /*
+   * Last, and shown to everybody.
+   *
+   * The documentation is part of the app rather than a website it links out
+   * to, so it is a screen like any other — and the one screen nobody needs a
+   * capability for, because reading how the thing works is not an action on
+   * anybody's data.
+   */
+  { href: "/docs", label: "Documentation", icon: BookOpen },
 ];
 
 export function CampaignsShell({
