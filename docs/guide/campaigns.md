@@ -372,6 +372,31 @@ directly.
 The link is signed rather than stored, so one dug out of a year-old email still
 works.
 
+## Choosing what you get
+
+Put <code v-pre>{{preferences}}</code> in a campaign or an automation and it
+becomes a link to a page of switches — one per list that address is already
+on. It is also offered on the unsubscribe page, **after** they have left,
+never instead of leaving.
+
+That ordering is the whole point. Making somebody manage preferences in order
+to unsubscribe is the trick that produces spam reports, and a spam report
+costs you the deliverability of everybody else on the list. They are off the
+list before the page loads; the other lists are something they may now want to
+look at.
+
+Clearing every box stops all of it, so "unsubscribe from everything" needs no
+button of its own.
+
+::: warning It can never add somebody to a list
+Only lists that address is already known to are shown. A preference centre
+that offered new ones would be a signup form wearing a different hat, and this
+page is reached from a link rather than from a decision to join anything.
+
+An address that hard-bounced or reported you is shown but locked. A spam
+report is not a preference, and a forwarded link must not be able to undo one.
+:::
+
 ## Your postal address
 
 Set it in **Settings → Company**. It is printed at the foot of every campaign

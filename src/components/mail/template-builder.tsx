@@ -2999,7 +2999,7 @@ function StepDetails({
       </Section>
 
       <Section title="Merge fields">
-        <MergeFields fields={mergeFields} />
+        <MergeFields fields={[...mergeFields, "preferences"]} />
       </Section>
     </div>
   );
@@ -3141,7 +3141,7 @@ function BroadcastDetails({
 
         {/* `view_in_browser` is a campaign's own web copy, so it is offered
             here and not in an automation, which has none. */}
-        <MergeFields fields={[...(list?.fields ?? []), "view_in_browser"]} />
+        <MergeFields fields={[...(list?.fields ?? []), "view_in_browser", "preferences"]} />
 
         <Row label="List">
           {draft && !followUp ? (

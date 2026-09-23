@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { broadcast, broadcastRecipient, listMember, workspace } from "@/db/schema";
 import { merge, withFooter } from "@/lib/campaign-body";
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { archiveUrl, unsubscribeUrl } from "./campaigns";
+import { archiveUrl, preferencesUrl, unsubscribeUrl } from "./campaigns";
 import { deliverMessage } from "./send";
 
 /**
@@ -116,7 +116,14 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
        * so it substitutes, escapes and falls back like everything else — and
        * so an automation, which has no web copy, simply does not have it.
        */
-      const person = { ...member, fields: { ...member.fields, view_in_browser: web } };
+      const person = {
+        ...member,
+        fields: {
+          ...member.fields,
+          view_in_browser: web,
+          preferences: preferencesUrl(member.id),
+        },
+      };
 
       try {
         const result = await deliverMessage({

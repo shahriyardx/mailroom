@@ -976,3 +976,98 @@ describe("getting people back out", () => {
     await assert.rejects(() => exportMembers(account.orgId, one, segmentId));
   });
 });
+
+describe("choosing what you get", () => {
+  it("shows every list in the org that address is already on", async () => {
+    const { addMembers, membersView, preferencesFor } = await import("@/server/campaigns");
+    const one = await aList("Newsletter");
+    const two = await aList("Release notes");
+    await addMembers(account.orgId, one, [{ address: "ada@example.com" }], "signup form");
+    await addMembers(account.orgId, two, [{ address: "ada@example.com" }], "signup form");
+
+    const [row] = await membersView(account.orgId, one);
+    const view = await preferencesFor(row?.id ?? "");
+    assert.equal(view?.lists.length, 2);
+    assert.ok(view?.lists.every((entry) => entry.on));
+  });
+
+  it("never offers a list they were never on", async () => {
+    // A preference centre that can add somebody to something is a signup
+    // form wearing a different hat.
+    const { addMembers, membersView, preferencesFor } = await import("@/server/campaigns");
+    const one = await aList("Newsletter");
+    await aList("Release notes");
+    await addMembers(account.orgId, one, [{ address: "ada@example.com" }], "signup form");
+
+    const [row] = await membersView(account.orgId, one);
+    const view = await preferencesFor(row?.id ?? "");
+    assert.equal(view?.lists.length, 1);
+  });
+
+  it("switches off everything left out of the form", async () => {
+    const { addMembers, applyPreferences, membersView } = await import("@/server/campaigns");
+    const one = await aList("Newsletter");
+    const two = await aList("Release notes");
+    await addMembers(account.orgId, one, [{ address: "ada@example.com" }], "signup form");
+    await addMembers(account.orgId, two, [{ address: "ada@example.com" }], "signup form");
+
+    const [row] = await membersView(account.orgId, one);
+    const after = await applyPreferences(row?.id ?? "", [row?.id ?? ""]);
+
+    assert.equal(after?.lists.filter((entry) => entry.on).length, 1);
+    assert.equal(after?.lists.find((entry) => entry.listName === "Newsletter")?.on, true);
+  });
+
+  it("an empty form stops everything", async () => {
+    const { addMembers, applyPreferences, membersView } = await import("@/server/campaigns");
+    const one = await aList("Newsletter");
+    await addMembers(account.orgId, one, [{ address: "ada@example.com" }], "signup form");
+
+    const [row] = await membersView(account.orgId, one);
+    const after = await applyPreferences(row?.id ?? "", []);
+    assert.equal(after?.lists.every((entry) => !entry.on), true);
+  });
+
+  it("will not turn a complained address back on", async () => {
+    // A spam report is not a preference, and a forwarded link must not undo
+    // one: writing there again costs everybody else on the list.
+    const { addMembers, applyPreferences, membersView } = await import("@/server/campaigns");
+    const { db } = await import("@/db");
+    const { listMember } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const one = await aList("Newsletter");
+    await addMembers(account.orgId, one, [{ address: "ada@example.com" }], "signup form");
+    const [row] = await membersView(account.orgId, one);
+    await db
+      .update(listMember)
+      .set({ status: "complained" })
+      .where(eq(listMember.id, row?.id ?? ""));
+
+    const after = await applyPreferences(row?.id ?? "", [row?.id ?? ""]);
+    assert.equal(after?.lists[0]?.on, false);
+    assert.equal(after?.lists[0]?.locked, true);
+  });
+
+  it("cannot be used to change somebody else's rows", async () => {
+    const { addMembers, applyPreferences, membersView } = await import("@/server/campaigns");
+    const one = await aList("Newsletter");
+    await addMembers(
+      account.orgId,
+      one,
+      [{ address: "ada@example.com" }, { address: "bob@example.com" }],
+      "signup form",
+    );
+
+    const rows = await membersView(account.orgId, one);
+    const ada = rows.find((entry) => entry.address === "ada@example.com");
+    const bob = rows.find((entry) => entry.address === "bob@example.com");
+
+    // Ada's token, asking to keep Bob's row on and nothing of her own.
+    await applyPreferences(ada?.id ?? "", [bob?.id ?? ""]);
+
+    const after = await membersView(account.orgId, one);
+    assert.equal(after.find((entry) => entry.address === "ada@example.com")?.status, "unsubscribed");
+    assert.equal(after.find((entry) => entry.address === "bob@example.com")?.status, "subscribed");
+  });
+});

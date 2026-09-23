@@ -1,4 +1,4 @@
-import { unsubscribeByToken } from "@/server/campaigns";
+import { preferencesUrl, readUnsubscribeToken, unsubscribeByToken } from "@/server/campaigns";
 import { NextResponse } from "next/server";
 
 /**
@@ -33,7 +33,16 @@ export async function GET(_request: Request, { params }: Params) {
   const { token } = await params;
   const result = await unsubscribeByToken(token);
 
-  return new NextResponse(page(result), {
+  /*
+   * Offered after the fact rather than instead of it.
+   *
+   * Making somebody manage preferences in order to unsubscribe is the trick
+   * that produces spam reports. They are off this list before the page loads;
+   * the other lists are a thing they may now want to look at.
+   */
+  const memberId = readUnsubscribeToken(token);
+
+  return new NextResponse(page(result, memberId ? preferencesUrl(memberId) : null), {
     status: 200,
     headers: { "Content-Type": "text/html; charset=utf-8", "Cache-Control": "no-store" },
   });
@@ -56,13 +65,18 @@ function safe(value: string) {
  * shell being up. Inlining a few rules is cheaper than any of that going
  * wrong at the moment somebody is already annoyed enough to unsubscribe.
  */
-function page(result: { address: string; listName: string } | null) {
+function page(result: { address: string; listName: string } | null, prefsUrl: string | null) {
+  const manage = prefsUrl
+    ? `<p class="quiet">Still on other lists? <a href="${safe(prefsUrl)}">Choose what you get</a>.</p>`
+    : "";
+
   const body = result
     ? `<h1>You have been unsubscribed</h1>
        <p><strong>${safe(result.address)}</strong> has been removed from
        ${safe(result.listName)}. You will not be sent any more of these.</p>
        <p class="quiet">This does not affect any other list you are on, or any
-       message somebody sends you directly.</p>`
+       message somebody sends you directly.</p>
+       ${manage}`
     : `<h1>That link has expired</h1>
        <p>We could not find the subscription this link points at. It may have
        already been removed.</p>

@@ -74,6 +74,145 @@ export function unsubscribeUrl(memberId: string) {
 }
 
 /**
+ * The link to somebody's own preferences.
+ *
+ * Signed over the member row they arrived by, which is enough to find both
+ * the address and the organisation. Its own prefix, so it cannot be used as
+ * an unsubscribe link or the other way round.
+ */
+export function preferencesToken(memberId: string) {
+  const mac = createHmac("sha256", env.authSecret).update(`prefs:${memberId}`).digest("base64url");
+  return `${memberId}.${mac}`;
+}
+
+export function readPreferencesToken(token: string): string | null {
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return null;
+
+  const memberId = token.slice(0, dot);
+  const given = Buffer.from(token.slice(dot + 1));
+  const want = Buffer.from(
+    createHmac("sha256", env.authSecret).update(`prefs:${memberId}`).digest("base64url"),
+  );
+
+  if (given.length !== want.length) return null;
+  return timingSafeEqual(given, want) ? memberId : null;
+}
+
+export function preferencesUrl(memberId: string) {
+  return `${env.appUrl}/preferences/${preferencesToken(memberId)}`;
+}
+
+export interface Preference {
+  memberId: string;
+  listName: string;
+  description: string | null;
+  /** True when they are currently getting it. Pending counts as not yet. */
+  on: boolean;
+  /**
+   * True when they cannot turn it back on from here.
+   *
+   * A hard bounce or a spam report is not a preference. Writing there again
+   * costs the deliverability of everybody else on the list, and a stranger
+   * with a forwarded link must not be able to undo a complaint.
+   */
+  locked: boolean;
+}
+
+/**
+ * Every list in this organisation that this address is already known to.
+ *
+ * Known to, not every list there is. A preference centre that offered lists
+ * somebody had never signed up to would be a subscription form wearing a
+ * different hat, and the one thing this page must never do is add somebody to
+ * something.
+ */
+export async function preferencesFor(memberId: string) {
+  const who = await db.query.listMember.findFirst({
+    where: eq(listMember.id, memberId),
+    columns: { address: true, organizationId: true },
+  });
+  if (!who) return null;
+
+  const rows = await db
+    .select({
+      memberId: listMember.id,
+      status: listMember.status,
+      listName: mailingList.name,
+      description: mailingList.description,
+    })
+    .from(listMember)
+    .innerJoin(mailingList, eq(mailingList.id, listMember.listId))
+    .where(
+      and(eq(listMember.organizationId, who.organizationId), eq(listMember.address, who.address)),
+    )
+    .orderBy(asc(mailingList.name));
+
+  const site = await db.query.workspace.findFirst({
+    where: eq(workspace.organizationId, who.organizationId),
+    columns: { brandName: true },
+  });
+
+  return {
+    address: who.address,
+    brandName: site?.brandName ?? null,
+    lists: rows.map(
+      (row): Preference => ({
+        memberId: row.memberId,
+        listName: row.listName,
+        description: row.description,
+        on: row.status === "subscribed",
+        locked: row.status === "bounced" || row.status === "complained",
+      }),
+    ),
+  };
+}
+
+/**
+ * What they chose, applied.
+ *
+ * `keep` is the member rows they left switched on. Anything of theirs not in
+ * it is unsubscribed, which means an empty list is "stop everything" and
+ * needs no separate button.
+ *
+ * Scoped to their own rows by address, so a token for one list cannot be used
+ * to change somebody else's subscriptions by passing ids that are not theirs.
+ */
+export async function applyPreferences(memberId: string, keep: string[]) {
+  const current = await preferencesFor(memberId);
+  if (!current) return null;
+
+  const mine = new Set(current.lists.map((row) => row.memberId));
+  const wanted = new Set(keep.filter((id) => mine.has(id)));
+  const now = new Date();
+
+  for (const row of current.lists) {
+    if (row.locked) continue;
+    const on = wanted.has(row.memberId);
+    if (on === row.on) continue;
+
+    await db
+      .update(listMember)
+      .set(
+        on
+          ? {
+              status: "subscribed",
+              unsubscribedAt: null,
+              // Fresh consent, recorded as such. They asked for this one back
+              // from a link only they were sent, which is a stronger record
+              // than whatever put them on it the first time.
+              consentAt: now,
+              consentSource: "preference centre",
+            }
+          : { status: "unsubscribed", unsubscribedAt: now },
+      )
+      .where(eq(listMember.id, row.memberId));
+  }
+
+  return preferencesFor(memberId);
+}
+
+/**
  * The link to the web copy of a campaign.
  *
  * Over the broadcast and nobody in particular, deliberately. A "view in

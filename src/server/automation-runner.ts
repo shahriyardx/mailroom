@@ -13,7 +13,7 @@ import {
 import { merge, withFooter } from "@/lib/campaign-body";
 import { newId } from "@/lib/utils";
 import { and, desc, eq, lte, sql } from "drizzle-orm";
-import { subscribe, unsubscribeUrl } from "./campaigns";
+import { preferencesUrl, subscribe, unsubscribeUrl } from "./campaigns";
 import { segmentCondition } from "./segments";
 import { deliverMessage } from "./send";
 
@@ -461,7 +461,13 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
        * and an email that greets somebody by the plan they were on before the
        * flow upgraded them is the sort of thing they notice.
        */
-      const person = { address: member.address, name: member.name, fields };
+      const person = {
+        address: member.address,
+        name: member.name,
+        // No view_in_browser: an automation's email has no web copy, and a
+        // placeholder for one would resolve to nothing on purpose.
+        fields: { ...fields, preferences: preferencesUrl(member.id) },
+      };
       try {
         const sent = await deliverMessage({
           orgId: job.orgId,
