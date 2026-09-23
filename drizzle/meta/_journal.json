@@ -260,6 +260,34 @@
       "when": 1789976770306,
       "tag": "0036_automation_flow",
       "breakpoints": true
+    },
+    {
+      "idx": 37,
+      "version": "7",
+      "when": 1789976830306,
+      "tag": "0037_event_triggers",
+      "breakpoints": true
+    },
+    {
+      "idx": 38,
+      "version": "7",
+      "when": 1789976890306,
+      "tag": "0038_automation_segment",
+      "breakpoints": true
+    },
+    {
+      "idx": 39,
+      "version": "7",
+      "when": 1789976950306,
+      "tag": "0039_wait_until",
+      "breakpoints": true
+    },
+    {
+      "idx": 40,
+      "version": "7",
+      "when": 1789977010306,
+      "tag": "0040_tags_and_moves",
+      "breakpoints": true
     }
   ]
 }

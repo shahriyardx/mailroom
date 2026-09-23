@@ -32,6 +32,14 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
 
+/** What starts one, in the few words a list row has room for. */
+function describeStart(row: AutomationRow) {
+  if (!row.trigger) return "no trigger yet";
+  const narrowed = row.segmentName ? `, ${row.segmentName} only` : "";
+  if (row.trigger === "event") return `on ${row.eventName ?? "an event"}${narrowed}`;
+  return `joins ${row.listName ?? "a list"}${narrowed}`;
+}
+
 const LOOK = {
   active: { tone: "ok", label: "Running" },
   paused: { tone: "warn", label: "Paused" },
@@ -58,7 +66,7 @@ export function AutomationsPanel({
   const [making, setMaking] = useState(false);
   const [removing, setRemoving] = useState<AutomationRow | null>(null);
   const [busy, setBusy] = useState(false);
-  const [draft, setDraft] = useState({ name: "", listId: "", mailboxId: "" });
+  const [draft, setDraft] = useState({ name: "", mailboxId: "" });
 
   async function create() {
     setBusy(true);
@@ -77,17 +85,17 @@ export function AutomationsPanel({
   return (
     <Panel
       title="Automations"
-      description="A series of emails that starts when somebody joins a list, on their clock rather than yours."
+      description="A series of emails on somebody's own clock — started when they join a list, or by an event your code posts."
       meta={`${automations.length}`}
       action={
         <Button
           variant="solid"
           pill
           onClick={() => {
-            setDraft({ name: "", listId: lists[0]?.id ?? "", mailboxId: mailboxes[0]?.id ?? "" });
+            setDraft({ name: "", mailboxId: mailboxes[0]?.id ?? "" });
             setMaking(true);
           }}
-          disabled={lists.length === 0 || mailboxes.length === 0}
+          disabled={mailboxes.length === 0}
         >
           <Plus />
           New automation
@@ -121,7 +129,8 @@ export function AutomationsPanel({
           <DialogHeader>
             <DialogTitle>New automation</DialogTitle>
             <DialogDescription>
-              It starts as a draft. Nothing is sent until you add the emails and switch it on.
+              It starts as a draft on an empty canvas. What starts it, and what it does, are both
+              chosen there.
             </DialogDescription>
           </DialogHeader>
 
@@ -134,24 +143,6 @@ export function AutomationsPanel({
                 }
                 placeholder="Welcome series"
               />
-            </Field>
-
-            <Field label="When somebody joins" hint="Only people who join after you switch it on.">
-              <Select
-                value={draft.listId}
-                onValueChange={(value) => setDraft((current) => ({ ...current, listId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick a list" />
-                </SelectTrigger>
-                <SelectContent>
-                  {lists.map((row) => (
-                    <SelectItem key={row.id} value={row.id}>
-                      {row.name} · {row.subscribed}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
             </Field>
 
             <Field label="From">
@@ -174,7 +165,8 @@ export function AutomationsPanel({
 
             <Note>
               One address for the whole series: a welcome note and its follow-up arriving from two
-              different people reads as two different companies.
+              different people reads as two different companies. You pick what starts it — a list
+              somebody joins, or an event your own code posts — on the canvas.
             </Note>
           </div>
 
@@ -185,7 +177,7 @@ export function AutomationsPanel({
             <Button
               variant="solid"
               onClick={create}
-              disabled={busy || !draft.name.trim() || !draft.listId || !draft.mailboxId}
+              disabled={busy || !draft.name.trim() || !draft.mailboxId}
             >
               Make it
             </Button>
@@ -215,7 +207,7 @@ export function AutomationsPanel({
                     </p>
                   </Link>
                   <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                    {row.steps} {row.steps === 1 ? "email" : "emails"} · joins {row.listName} · from{" "}
+                    {row.steps} {row.steps === 1 ? "box" : "boxes"} · {describeStart(row)} · from{" "}
                     {row.from}
                   </p>
                 </div>
@@ -240,13 +232,13 @@ export function AutomationsPanel({
         <BlankSlate
           icon={<Workflow />}
           title={
-            lists.length === 0
-              ? "Make a list first"
-              : mailboxes.length === 0
-                ? "Add a mailbox first"
+            mailboxes.length === 0
+              ? "Add a mailbox first"
+              : lists.length === 0
+                ? "Make a list first"
                 : "No automations yet"
           }
-          hint="A welcome series: one email when somebody joins, another two days later, a third the week after."
+          hint="A welcome series when somebody joins, or a flow your own code starts: a trial ending, an order shipping."
         />
       )}
     </Panel>

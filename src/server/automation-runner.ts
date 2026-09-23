@@ -6,12 +6,14 @@ import {
   automationNode,
   automationRun,
   listMember,
+  segment,
   workspace,
 } from "@/db/schema";
 import { merge, withFooter } from "@/lib/campaign-body";
 import { newId } from "@/lib/utils";
 import { and, eq, lte, sql } from "drizzle-orm";
-import { unsubscribeUrl } from "./campaigns";
+import { subscribe, unsubscribeUrl } from "./campaigns";
+import { segmentCondition } from "./segments";
 import { deliverMessage } from "./send";
 
 /**
@@ -60,13 +62,28 @@ export interface AutomationPass {
  * Only people who joined after the automation was switched on are enrolled.
  * Switching on a welcome series must not send a welcome to a list of ten
  * thousand people who have been subscribers for two years.
+ *
+ * Only the automations that start on joining. The other kind starts on an
+ * event your own code posts, and that is caught when it happens rather than
+ * noticed afterwards — there is no state left behind for a sweep to find.
  */
 async function enrol(): Promise<number> {
-  const live = await db.query.automation.findMany({ where: eq(automation.status, "active") });
+  const live = await db.query.automation.findMany({
+    where: and(eq(automation.status, "active"), eq(automation.trigger, "subscribed")),
+  });
   let made = 0;
 
   for (const job of live) {
-    if (!job.entryNodeId) continue;
+    if (!job.entryNodeId || !job.listId) continue;
+
+    /*
+     * A narrowing is asked here, at the moment somebody would be enrolled,
+     * rather than kept as a membership somewhere. A flow for "people on the
+     * pro plan" is then right on the day it runs.
+     */
+    const narrowing = job.segmentId
+      ? await db.query.segment.findFirst({ where: eq(segment.id, job.segmentId) })
+      : null;
 
     const fresh = await db
       .select({ id: listMember.id })
@@ -75,6 +92,7 @@ async function enrol(): Promise<number> {
         and(
           eq(listMember.listId, job.listId),
           eq(listMember.status, "subscribed"),
+          narrowing ? segmentCondition(narrowing) : undefined,
           /*
            * The date goes in as text and is cast, not handed over as a Date:
            * inside a raw fragment there is no column to tell the driver what
@@ -115,9 +133,56 @@ async function enrol(): Promise<number> {
 /** Whether a condition node's answer is yes for this person. */
 async function answer(
   node: AutomationNode,
-  member: { id: string; fields: Record<string, string> },
+  member: { id: string; address: string; fields: Record<string, string>; tags: string[] },
 ): Promise<boolean> {
   const test = node.config.test ?? "opened";
+
+  if (test === "tag") {
+    const tag = node.config.tag?.trim();
+    return tag ? member.tags.includes(tag) : false;
+  }
+
+  /*
+   * A whole segment as one question.
+   *
+   * Everything the segment language can ask — opened nothing in thirty days,
+   * joined before a date, a field, a tag, any of them combined — becomes
+   * available to a condition without a second rule builder growing here.
+   */
+  if (test === "segment") {
+    if (!node.config.segmentId) return false;
+    const narrowing = await db.query.segment.findFirst({
+      where: eq(segment.id, node.config.segmentId),
+    });
+    if (!narrowing) return false;
+
+    const [match] = await db
+      .select({ id: listMember.id })
+      .from(listMember)
+      .where(and(eq(listMember.id, member.id), segmentCondition(narrowing)))
+      .limit(1);
+    return Boolean(match);
+  }
+
+  /*
+   * On another list, asked by address: the same person is a different row on
+   * every list they are on, and the address is what ties them together.
+   */
+  if (test === "list") {
+    if (!node.config.listId) return false;
+    const [found] = await db
+      .select({ id: listMember.id })
+      .from(listMember)
+      .where(
+        and(
+          eq(listMember.listId, node.config.listId),
+          eq(listMember.address, member.address),
+          eq(listMember.status, "subscribed"),
+        ),
+      )
+      .limit(1);
+    return node.config.op === "is_not" ? !found : Boolean(found);
+  }
 
   if (test === "opened" || test === "clicked") {
     /*
@@ -165,6 +230,7 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       memberId: automationRun.listMemberId,
       nodeId: automationRun.nodeId,
       orgId: automationRun.organizationId,
+      automationName: automation.name,
       mailboxId: automation.mailboxId,
       listId: automation.listId,
     })
@@ -183,7 +249,14 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
   for (const job of due) {
     const member = await db.query.listMember.findFirst({
       where: eq(listMember.id, job.memberId),
-      columns: { id: true, address: true, name: true, status: true, fields: true },
+      columns: {
+        id: true,
+        address: true,
+        name: true,
+        status: true,
+        fields: true,
+        tags: true,
+      },
     });
 
     /*
@@ -208,6 +281,7 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
     let at: string | null = job.nodeId;
     let waitUntil: Date | null = null;
     let fields = member.fields;
+    let tags = member.tags;
 
     for (let hop = 0; hop < HOPS && at && !waitUntil; hop += 1) {
       const node: AutomationNode | undefined = await db.query.automationNode.findFirst({
@@ -221,12 +295,29 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       if (node.kind === "wait") {
         // Nothing happens here; it is the pause itself.
         at = node.next;
+
+        if (node.waitUntil) {
+          /*
+           * A moment rather than a length of time, so everybody waiting here
+           * moves on together whenever they arrived.
+           *
+           * Somebody who reaches it after the moment has passed walks
+           * straight through. Holding them until the same date next year is
+           * the only alternative, and nobody means that.
+           */
+          if (node.waitUntil.getTime() <= Date.now()) continue;
+          waitUntil = node.waitUntil;
+          break;
+        }
+
         waitUntil = new Date(Date.now() + node.delayMinutes * 60_000);
         break;
       }
 
       if (node.kind === "condition") {
-        at = (await answer(node, { id: member.id, fields })) ? node.next : node.nextElse;
+        at = (await answer(node, { id: member.id, address: member.address, fields, tags }))
+          ? node.next
+          : node.nextElse;
         continue;
       }
 
@@ -236,6 +327,68 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
           fields = { ...fields, [key]: node.config.value ?? "" };
           await db.update(listMember).set({ fields }).where(eq(listMember.id, member.id));
         }
+        at = node.next;
+        continue;
+      }
+
+      if (node.kind === "tag") {
+        const tag = node.config.tag?.trim();
+        if (tag) {
+          /*
+           * A tag is a set somebody is in or out of, so adding one twice is
+           * not two of anything and removing one they never had is not an
+           * error. Written from the copy this pass is carrying, so two tag
+           * boxes in a row do not undo each other.
+           */
+          tags =
+            node.config.tagAction === "remove"
+              ? tags.filter((entry) => entry !== tag)
+              : tags.includes(tag)
+                ? tags
+                : [...tags, tag];
+          await db.update(listMember).set({ tags }).where(eq(listMember.id, member.id));
+        }
+        at = node.next;
+        continue;
+      }
+
+      if (node.kind === "move") {
+        const target = node.config.listId;
+        const moving = node.config.listAction === "move";
+
+        if (target && target !== job.listId) {
+          /*
+           * Everything about them comes along: the name to address them by,
+           * the fields a later subject merges, the tags a later segment asks
+           * about. A copy that arrives as a bare address is a copy nobody
+           * can send to properly.
+           */
+          const landed = await subscribe(
+            job.orgId,
+            target,
+            { address: member.address, name: member.name, fields },
+            `automation: ${job.automationName}`,
+          );
+          if (landed.status !== "blocked" && tags.length > 0) {
+            await db.update(listMember).set({ tags }).where(eq(listMember.id, landed.id));
+          }
+        }
+
+        if (moving) {
+          /*
+           * Taken off this list, which is the list this flow follows — so
+           * their journey through it ends here. Marked rather than deleted:
+           * deleting the row would take the record of everything ever sent
+           * to them with it.
+           */
+          await db
+            .update(listMember)
+            .set({ status: "unsubscribed", unsubscribedAt: new Date() })
+            .where(eq(listMember.id, member.id));
+          at = null;
+          break;
+        }
+
         at = node.next;
         continue;
       }

@@ -71,6 +71,7 @@ const SIDEBAR = {
         { text: "Domains", link: "/api/domains" },
         { text: "Labels and contacts", link: "/api/labels" },
         { text: "Blocked addresses", link: "/api/suppressions" },
+        { text: "Events", link: "/api/events" },
         { text: "Webhooks", link: "/api/webhooks" },
         { text: "Statistics", link: "/api/stats" },
       ],

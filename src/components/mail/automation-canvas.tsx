@@ -14,21 +14,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/kit";
-import type { AutomationNodeKind, NodeConfig } from "@/db/schema";
+import type { AutomationNodeKind, AutomationTrigger, NodeConfig } from "@/db/schema";
 import {
   type FlowNode,
   GAP_Y,
   NODE_HEIGHT,
   NODE_WIDTH,
   TRIGGER_ID,
+  describeTrigger,
   humanDelay,
   layout,
   summarise,
 } from "@/lib/automation-flow";
 import { cn } from "@/lib/utils";
-import { addNodeAction, removeNodeAction, updateNodeAction } from "@/server/actions";
 import {
+  addNodeAction,
+  removeNodeAction,
+  updateAutomationAction,
+  updateNodeAction,
+} from "@/server/actions";
+import {
+  ArrowRightLeft,
+  Check,
   Clock,
+  Copy,
   GitBranch,
   Mail,
   PanelRightClose,
@@ -36,14 +45,16 @@ import {
   Play,
   Plus,
   SlidersHorizontal,
+  Tag,
   Trash2,
   UserMinus,
+  Zap,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -112,6 +123,24 @@ const KINDS: Kind[] = [
     tone: "text-muted-foreground",
   },
   {
+    key: "tag",
+    short: "Tag",
+    label: "Add or remove a tag",
+    hint: "A label a segment or a later condition can ask about",
+    icon: Tag,
+    group: "People",
+    tone: "text-primary",
+  },
+  {
+    key: "move",
+    short: "Another list",
+    label: "Copy or move to another list",
+    hint: "Put them on a second list, with or without leaving this one",
+    icon: ArrowRightLeft,
+    group: "People",
+    tone: "text-muted-foreground",
+  },
+  {
     key: "unsubscribe",
     ends: true,
     short: "Unsubscribe",
@@ -125,6 +154,31 @@ const KINDS: Kind[] = [
 
 const BY_KIND = new Map(KINDS.map((kind) => [kind.key, kind]));
 
+/**
+ * The "no narrowing" option needs a value of its own.
+ *
+ * A Select item cannot carry an empty string — Radix uses that for "nothing
+ * chosen" — so the absence of a segment is spelled out and translated back to
+ * null on the way to the server.
+ */
+const EVERYBODY = "__everybody";
+
+/** The two ways a flow can start. */
+const TRIGGERS: { key: AutomationTrigger; label: string; hint: string; icon: LucideIcon }[] = [
+  {
+    key: "subscribed",
+    label: "Somebody joins a list",
+    hint: "A welcome series, on their clock",
+    icon: Play,
+  },
+  {
+    key: "event",
+    label: "An event you post",
+    hint: "Your own code calls the API: a trial ended, an order shipped",
+    icon: Zap,
+  },
+];
+
 /** Room around the drawing, so a branch on the edge is not against the frame. */
 const PAD = 48;
 
@@ -132,16 +186,34 @@ export function AutomationCanvas({
   automationId,
   nodes,
   entryNodeId,
-  listName,
+  trigger,
+  eventName,
+  listId,
+  segmentId,
+  lists,
+  segments,
+  events,
   templates,
+  appUrl,
   live,
 }: {
   automationId: string;
   nodes: FlowNode[];
   entryNodeId: string | null;
-  listName: string;
+  /** What starts the flow, and null while nobody has said. */
+  trigger: AutomationTrigger | null;
+  eventName: string | null;
+  listId: string | null;
+  /** Narrows who the trigger applies to, or null for everybody on the list. */
+  segmentId: string | null;
+  lists: { id: string; name: string; subscribed: number }[];
+  segments: { id: string; listId: string; name: string; size: number }[];
+  /** Event names already known to this account, for the picker. */
+  events: { id: string; name: string; seenCount: number }[];
   /** Saved templates an email box can be started from. */
   templates: { id: string; name: string }[];
+  /** For the copyable call that starts an event flow. */
+  appUrl: string;
   /** Running: the canvas says so, because edits reach real people. */
   live: boolean;
 }) {
@@ -158,6 +230,21 @@ export function AutomationCanvas({
   /** Which box the inspector is showing. An id, so it survives a refresh. */
   const [editing, setEditing] = useState<string | null>(null);
   const [zoom, setZoom] = useState(1);
+  /**
+   * Where the drawing sits in the pane, in screen pixels.
+   *
+   * A pan rather than a scroll. A canvas is a place you move around in, not a
+   * document with a bottom — scrollbars on one say "there is an amount of
+   * this", which is the wrong thing to say about a flow somebody is still
+   * building, and they fight the drag every tool trains you to use.
+   */
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  /** True once somebody has moved it themselves, so nothing takes it back. */
+  const moved = useRef(false);
+  /* The handlers below are bound once, so they read the pan from here rather
+     than from a copy captured when they were made. */
+  const panNow = useRef(pan);
+  panNow.current = pan;
   const frame = useRef<HTMLDivElement>(null);
 
   const plan = useMemo(() => layout(nodes, entryNodeId), [nodes, entryNodeId]);
@@ -191,7 +278,7 @@ export function AutomationCanvas({
     const pane = frame.current;
     if (!pane) return;
 
-    let from: { x: number; y: number; left: number; top: number } | null = null;
+    let from: { x: number; y: number; panX: number; panY: number } | null = null;
 
     const down = (event: PointerEvent) => {
       const target = event.target as HTMLElement;
@@ -199,15 +286,23 @@ export function AutomationCanvas({
       // Cards, buttons and the SVG all sit above the ground; only the ground
       // and the sized wrapper inside it are draggable.
       if (target.closest("button, a, aside, [role='button']")) return;
-      from = { x: event.clientX, y: event.clientY, left: pane.scrollLeft, top: pane.scrollTop };
+      from = {
+        x: event.clientX,
+        y: event.clientY,
+        panX: panNow.current.x,
+        panY: panNow.current.y,
+      };
       pane.setPointerCapture(event.pointerId);
       pane.style.cursor = "grabbing";
     };
 
     const move = (event: PointerEvent) => {
       if (!from) return;
-      pane.scrollLeft = from.left - (event.clientX - from.x);
-      pane.scrollTop = from.top - (event.clientY - from.y);
+      moved.current = true;
+      setPan({
+        x: from.panX + (event.clientX - from.x),
+        y: from.panY + (event.clientY - from.y),
+      });
     };
 
     const up = (event: PointerEvent) => {
@@ -217,17 +312,67 @@ export function AutomationCanvas({
       pane.style.cursor = "";
     };
 
+    /*
+     * The wheel moves the canvas rather than a scrollbar, and with a modifier
+     * it zooms towards the pointer — which is what every canvas does, and
+     * what a trackpad pinch arrives as.
+     */
+    const wheel = (event: WheelEvent) => {
+      event.preventDefault();
+      moved.current = true;
+
+      if (event.ctrlKey || event.metaKey) {
+        const box = pane.getBoundingClientRect();
+        const at = { x: event.clientX - box.left, y: event.clientY - box.top };
+        setZoom((current) => {
+          const next = Math.min(1.5, Math.max(0.5, current * (1 - event.deltaY / 400)));
+          // Keep whatever is under the pointer under the pointer.
+          setPan((now) => ({
+            x: at.x - ((at.x - now.x) * next) / current,
+            y: at.y - ((at.y - now.y) * next) / current,
+          }));
+          return next;
+        });
+        return;
+      }
+
+      setPan((now) => ({ x: now.x - event.deltaX, y: now.y - event.deltaY }));
+    };
+
     pane.addEventListener("pointerdown", down);
     pane.addEventListener("pointermove", move);
     pane.addEventListener("pointerup", up);
     pane.addEventListener("pointercancel", up);
+    pane.addEventListener("wheel", wheel, { passive: false });
     return () => {
       pane.removeEventListener("pointerdown", down);
       pane.removeEventListener("pointermove", move);
       pane.removeEventListener("pointerup", up);
       pane.removeEventListener("pointercancel", up);
+      pane.removeEventListener("wheel", wheel);
     };
   }, []);
+
+  /** Puts the drawing back in the middle of the pane, at the top. */
+  const recentre = useCallback(
+    (scale = zoom) => {
+      const pane = frame.current;
+      if (!pane) return;
+      const width = (plan.width + PAD * 2) * scale;
+      setPan({ x: Math.max(0, (pane.clientWidth - width) / 2), y: 0 });
+    },
+    [plan.width, zoom],
+  );
+
+  /*
+   * Centred to start with, and again when the flow's width changes — until
+   * somebody moves it themselves. After that it stays where they put it:
+   * a canvas that springs back while you are working on it is maddening.
+   */
+  useEffect(() => {
+    if (moved.current) return;
+    recentre();
+  }, [recentre]);
 
   async function add(kind: AutomationNodeKind) {
     if (!adding) return;
@@ -240,9 +385,15 @@ export function AutomationCanvas({
       });
       if (!made.ok) throw new Error(made.error);
       setAdding(null);
-      // An email is the only kind with anything to write, so it opens.
-      if (kind === "email") router.push(`/campaigns/automations/${automationId}/steps/${made.id}`);
-      else router.refresh();
+      /*
+       * The box lands on the canvas and its pane opens; nothing jumps to the
+       * builder. Adding a step and writing the email are two decisions, and
+       * being thrown into a full-screen editor by a menu click takes the
+       * second one for you — often when the answer was "start from a
+       * template" or "not yet".
+       */
+      setEditing(made.id);
+      router.refresh();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "That could not be added");
     } finally {
@@ -250,7 +401,19 @@ export function AutomationCanvas({
     }
   }
 
-  const chosen = editing ? (by.get(editing) ?? null) : null;
+  const chosen = editing && editing !== TRIGGER_ID ? (by.get(editing) ?? null) : null;
+  const listName = lists.find((row) => row.id === listId)?.name ?? null;
+  /* Cards name what a box points at, and nothing about a list or a segment
+     is stored on the node — a copy of the name would go stale the first time
+     somebody renamed one. */
+  const names = useMemo(
+    () => ({
+      lists: Object.fromEntries(lists.map((row) => [row.id, row.name])),
+      segments: Object.fromEntries(segments.map((row) => [row.id, row.name])),
+    }),
+    [lists, segments],
+  );
+  const segmentName = segments.find((row) => row.id === segmentId)?.name ?? null;
 
   return (
     <div className="flex min-h-0 flex-1 overflow-hidden">
@@ -259,7 +422,7 @@ export function AutomationCanvas({
           open={removing !== null}
           onOpenChange={(next) => !next && setRemoving(null)}
           title="Remove this box?"
-          description={removing ? summarise(removing).title : undefined}
+          description={removing ? summarise(removing, names).title : undefined}
           consequences={
             removing?.kind === "condition" ? (
               <>
@@ -285,35 +448,31 @@ export function AutomationCanvas({
           follows the theme and costs nothing to load. */}
         <div
           ref={frame}
-          className="h-full w-full cursor-grab overflow-auto"
+          className="h-full w-full cursor-grab touch-none overflow-hidden"
           style={{
             backgroundImage:
               "radial-gradient(circle, color-mix(in oklch, var(--color-border) 90%, transparent) 1px, transparent 1px)",
             backgroundSize: `${22 * zoom}px ${22 * zoom}px`,
+            // The ground moves with the drawing, or panning feels like the
+            // boxes sliding over a sheet that is nailed down.
+            backgroundPosition: `${pan.x}px ${pan.y}px`,
           }}
           onClick={(event) => {
             if (event.target === event.currentTarget) setAdding(null);
           }}
         >
-          {/* Two boxes: the outer one is the drawing's size after zooming,
-              which is what centres it and what the scrollbars measure; the
-              inner one is the drawing at its own scale. One box cannot be
-              both, and using one leaves dead space at every zoom but 100%. */}
+          {/* One box, moved and scaled. There is nothing to scroll: where the
+              drawing sits is the pan, and the pane simply shows the part of
+              it that lands inside. */}
           <div
-            className="mx-auto"
+            className="relative origin-top-left"
             style={{
-              width: (plan.width + PAD * 2) * zoom,
-              height: (plan.height + PAD * 2) * zoom,
+              width: plan.width + PAD * 2,
+              height: plan.height + PAD * 2,
+              transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`,
             }}
           >
-            <div
-              className="relative origin-top-left"
-              style={{
-                width: plan.width + PAD * 2,
-                height: plan.height + PAD * 2,
-                transform: `scale(${zoom})`,
-              }}
-            >
+            <div className="relative h-full w-full">
               {/* Edges under the cards, so a line never crosses a title. */}
               <svg
                 className="pointer-events-none absolute inset-0"
@@ -369,12 +528,21 @@ export function AutomationCanvas({
                   >
                     {/* Beside the button rather than in the same row as it: a
                       label that pushes the "+" sideways puts it off the line
-                      it belongs to, which is exactly what it must sit on. */}
+                      it belongs to, which is exactly what it must sit on.
+                      Each label sits on the outside of its own arm — "yes" to
+                      the left of the left one, "no" to the right of the right
+                      one — so the pair is a mirror rather than two labels
+                      queued on the same side. */}
                     {label && (
                       <Badge
                         size="sm"
                         tone={edge.branch === "next" ? "ok" : "neutral"}
-                        className="-translate-y-1/2 absolute top-1/2 right-[calc(100%+6px)]"
+                        className={cn(
+                          "-translate-y-1/2 absolute top-1/2",
+                          edge.branch === "next"
+                            ? "right-[calc(100%+6px)]"
+                            : "left-[calc(100%+6px)]",
+                        )}
                       >
                         {label}
                       </Badge>
@@ -416,16 +584,56 @@ export function AutomationCanvas({
 
               {plan.nodes.map((spot) => {
                 if (spot.id === TRIGGER_ID) {
+                  /*
+                   * Nothing chosen yet is its own thing on the canvas, not an
+                   * empty card. A flow has two questions — what starts it and
+                   * what it does — and both are answered here, so the first
+                   * one has to look like something you press rather than
+                   * something already decided.
+                   */
+                  if (!trigger) {
+                    return (
+                      <span
+                        key={spot.id}
+                        className="absolute grid place-items-center"
+                        style={{
+                          left: spot.x + PAD,
+                          top: spot.y + PAD,
+                          width: NODE_WIDTH,
+                          height: NODE_HEIGHT,
+                        }}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => setEditing(TRIGGER_ID)}
+                          className={cn(
+                            "flex items-center gap-2 rounded-full border border-border border-dashed bg-card px-4 py-2.5 text-[13px] transition-colors",
+                            "hover:border-primary hover:bg-accent focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30",
+                            editing === TRIGGER_ID &&
+                              "border-primary border-solid ring-2 ring-primary/25",
+                          )}
+                        >
+                          <Plus className="size-3.5 text-muted-foreground" />
+                          Start with a trigger
+                        </button>
+                      </span>
+                    );
+                  }
+
+                  const said = describeTrigger(trigger, listName, eventName, segmentName);
                   return (
                     <Card
                       key={spot.id}
                       x={spot.x + PAD}
                       y={spot.y + PAD}
                       eyebrow="Trigger"
-                      title="Somebody joins"
-                      note={listName}
-                      icon={Play}
-                      tone="text-ok"
+                      title={said.title}
+                      note={said.note}
+                      icon={trigger === "event" ? Zap : Play}
+                      tone={said.warn ? "text-warn" : "text-ok"}
+                      warn={said.warn}
+                      selected={editing === TRIGGER_ID}
+                      onOpen={() => setEditing(TRIGGER_ID)}
                     />
                   );
                 }
@@ -433,7 +641,7 @@ export function AutomationCanvas({
                 const node = by.get(spot.id);
                 if (!node) return null;
                 const kind = BY_KIND.get(node.kind);
-                const said = summarise(node);
+                const said = summarise(node, names);
 
                 return (
                   <Card
@@ -469,11 +677,17 @@ export function AutomationCanvas({
             <div
               className="absolute z-30 w-[268px] overflow-hidden rounded-xl border border-border bg-card p-1.5 shadow-lg"
               style={{
-                left: Math.min(adding.at.x * zoom + 16, (frame.current?.clientWidth ?? 800) - 284),
+                left: Math.max(
+                  8,
+                  Math.min(
+                    adding.at.x * zoom + pan.x + 16,
+                    (frame.current?.clientWidth ?? 800) - 284,
+                  ),
+                ),
                 top: Math.max(
                   8,
                   Math.min(
-                    adding.at.y * zoom - (frame.current?.scrollTop ?? 0) + 8,
+                    adding.at.y * zoom + pan.y + 8,
                     (frame.current?.clientHeight ?? 600) - 360,
                   ),
                 ),
@@ -533,9 +747,17 @@ export function AutomationCanvas({
           >
             <ZoomOut />
           </IconButton>
+          {/* Resets both, because a canvas with no scrollbars can be panned
+              somewhere with nothing in it, and then the way back has to be
+              one button rather than a hunt. */}
           <button
             type="button"
-            onClick={() => setZoom(1)}
+            title="Back to the middle"
+            onClick={() => {
+              moved.current = false;
+              setZoom(1);
+              recentre(1);
+            }}
             className="min-w-10 text-center font-mono text-[11.5px] text-muted-foreground tabular-nums hover:text-foreground"
           >
             {Math.round(zoom * 100)}%
@@ -562,17 +784,281 @@ export function AutomationCanvas({
       {/* The inspector. A pane rather than a dialog: a box is adjusted while
           looking at where it sits in the flow, and a modal covers exactly the
           thing being reasoned about. */}
+      {editing === TRIGGER_ID && (
+        <TriggerInspector
+          automationId={automationId}
+          trigger={trigger}
+          eventName={eventName}
+          listId={listId}
+          segmentId={segmentId}
+          lists={lists}
+          segments={segments}
+          events={events}
+          appUrl={appUrl}
+          live={live}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
       {chosen && (
         <NodeInspector
           key={chosen.id}
           automationId={automationId}
           node={chosen}
+          lists={lists.filter((row) => row.id !== listId)}
+          segments={segments.filter((row) => row.listId === listId)}
           templates={templates}
           onClose={() => setEditing(null)}
           onRemove={() => setRemoving(chosen)}
         />
       )}
     </div>
+  );
+}
+
+/**
+ * What starts the flow, chosen beside the canvas it starts.
+ *
+ * Two kinds, and the difference between them is who knows the thing
+ * happened. Joining a list is something this app can see; everything else a
+ * product wants to say — a trial ending, an order shipping — is something
+ * only the product knows, so it arrives as a call.
+ */
+function TriggerInspector({
+  automationId,
+  trigger,
+  eventName,
+  listId,
+  segmentId,
+  lists,
+  segments,
+  events,
+  appUrl,
+  live,
+  onClose,
+}: {
+  automationId: string;
+  trigger: AutomationTrigger | null;
+  eventName: string | null;
+  listId: string | null;
+  segmentId: string | null;
+  lists: { id: string; name: string; subscribed: number }[];
+  segments: { id: string; listId: string; name: string; size: number }[];
+  events: { id: string; name: string; seenCount: number }[];
+  appUrl: string;
+  live: boolean;
+  onClose: () => void;
+}) {
+  const router = useRouter();
+  const [busy, setBusy] = useState(false);
+  const [fresh, setFresh] = useState("");
+  const [copied, setCopied] = useState(false);
+
+  async function save(patch: Parameters<typeof updateAutomationAction>[1]) {
+    setBusy(true);
+    try {
+      const result = await updateAutomationAction(automationId, patch);
+      if (!result.ok) throw new Error(result.error);
+      router.refresh();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That could not be saved");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const list = lists.find((row) => row.id === listId);
+  const mine = segments.filter((row) => row.listId === listId);
+  /* Written out with the values that are actually set, so it can be pasted
+     rather than read. */
+  const call = [
+    `curl -X POST ${appUrl}/api/v1/events \\`,
+    `  -H "Authorization: Bearer YOUR_API_KEY" \\`,
+    `  -H "Content-Type: application/json" \\`,
+    `  -d '{"event":"${eventName || "your.event"}","email":"person@example.com"}'`,
+  ].join("\n");
+
+  return (
+    <aside className="flex w-[300px] shrink-0 flex-col overflow-y-auto border-border border-l bg-card">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-border border-b px-3">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
+          {trigger === "event" ? (
+            <Zap className="size-3.5 text-ok" />
+          ) : (
+            <Play className="size-3.5 text-ok" />
+          )}
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium text-[12.5px]">What starts it</span>
+        <IconButton label="Close" size="sm" onClick={onClose}>
+          <PanelRightClose />
+        </IconButton>
+      </header>
+
+      <div className="min-h-0 flex-1 space-y-4 p-3">
+        <div className="space-y-1.5">
+          {TRIGGERS.map((option) => (
+            <button
+              key={option.key}
+              type="button"
+              disabled={busy || live}
+              onClick={() => save({ trigger: option.key })}
+              className={cn(
+                "flex w-full items-start gap-2.5 rounded-lg border p-2.5 text-left transition-colors",
+                trigger === option.key
+                  ? "border-primary bg-primary/5"
+                  : "border-border hover:bg-accent",
+                (busy || live) && "opacity-60",
+              )}
+            >
+              <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
+                <option.icon className="size-3.5 text-ok" />
+              </span>
+              <span className="min-w-0">
+                <span className="block font-medium text-[12.5px]">{option.label}</span>
+                <span className="block text-[11.5px] text-muted-foreground">{option.hint}</span>
+              </span>
+            </button>
+          ))}
+        </div>
+
+        {trigger === "event" && (
+          <>
+            <Field label="Which event" hint="The name your code posts.">
+              <Select
+                value={eventName ?? ""}
+                onValueChange={(value) => save({ eventName: value })}
+                disabled={busy || events.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={events.length === 0 ? "None yet" : "Pick one…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {events.map((row) => (
+                    <SelectItem key={row.id} value={row.name}>
+                      {row.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            {/* Named here as well as on the Events page: wiring one up is part
+                of building this flow, and sending somebody to another screen
+                to type one word loses them. */}
+            <Field label="Or name a new one">
+              <span className="flex gap-2">
+                <Input
+                  value={fresh}
+                  onChange={(event) => setFresh(event.target.value)}
+                  placeholder="trial.ended"
+                  className="font-mono"
+                />
+                <Button
+                  variant="outline"
+                  disabled={busy || !fresh.trim()}
+                  onClick={() => {
+                    save({ eventName: fresh });
+                    setFresh("");
+                  }}
+                >
+                  Use it
+                </Button>
+              </span>
+            </Field>
+          </>
+        )}
+
+        <Field
+          label={trigger === "event" ? "These people are on" : "The list"}
+          hint={
+            trigger === "event"
+              ? "Where the person in the event lives. Unsubscribes and merge fields come from here."
+              : "Only people who join after you switch it on."
+          }
+        >
+          <Select
+            value={listId ?? ""}
+            onValueChange={(value) => save({ listId: value })}
+            disabled={busy || live}
+          >
+            <SelectTrigger>
+              <SelectValue placeholder="Pick a list" />
+            </SelectTrigger>
+            <SelectContent>
+              {lists.map((row) => (
+                <SelectItem key={row.id} value={row.id}>
+                  {row.name} · {row.subscribed}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </Field>
+
+        {/* Narrowing is offered for both triggers, and only once a list is
+            picked: a segment is a question about one list's people. */}
+        {listId && (
+          <Field
+            label="Only if they match"
+            hint={
+              mine.length === 0
+                ? "No segments on this list yet. Make one on the list's own page."
+                : "Asked at the moment they would be put in, so it is never out of date."
+            }
+          >
+            <Select
+              value={segmentId ?? EVERYBODY}
+              onValueChange={(value) => save({ segmentId: value === EVERYBODY ? null : value })}
+              disabled={busy || mine.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EVERYBODY}>Everybody on the list</SelectItem>
+                {mine.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name} · {row.size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+
+        {trigger === "event" && (
+          <div className="space-y-2">
+            <p className="eyebrow">Post it like this</p>
+            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
+              {call}
+            </pre>
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                void navigator.clipboard.writeText(call);
+                setCopied(true);
+                setTimeout(() => setCopied(false), 1500);
+              }}
+            >
+              {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+              {copied ? "Copied" : "Copy the call"}
+            </Button>
+            <Note>
+              An address nobody has heard of is skipped, not added — send{" "}
+              <code className="font-mono">consent_source</code> with it to put them on{" "}
+              {list?.name ?? "the list"} first.
+            </Note>
+          </div>
+        )}
+
+        {live && (
+          <Note className="text-warn">
+            Running. Pause it before changing what starts it, so nobody is enrolled halfway through
+            the change.
+          </Note>
+        )}
+      </div>
+    </aside>
   );
 }
 
@@ -678,6 +1164,23 @@ function asUnit(minutes: number) {
   return { unit: "minutes" as const, amount: minutes };
 }
 
+/**
+ * A datetime-local input wants "2026-10-03T09:00" in the reader's own time
+ * zone, and a Date prints UTC. Shifted by the offset rather than formatted by
+ * hand, so the box shows the time somebody actually meant.
+ */
+function forInput(when: Date) {
+  const local = new Date(when.getTime() - when.getTimezoneOffset() * 60_000);
+  return local.toISOString().slice(0, 16);
+}
+
+/** Where "until a date" starts, so the field is never empty. */
+function inAWeek() {
+  const when = new Date(Date.now() + 7 * 86_400_000);
+  when.setMinutes(0, 0, 0);
+  return when;
+}
+
 /** Common waits, because "3 days" is what almost every second email is. */
 const PRESETS = [
   { label: "1 hour", minutes: 60 },
@@ -700,12 +1203,18 @@ const PRESETS = [
 function NodeInspector({
   automationId,
   node,
+  lists,
+  segments,
   templates,
   onClose,
   onRemove,
 }: {
   automationId: string;
   node: FlowNode;
+  /** Somewhere to copy or move people to: every list but this flow's own. */
+  lists: { id: string; name: string; subscribed: number }[];
+  /** Segments of this flow's own list, for a condition to ask about. */
+  segments: { id: string; listId: string; name: string; size: number }[];
   templates: { id: string; name: string }[];
   onClose: () => void;
   onRemove: () => void;
@@ -731,6 +1240,10 @@ function NodeInspector({
     } finally {
       setBusy(false);
     }
+  }
+
+  function saveUntil(when: Date) {
+    void save({ waitUntil: when.toISOString() });
   }
 
   function saveWait(minutes: number) {
@@ -814,70 +1327,127 @@ function NodeInspector({
 
         {node.kind === "wait" && (
           <>
-            <Field label="Hold them for">
-              <span className="flex items-center gap-2">
-                <Input
-                  type="number"
-                  min={0}
-                  value={amount}
-                  onChange={(event) => setAmount(Number(event.target.value))}
-                  onBlur={() =>
-                    save({
-                      delayMinutes: Math.max(
-                        0,
-                        Math.round(amount * (UNITS.find((entry) => entry.key === unit)?.per ?? 1)),
-                      ),
-                    })
-                  }
-                />
-                <Select
-                  value={unit}
-                  onValueChange={(value) => {
-                    setUnit(value);
-                    void save({
-                      delayMinutes: Math.max(
-                        0,
-                        Math.round(amount * (UNITS.find((entry) => entry.key === value)?.per ?? 1)),
-                      ),
-                    });
-                  }}
-                >
-                  <SelectTrigger className="w-[104px]">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {UNITS.map((entry) => (
-                      <SelectItem key={entry.key} value={entry.key}>
-                        {entry.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </span>
-            </Field>
-
-            <div className="flex flex-wrap gap-1.5">
-              {PRESETS.map((preset) => (
+            {/* Two different things, not two ways of saying one. A length of
+                time is measured from each person's own arrival; a date is the
+                same instant for everybody waiting here. */}
+            <div className="flex gap-1.5">
+              {(
+                [
+                  { key: "for", label: "For a while" },
+                  { key: "until", label: "Until a date" },
+                ] as const
+              ).map((option) => (
                 <button
-                  key={preset.label}
+                  key={option.key}
                   type="button"
-                  onClick={() => saveWait(preset.minutes)}
+                  disabled={busy}
+                  onClick={() =>
+                    option.key === "until"
+                      ? saveUntil(node.waitUntil ?? inAWeek())
+                      : save({ waitUntil: null })
+                  }
                   className={cn(
-                    "h-7 rounded-full border px-2.5 text-[12px] transition-colors",
-                    node.delayMinutes === preset.minutes
+                    "h-8 flex-1 rounded-lg border text-[12.5px] transition-colors",
+                    (node.waitUntil !== null) === (option.key === "until")
                       ? "border-transparent bg-primary text-primary-foreground"
                       : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
                   )}
                 >
-                  {preset.label}
+                  {option.label}
                 </button>
               ))}
             </div>
 
-            <Note>
-              Counted from the moment they reach this box, so it is a pause in their own journey
-              rather than a date on a calendar.
-            </Note>
+            {node.waitUntil ? (
+              <>
+                <Field label="Hold them until" hint="Your own time zone.">
+                  <Input
+                    type="datetime-local"
+                    value={forInput(node.waitUntil)}
+                    onChange={(event) =>
+                      event.target.value && saveUntil(new Date(event.target.value))
+                    }
+                  />
+                </Field>
+
+                <Note>
+                  Everybody waiting here moves on at that moment, however long ago they joined —
+                  which is what an announcement on a date means. Anybody who arrives after it has
+                  passed walks straight through rather than waiting a year.
+                </Note>
+              </>
+            ) : (
+              <>
+                <Field label="Hold them for">
+                  <span className="flex items-center gap-2">
+                    <Input
+                      type="number"
+                      min={0}
+                      value={amount}
+                      onChange={(event) => setAmount(Number(event.target.value))}
+                      onBlur={() =>
+                        save({
+                          delayMinutes: Math.max(
+                            0,
+                            Math.round(
+                              amount * (UNITS.find((entry) => entry.key === unit)?.per ?? 1),
+                            ),
+                          ),
+                        })
+                      }
+                    />
+                    <Select
+                      value={unit}
+                      onValueChange={(value) => {
+                        setUnit(value);
+                        void save({
+                          delayMinutes: Math.max(
+                            0,
+                            Math.round(
+                              amount * (UNITS.find((entry) => entry.key === value)?.per ?? 1),
+                            ),
+                          ),
+                        });
+                      }}
+                    >
+                      <SelectTrigger className="w-[104px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {UNITS.map((entry) => (
+                          <SelectItem key={entry.key} value={entry.key}>
+                            {entry.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </span>
+                </Field>
+
+                <div className="flex flex-wrap gap-1.5">
+                  {PRESETS.map((preset) => (
+                    <button
+                      key={preset.label}
+                      type="button"
+                      onClick={() => saveWait(preset.minutes)}
+                      className={cn(
+                        "h-7 rounded-full border px-2.5 text-[12px] transition-colors",
+                        node.delayMinutes === preset.minutes
+                          ? "border-transparent bg-primary text-primary-foreground"
+                          : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                      )}
+                    >
+                      {preset.label}
+                    </button>
+                  ))}
+                </div>
+
+                <Note>
+                  Counted from the moment they reach this box, so it is a pause in their own journey
+                  rather than a date on a calendar.
+                </Note>
+              </>
+            )}
           </>
         )}
 
@@ -896,10 +1466,100 @@ function NodeInspector({
                 <SelectContent>
                   <SelectItem value="opened">They opened the last email</SelectItem>
                   <SelectItem value="clicked">They clicked the last email</SelectItem>
+                  <SelectItem value="tag">A tag on them</SelectItem>
                   <SelectItem value="field">A field on them</SelectItem>
+                  <SelectItem value="segment">Whether they match a segment</SelectItem>
+                  <SelectItem value="list">Whether they are on another list</SelectItem>
                 </SelectContent>
               </Select>
             </Field>
+
+            {config.test === "segment" && (
+              <Field
+                label="Segment"
+                hint={
+                  segments.length === 0
+                    ? "None on this list yet. Make one on the list's own page."
+                    : "Everything a segment can ask — engagement, fields, tags, when they joined."
+                }
+              >
+                <Select
+                  value={config.segmentId ?? ""}
+                  onValueChange={(value) => saveConfig({ ...config, segmentId: value })}
+                  disabled={segments.length === 0}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder={segments.length === 0 ? "None yet" : "Pick one…"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {segments.map((row) => (
+                      <SelectItem key={row.id} value={row.id}>
+                        {row.name} · {row.size}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+            )}
+
+            {config.test === "list" && (
+              <>
+                <Field label="List">
+                  <Select
+                    value={config.listId ?? ""}
+                    onValueChange={(value) => saveConfig({ ...config, listId: value })}
+                    disabled={lists.length === 0}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={lists.length === 0 ? "No other list" : "Pick one…"}
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {lists.map((row) => (
+                        <SelectItem key={row.id} value={row.id}>
+                          {row.name} · {row.subscribed}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Field label="Ask">
+                  <Select
+                    value={config.op === "is_not" ? "is_not" : "is"}
+                    onValueChange={(value) =>
+                      saveConfig({ ...config, op: value as NodeConfig["op"] })
+                    }
+                  >
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="is">They are on it</SelectItem>
+                      <SelectItem value="is_not">They are not on it</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </Field>
+
+                <Note>
+                  Asked by email address, because the same person is a different row on every list
+                  they are on. Only people still subscribed there count.
+                </Note>
+              </>
+            )}
+
+            {config.test === "tag" && (
+              <Field label="Tag">
+                <Input
+                  value={config.tag ?? ""}
+                  onChange={(event) => setConfig({ ...config, tag: event.target.value })}
+                  onBlur={() => saveConfig(config)}
+                  placeholder="customer"
+                  className="font-mono"
+                />
+              </Field>
+            )}
 
             {config.test === "field" && (
               <>
@@ -976,6 +1636,102 @@ function NodeInspector({
             <Note>
               Written onto the person, so a later condition or a segment can ask about it. Use it to
               mark where somebody got to.
+            </Note>
+          </>
+        )}
+
+        {node.kind === "tag" && (
+          <>
+            <Field label="Do what">
+              <Select
+                value={config.tagAction ?? "add"}
+                onValueChange={(value) =>
+                  saveConfig({ ...config, tagAction: value as NodeConfig["tagAction"] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="add">Add a tag</SelectItem>
+                  <SelectItem value="remove">Take a tag off</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Tag" hint="One word is easiest to live with: customer, vip, webinar.">
+              <Input
+                value={config.tag ?? ""}
+                onChange={(event) => setConfig({ ...config, tag: event.target.value })}
+                onBlur={() => saveConfig(config)}
+                placeholder="customer"
+                className="font-mono"
+              />
+            </Field>
+
+            <Note>
+              Tags are sets somebody is in or out of, so adding one twice does nothing and taking
+              off one they never had is not an error. A segment can ask about them, and so can a
+              condition further down.
+            </Note>
+          </>
+        )}
+
+        {node.kind === "move" && (
+          <>
+            <Field label="Do what">
+              <Select
+                value={config.listAction ?? "copy"}
+                onValueChange={(value) =>
+                  saveConfig({ ...config, listAction: value as NodeConfig["listAction"] })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="copy">Copy them to another list</SelectItem>
+                  <SelectItem value="move">Move them to another list</SelectItem>
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Which list">
+              <Select
+                value={config.listId ?? ""}
+                onValueChange={(value) => saveConfig({ ...config, listId: value })}
+                disabled={lists.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={lists.length === 0 ? "No other list" : "Pick one…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {lists.map((row) => (
+                    <SelectItem key={row.id} value={row.id}>
+                      {row.name} · {row.subscribed}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Note className={config.listAction === "move" ? "text-warn" : undefined}>
+              {config.listAction === "move" ? (
+                <>
+                  Moving takes them off <strong>this</strong> list, and this flow follows this list
+                  — so their journey here ends at this box. Everything already sent to them is kept.
+                </>
+              ) : (
+                "Their name, fields and tags go with them. They stay on this list as well, and carry on down the flow."
+              )}
+            </Note>
+
+            {/* A list that asks people to confirm is not bypassed by being
+                copied into: they land as "not confirmed" and hear nothing
+                until they click the link, which is the point of it. */}
+            <Note>
+              If the other list asks people to confirm by email, they arrive there as not confirmed
+              and are sent the confirmation.
             </Note>
           </>
         )}

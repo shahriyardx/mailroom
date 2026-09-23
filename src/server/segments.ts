@@ -24,6 +24,7 @@ export const RULE_FIELDS = [
   { key: "status", label: "Status", kind: "status" },
   { key: "consentAt", label: "Joined", kind: "date" },
   { key: "engagement", label: "Engagement", kind: "engagement" },
+  { key: "tags", label: "Tag", kind: "tag" },
 ] as const;
 
 export const RULE_OPS: Record<string, { key: SegmentRule["op"]; label: string }[]> = {
@@ -42,6 +43,10 @@ export const RULE_OPS: Record<string, { key: SegmentRule["op"]; label: string }[
   date: [
     { key: "before", label: "before" },
     { key: "after", label: "after" },
+  ],
+  tag: [
+    { key: "has", label: "has" },
+    { key: "not_has", label: "does not have" },
   ],
   engagement: [
     { key: "opened", label: "opened a campaign" },
@@ -101,6 +106,18 @@ function engagement(rule: SegmentRule): SQL {
 export function ruleCondition(rule: SegmentRule): SQL | null {
   if (rule.op === "opened" || rule.op === "not_opened") return engagement(rule);
   if (rule.op === "clicked" || rule.op === "not_clicked") return engagement(rule);
+
+  /*
+   * A tag is containment in an array, not a comparison. Written as `@>` so
+   * the GIN index answers it — `= any(tags)` would read every row on the
+   * list, which is the query a segment runs on every send.
+   */
+  if (rule.op === "has" || rule.op === "not_has") {
+    const tag = rule.value.trim();
+    if (!tag) return null;
+    const holds = sql`${listMember.tags} @> array[${tag}]::text[]`;
+    return rule.op === "has" ? holds : sql`not (${holds})`;
+  }
 
   const field = column(rule.field);
   const value = rule.value.trim();
@@ -261,11 +278,22 @@ export async function segmentsView(orgId: string, listId?: string): Promise<Segm
   return Promise.all(rows.map(async (row) => ({ ...row, size: await segmentSize(orgId, row) })));
 }
 
-/** How many subscribed people a segment currently matches. */
+/**
+ * How many people a segment currently matches.
+ *
+ * Subscribed people only — unless the segment asks about status itself, in
+ * which case counting only subscribers would answer "0" to "who has not
+ * confirmed yet" and look like a broken rule rather than a filtered count.
+ *
+ * Sending is unaffected either way: mail goes to subscribers, and a campaign
+ * aimed at a segment of unconfirmed people is refused with a reason.
+ */
 export async function segmentSize(
   orgId: string,
   row: { listId: string; matchAll: boolean; rules: SegmentRule[] },
 ) {
+  const aboutStatus = row.rules.some((rule) => rule.field === "status");
+
   const [answer] = await db
     .select({ howMany: sql<number>`count(*)`.mapWith(Number) })
     .from(listMember)
@@ -273,7 +301,7 @@ export async function segmentSize(
       and(
         eq(listMember.organizationId, orgId),
         eq(listMember.listId, row.listId),
-        eq(listMember.status, "subscribed"),
+        aboutStatus ? undefined : eq(listMember.status, "subscribed"),
         segmentCondition(row),
       ),
     );

@@ -1207,6 +1207,9 @@ export type Automation = typeof automation.$inferSelect;
 export type AutomationNode = typeof automationNode.$inferSelect;
 export type AutomationNodeKind = (typeof automationNodeKindEnum.enumValues)[number];
 export type AutomationStatus = (typeof automationStatusEnum.enumValues)[number];
+/** What starts an automation: joining its list, or an event you post. */
+export type AutomationTrigger = "subscribed" | "event";
+export type CustomEvent = typeof customEvent.$inferSelect;
 export type ListMemberStatus = (typeof listMemberStatusEnum.enumValues)[number];
 
 /**
@@ -1328,6 +1331,15 @@ export const listMember = pgTable(
     name: text("name"),
     /** Whatever else you want to merge into a subject or body. */
     fields: jsonb("fields").$type<Record<string, string>>().notNull().default(sql`'{}'::jsonb`),
+    /**
+     * Labels on a person: "customer", "webinar-march", "vip".
+     *
+     * A list apart from `fields` because they answer different questions. A
+     * field is a value — one plan, one city — and a tag is a set somebody is
+     * either in or out of, which is what an automation adds and removes and
+     * what a segment asks about.
+     */
+    tags: text("tags").array().notNull().default(sql`'{}'::text[]`),
 
     status: listMemberStatusEnum("status").notNull().default("subscribed"),
     /** Free text: "imported from mailchimp", "signup form", "added by hand". */
@@ -1341,6 +1353,9 @@ export const listMember = pgTable(
   (t) => [
     uniqueIndex("list_member_list_address_idx").on(t.listId, t.address),
     index("list_member_org_idx").on(t.organizationId),
+    // Asked by every segment rule about a tag, which is a containment test
+    // over an array — the one thing a plain btree index cannot answer.
+    index("list_member_tags_idx").using("gin", t.tags),
     // The send query: everyone on this list who may still be written to.
     index("list_member_sendable_idx").on(t.listId, t.status),
   ],
@@ -1401,7 +1416,10 @@ export interface SegmentRule {
     | "opened"
     | "not_opened"
     | "clicked"
-    | "not_clicked";
+    | "not_clicked"
+    /** Tags: a set somebody is in or out of, rather than a value to compare. */
+    | "has"
+    | "not_has";
   value: string;
 }
 
@@ -1566,9 +1584,14 @@ export const automation = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    listId: text("list_id")
-      .notNull()
-      .references(() => mailingList.id, { onDelete: "cascade" }),
+    /**
+     * The list this flow's people live on.
+     *
+     * Null until a trigger has been chosen, which is why it is nullable: an
+     * automation is made empty and answers "what starts this" on the canvas,
+     * the same way it answers "what happens next" there.
+     */
+    listId: text("list_id").references(() => mailingList.id, { onDelete: "cascade" }),
     /** One from-address for the whole series: a welcome note and its follow-up
         arriving from two different people reads as two different companies. */
     mailboxId: text("mailbox_id")
@@ -1576,8 +1599,27 @@ export const automation = pgTable(
       .references(() => mailbox.id, { onDelete: "cascade" }),
 
     name: text("name").notNull(),
-    /** What starts it. Only "subscribed" today; a column so it can grow. */
-    trigger: text("trigger").$type<"subscribed">().notNull().default("subscribed"),
+    /**
+     * What starts it, and null while nobody has said.
+     *
+     * "subscribed" is the list itself: joining is the event. "event" is one
+     * your own code posts to the API, which is the difference between a
+     * welcome series and everything else a product wants to say — a trial
+     * ending, an order shipping, a card that failed.
+     */
+    trigger: text("trigger").$type<AutomationTrigger>(),
+    /** Which event starts it. Only meaningful when `trigger` is "event". */
+    eventName: text("event_name"),
+    /**
+     * Narrows who the trigger applies to, or null for everybody on the list.
+     *
+     * Asked at the moment somebody would be enrolled rather than stored as a
+     * membership, so a flow aimed at "people on the pro plan" is right on the
+     * day it runs rather than on the day the segment was written. Set null if
+     * the segment is deleted: narrower-than-intended is the wrong way for
+     * this to fail.
+     */
+    segmentId: text("segment_id").references(() => segment.id, { onDelete: "set null" }),
     status: automationStatusEnum("status").notNull().default("draft"),
     /** Where the flow starts. Null on a canvas nobody has put anything on yet. */
     entryNodeId: text("entry_node_id"),
@@ -1586,7 +1628,43 @@ export const automation = pgTable(
   (t) => [
     index("automation_org_idx").on(t.organizationId),
     index("automation_list_idx").on(t.listId, t.status),
+    // What an arriving event looks up, and the only query on the hot path of
+    // somebody's checkout finishing.
+    index("automation_event_idx").on(t.organizationId, t.eventName, t.status),
   ],
+);
+
+/**
+ * An event this account's own code can post.
+ *
+ * A row per name rather than a free-for-all, for one reason: a typo in a
+ * string sent from a server somewhere is invisible. Registered, the editor
+ * can offer the name in a list, and an event that arrives under a name
+ * nobody declared still lands here — marked as undeclared — so "why did my
+ * flow not run" is answerable by looking rather than by guessing.
+ *
+ * What arrived last is kept, whole, because the first question after "did it
+ * arrive" is always "with what in it".
+ */
+export const customEvent = pgTable(
+  "custom_event",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    /** Lowercase, dots and dashes. Normalised on the way in. */
+    name: text("name").notNull(),
+    description: text("description"),
+    /** False when the name arrived from the API before anybody declared it. */
+    declared: boolean("declared").notNull().default(true),
+    seenCount: integer("seen_count").notNull().default(0),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true }),
+    /** The last body posted under this name, for working out what went wrong. */
+    lastPayload: jsonb("last_payload").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [uniqueIndex("custom_event_name_idx").on(t.organizationId, t.name)],
 );
 
 /** What one node in a flow does. */
@@ -1595,6 +1673,8 @@ export const automationNodeKindEnum = pgEnum("automation_node_kind", [
   "wait",
   "condition",
   "field",
+  "tag",
+  "move",
   "unsubscribe",
 ]);
 
@@ -1607,13 +1687,23 @@ export const automationNodeKindEnum = pgEnum("automation_node_kind", [
  */
 export interface NodeConfig {
   /** condition: what it looks at. */
-  test?: "opened" | "clicked" | "field";
+  test?: "opened" | "clicked" | "field" | "tag" | "segment" | "list";
+  /** condition (test "segment"): which segment they must match. */
+  segmentId?: string;
   /** condition (test "field") and field: which merge field. */
   field?: string;
   /** condition (test "field"): how to compare. */
   op?: "is" | "is_not" | "contains" | "set" | "not_set";
   /** condition: what to compare against. field: what to write. */
   value?: string;
+  /** tag: whether it goes on or comes off. */
+  tagAction?: "add" | "remove";
+  /** tag, and condition (test "tag"): which one. */
+  tag?: string;
+  /** move: whether they stay on this list as well. */
+  listAction?: "copy" | "move";
+  /** move: where they go. */
+  listId?: string;
 }
 
 /**
@@ -1647,6 +1737,19 @@ export const automationNode = pgTable(
 
     /** Minutes a "wait" node holds somebody for. */
     delayMinutes: integer("delay_minutes").notNull().default(0),
+    /**
+     * A moment to hold everybody until, instead of a length of time.
+     *
+     * The difference matters more than it looks. A delay is measured from
+     * each person's own arrival, so a hundred people reach the next box at a
+     * hundred different times. A date is the same instant for all of them,
+     * which is what "announce it on Tuesday morning" means — however long ago
+     * each of them joined.
+     *
+     * Null means the delay above is used. Both are kept rather than one being
+     * overwritten, so switching between them does not lose what was set.
+     */
+    waitUntil: timestamp("wait_until", { withTimezone: true }),
     config: jsonb("config").$type<NodeConfig>().notNull().default(sql`'{}'::jsonb`),
 
     next: text("next").references((): AnyPgColumn => automationNode.id, { onDelete: "set null" }),

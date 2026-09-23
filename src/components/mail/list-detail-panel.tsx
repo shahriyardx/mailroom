@@ -11,6 +11,7 @@ import {
   DialogHeader,
   DialogTitle,
   Field,
+  IconButton,
   Input,
   Note,
   Switch,
@@ -18,14 +19,34 @@ import {
 } from "@/components/kit";
 import { Empty, PageHeader, Row, SearchBox, Surface, Toolbar } from "@/components/mail/page-frame";
 import {
+  type SegmentDraft,
+  SegmentEditor,
+  blankSegment,
+  describeSegment,
+  draftFrom,
+} from "@/components/mail/segment-editor";
+import {
   addListMembersAction,
   removeListAction,
   removeListMemberAction,
+  removeSegmentAction,
   setListMemberStatusAction,
   updateListAction,
 } from "@/server/actions";
 import type { ListRow as ListSummary, MemberRow } from "@/server/campaigns";
-import { ArrowLeft, Check, Copy, FileUp, Trash2, UserPlus, Users } from "lucide-react";
+import type { SegmentRow } from "@/server/segments";
+import {
+  ArrowLeft,
+  Check,
+  Copy,
+  FileUp,
+  Filter,
+  Pencil,
+  Plus,
+  Trash2,
+  UserPlus,
+  Users,
+} from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useRef, useState, useTransition } from "react";
@@ -42,10 +63,13 @@ import { toast } from "sonner";
 export function ListDetailPanel({
   list,
   members,
+  segments,
   appUrl,
 }: {
   list: ListSummary;
   members: MemberRow[];
+  /** The parts of this list somebody has already described. */
+  segments: SegmentRow[];
   /** Where this instance answers, so the signup link can be shown in full. */
   appUrl: string;
 }) {
@@ -135,6 +159,8 @@ export function ListDetailPanel({
 
       <JoiningSettings list={list} appUrl={appUrl} />
 
+      <ListSegments list={list} segments={segments} />
+
       {members.length > 0 ? (
         <Toolbar>
           <SearchBox value={query} onChange={setQuery} placeholder="Search this list…" />
@@ -181,6 +207,18 @@ export function ListDetailPanel({
                   >
                     {person.status === "pending" ? "not confirmed" : person.status}
                   </Badge>
+
+                  {/* Shown, because a tag put on by an automation is
+                      otherwise invisible until a segment disagrees with
+                      somebody about it. */}
+                  {person.tags.map((tag) => (
+                    <span
+                      key={tag}
+                      className="rounded-full bg-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground"
+                    >
+                      {tag}
+                    </span>
+                  ))}
                 </div>
                 <div className="mt-0.5 text-[12px] text-muted-foreground">
                   {person.consentSource ?? "No source recorded"}
@@ -443,6 +481,101 @@ function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }
           aria-label="Give this list a signup page"
         />
       </Row>
+    </Surface>
+  );
+}
+
+/**
+ * The parts of this list, made where the list is.
+ *
+ * A segment is a question about one list, so the natural place to ask it is
+ * the page showing that list — not a screen elsewhere where the first thing
+ * to do is pick the list again. The same editor opens in both places.
+ */
+function ListSegments({ list, segments }: { list: ListSummary; segments: SegmentRow[] }) {
+  const router = useRouter();
+  const [draft, setDraft] = useState<SegmentDraft | null>(null);
+  const [removing, setRemoving] = useState<SegmentRow | null>(null);
+
+  const only = [{ id: list.id, name: list.name, subscribed: list.subscribed }];
+
+  return (
+    <Surface className="mb-3">
+      <div className="flex items-center gap-2 border-border border-b px-4 pt-3 pb-2">
+        <span className="eyebrow flex-1">Segments of this list</span>
+        <Button variant="ghost" size="sm" onClick={() => setDraft(blankSegment(list.id))}>
+          <Plus />
+          New segment
+        </Button>
+      </div>
+
+      <ConfirmDialog
+        open={removing !== null}
+        onOpenChange={(next) => !next && setRemoving(null)}
+        title="Delete this segment?"
+        description={removing?.name}
+        consequences="Any draft campaign aimed at it goes back to the whole list, and any automation narrowed by it goes back to everybody. Nothing happens to the people in it."
+        confirmLabel="Delete segment"
+        onConfirm={async () => {
+          if (!removing) return;
+          await removeSegmentAction(removing.id);
+          setRemoving(null);
+          toast.success("Segment deleted");
+          router.refresh();
+        }}
+      />
+
+      {draft && (
+        <SegmentEditor
+          draft={draft}
+          setDraft={setDraft}
+          lists={only}
+          onClose={() => setDraft(null)}
+          onSaved={() => {
+            setDraft(null);
+            router.refresh();
+          }}
+        />
+      )}
+
+      {segments.length === 0 ? (
+        <Row>
+          <p className="text-[12.5px] text-muted-foreground">
+            None yet. A segment is a question about these people — who never opens anything, who
+            joined this month — and a campaign or an automation can be aimed at one.
+          </p>
+        </Row>
+      ) : (
+        segments.map((row) => (
+          <Row key={row.id} className="items-center">
+            <Filter className="size-4 shrink-0 text-muted-foreground" />
+            <div className="min-w-0 flex-1">
+              <div className="truncate font-medium text-[13px]">{row.name}</div>
+              <div className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                {describeSegment(row)}
+              </div>
+            </div>
+            {/* Said rather than counted: a bare number beside two icons reads
+                as a stray digit, and the one thing worth knowing about a
+                segment is how many people are actually in it. */}
+            <Badge size="sm" tone={row.size === 0 ? "warn" : "neutral"} className="shrink-0">
+              {row.size === 0
+                ? "nobody yet"
+                : `${row.size} ${row.size === 1 ? "person" : "people"}`}
+            </Badge>
+            <IconButton label={`Edit ${row.name}`} onClick={() => setDraft(draftFrom(row))}>
+              <Pencil />
+            </IconButton>
+            <IconButton
+              variant="danger"
+              label={`Delete ${row.name}`}
+              onClick={() => setRemoving(row)}
+            >
+              <Trash2 />
+            </IconButton>
+          </Row>
+        ))
+      )}
     </Surface>
   );
 }

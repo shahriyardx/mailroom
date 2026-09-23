@@ -1,11 +1,11 @@
 import { AutomationDetail } from "@/components/mail/automation-detail";
-import { db } from "@/db";
-import { mailingList } from "@/db/schema";
+import { env } from "@/lib/env";
 import { automationsView, findAutomation } from "@/server/automations";
-import { sendableMailboxes } from "@/server/campaigns";
+import { listsView, sendableMailboxes } from "@/server/campaigns";
+import { eventsView } from "@/server/custom-events";
 import { requireCapability } from "@/server/permissions";
+import { segmentsView } from "@/server/segments";
 import { listTemplates } from "@/server/templates";
-import { eq } from "drizzle-orm";
 import { notFound } from "next/navigation";
 
 export const dynamic = "force-dynamic";
@@ -17,14 +17,13 @@ export default async function AutomationPage({ params }: { params: Promise<{ id:
   const row = await findAutomation(access.orgId, id);
   if (!row) notFound();
 
-  const [list, mailboxes, all, templates] = await Promise.all([
-    db.query.mailingList.findFirst({
-      where: eq(mailingList.id, row.listId),
-      columns: { name: true },
-    }),
+  const [lists, mailboxes, all, templates, events, segments] = await Promise.all([
+    listsView(access.orgId),
     sendableMailboxes(access.orgId),
     automationsView(access.orgId),
     listTemplates(access.orgId),
+    eventsView(access.orgId),
+    segmentsView(access.orgId),
   ]);
 
   return (
@@ -35,6 +34,7 @@ export default async function AutomationPage({ params }: { params: Promise<{ id:
         kind: node.kind,
         subject: node.subject,
         delayMinutes: node.delayMinutes,
+        waitUntil: node.waitUntil,
         config: node.config,
         next: node.next,
         nextElse: node.nextElse,
@@ -42,9 +42,25 @@ export default async function AutomationPage({ params }: { params: Promise<{ id:
         // not going out — so the canvas flags it before it can.
         empty: node.kind === "email" && !node.html && !node.design,
       }))}
-      listName={list?.name ?? "a list"}
+      lists={lists.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        subscribed: entry.subscribed,
+      }))}
+      segments={segments.map((entry) => ({
+        id: entry.id,
+        listId: entry.listId,
+        name: entry.name,
+        size: entry.size,
+      }))}
+      events={events.map((entry) => ({
+        id: entry.id,
+        name: entry.name,
+        seenCount: entry.seenCount,
+      }))}
       mailboxes={mailboxes}
       templates={templates.map((entry) => ({ id: entry.id, name: entry.name }))}
+      appUrl={env.appUrl}
       running={all.find((entry) => entry.id === id)?.running ?? 0}
     />
   );

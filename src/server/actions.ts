@@ -50,6 +50,7 @@ import {
   updateBroadcast,
   updateList,
 } from "@/server/campaigns";
+import { createEvent, removeEvent, updateEvent } from "@/server/custom-events";
 import {
   type Width,
   addForwardingAddress,
@@ -1753,7 +1754,7 @@ export async function createSegmentAction(input: {
   assertCan(access, "rules:manage");
   try {
     const id = await createSegment(access.orgId, input);
-    revalidatePath("/campaigns/segments");
+    revalidatePath("/campaigns/lists");
     return { ok: true as const, id };
   } catch (error) {
     return failure(error, "That segment could not be made");
@@ -1768,7 +1769,7 @@ export async function updateSegmentAction(
   assertCan(access, "rules:manage");
   try {
     await updateSegment(access.orgId, id, input);
-    revalidatePath("/campaigns/segments");
+    revalidatePath("/campaigns/lists");
     return { ok: true as const };
   } catch (error) {
     return failure(error, "That segment could not be changed");
@@ -1806,7 +1807,7 @@ export async function removeSegmentAction(id: string) {
   const access = await requireAccess();
   assertCan(access, "rules:manage");
   await removeSegment(access.orgId, id);
-  revalidatePath("/campaigns/segments");
+  revalidatePath("/campaigns/lists");
   return { ok: true as const };
 }
 
@@ -1848,11 +1849,7 @@ export async function resendToNonOpenersAction(id: string) {
 /* Automations                                                                */
 /* -------------------------------------------------------------------------- */
 
-export async function createAutomationAction(input: {
-  listId: string;
-  mailboxId: string;
-  name: string;
-}) {
+export async function createAutomationAction(input: { mailboxId: string; name: string }) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
   try {
@@ -1866,7 +1863,15 @@ export async function createAutomationAction(input: {
 
 export async function updateAutomationAction(
   id: string,
-  input: { name?: string; mailboxId?: string; status?: "draft" | "active" | "paused" },
+  input: {
+    name?: string;
+    mailboxId?: string;
+    status?: "draft" | "active" | "paused";
+    trigger?: "subscribed" | "event";
+    listId?: string | null;
+    eventName?: string | null;
+    segmentId?: string | null;
+  },
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
@@ -1908,6 +1913,8 @@ export async function updateNodeAction(
   input: {
     subject?: string;
     delayMinutes?: number;
+    /** An ISO string from the browser, or null to go back to a delay. */
+    waitUntil?: string | null;
     config?: NodeConfig;
     design?: unknown;
     html?: string | null;
@@ -1921,6 +1928,12 @@ export async function updateNodeAction(
     await updateNode(access.orgId, nodeId, {
       subject: input.subject,
       delayMinutes: input.delayMinutes,
+      waitUntil:
+        input.waitUntil === undefined
+          ? undefined
+          : input.waitUntil
+            ? new Date(input.waitUntil)
+            : null,
       config: input.config,
       templateId: input.templateId,
       // Checked rather than trusted: the client is where a design comes from.
@@ -1944,5 +1957,37 @@ export async function removeNodeAction(automationId: string, nodeId: string) {
   assertCan(access, "mail:send");
   await removeNode(access.orgId, nodeId);
   revalidatePath(`/campaigns/automations/${automationId}`);
+  return { ok: true as const };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Events                                                                     */
+/* -------------------------------------------------------------------------- */
+
+export async function createEventAction(input: { name: string; description?: string }) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const id = await createEvent(access.orgId, input);
+    revalidatePath("/campaigns/events");
+    return { ok: true as const, id };
+  } catch (error) {
+    return failure(error, "That event could not be made");
+  }
+}
+
+export async function updateEventAction(id: string, input: { description?: string | null }) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await updateEvent(access.orgId, id, input);
+  revalidatePath("/campaigns/events");
+  return { ok: true as const };
+}
+
+export async function removeEventAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await removeEvent(access.orgId, id);
+  revalidatePath("/campaigns/events");
   return { ok: true as const };
 }

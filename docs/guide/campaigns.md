@@ -118,6 +118,8 @@ A segment is a **question about a list**, not a copy of one.
 | --- | --- |
 | Engagement | Opened nothing in the last 30 days; clicked a campaign |
 | Their details | Address contains, name is set, joined after a date |
+| Status | Subscribed, not confirmed, unsubscribed, bounced |
+| Tags | Has `vip`; does not have `customer` |
 | Merge fields | `plan is pro`, `city contains London` |
 
 The rules are stored and run **at send time**, never before. A stored list of
@@ -129,6 +131,20 @@ question and the only way to know it is the right one is the answer.
 
 A campaign aimed at a segment that matches nobody is **refused with a reason**
 rather than sent to nobody.
+
+Segments live on the page of the list they are about, under **Segments of this
+list** — which is where you are when you think of one, and where the people
+they describe already are.
+
+::: tip A segment about status is for looking, not sending
+Mail only ever goes to people who are subscribed. A segment of unconfirmed
+people is useful for seeing how many are stuck there; a campaign aimed at one
+is refused rather than sent. The count for such a segment includes them, or it
+would answer "0" to "who has not confirmed yet" and look like a broken rule.
+:::
+
+Tags are put on people by an [automation](/guide/automations) — an **Add or
+remove a tag** box — and shown beside each person on the list's own page.
 
 ## Testing two subject lines
 

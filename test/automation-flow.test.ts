@@ -4,6 +4,7 @@ import {
   type FlowNode,
   NODE_WIDTH,
   TRIGGER_ID,
+  describeTrigger,
   humanDelay,
   layout,
   summarise,
@@ -24,6 +25,7 @@ function node(id: string, over: Partial<FlowNode> = {}): FlowNode {
     kind: "email",
     subject: id,
     delayMinutes: 0,
+    waitUntil: null,
     config: {},
     next: null,
     nextElse: null,
@@ -123,7 +125,19 @@ describe("laying a flow out", () => {
     const plan = layout([node("q", { kind: "condition" })], "q");
     const [first, second] = plan.edges.filter((edge) => edge.from === "q");
     assert.ok(first && second);
-    assert.ok(Math.abs(first.x - second.x) >= NODE_WIDTH);
+
+    const parent = plan.nodes.find((spot) => spot.id === "q");
+    const centre = (parent?.x ?? 0) + NODE_WIDTH / 2;
+
+    // One each side of the condition, far enough apart that neither button
+    // nor its Yes/No label can land on the other's.
+    assert.ok(first.x < centre);
+    assert.ok(second.x > centre);
+    assert.ok(Math.abs(first.x - second.x) >= 100);
+
+    // Level with each other: they are two answers to one question, and one
+    // sitting lower than the other reads as a mistake rather than as meaning.
+    assert.equal(first.y, second.y);
   });
 
   it("gives a dead end no way out", () => {
@@ -179,5 +193,30 @@ describe("what a box says about itself", () => {
     assert.equal(humanDelay(30), "30 min");
     assert.equal(humanDelay(120), "2 hours");
     assert.equal(humanDelay(4320), "3 days");
+  });
+});
+
+describe("what the trigger card says", () => {
+  it("names the list somebody joins", () => {
+    const said = describeTrigger("subscribed", "Newsletter", null);
+    assert.equal(said.title, "Somebody joins");
+    assert.equal(said.note, "Newsletter");
+    assert.ok(!said.warn);
+  });
+
+  it("asks for the half that is missing rather than looking finished", () => {
+    // A card reading "Event received" with nothing under it is how somebody
+    // finds out at switch-on time that they never picked the event.
+    assert.ok(describeTrigger("event", "Newsletter", null).warn);
+    assert.ok(describeTrigger("event", null, "trial.ended").warn);
+    assert.ok(describeTrigger("subscribed", null, null).warn);
+    assert.ok(describeTrigger(null, "Newsletter", null).warn);
+  });
+
+  it("says who posts it once both halves are answered", () => {
+    const said = describeTrigger("event", "Customers", "trial.ended");
+    assert.equal(said.title, "trial.ended");
+    assert.match(said.note ?? "", /Customers/);
+    assert.ok(!said.warn);
   });
 });

@@ -43,13 +43,12 @@ beforeEach(async () => {
 
 async function anAutomation(name = "Welcome") {
   const { createList } = await import("@/server/campaigns");
-  const { createAutomation } = await import("@/server/automations");
+  const { createAutomation, updateAutomation } = await import("@/server/automations");
   const listId = await createList(account.orgId, "Newsletter");
-  const id = await createAutomation(account.orgId, {
-    listId,
-    mailboxId: account.mailboxId,
-    name,
-  });
+  const id = await createAutomation(account.orgId, { mailboxId: account.mailboxId, name });
+  // The trigger is chosen on the canvas rather than at creation, so the
+  // ordinary case here is the two calls the editor itself makes.
+  await updateAutomation(account.orgId, id, { trigger: "subscribed", listId });
   return { id, listId };
 }
 
@@ -229,10 +228,10 @@ describe("who gets put through it", () => {
       .where(eq(listMember.address, "old@example.com"));
 
     const id = await createAutomation(account.orgId, {
-      listId,
       mailboxId: account.mailboxId,
       name: "Welcome",
     });
+    await updateAutomation(account.orgId, id, { trigger: "subscribed", listId });
     // A wait first, so the pass enrols without trying to send anything.
     await addNode(account.orgId, id, { kind: "wait" });
     await updateAutomation(account.orgId, id, { status: "active" });
@@ -320,5 +319,303 @@ describe("who gets put through it", () => {
 
     const [row] = await membersView(account.orgId, listId);
     assert.equal(row?.status, "unsubscribed");
+  });
+});
+
+describe("boxes that change the person", () => {
+  /** A live flow whose first box is the one under test. */
+  async function liveWith(
+    kind: "tag" | "move",
+    config: Record<string, string>,
+    address = "pat@example.com",
+  ) {
+    const { addMembers } = await import("@/server/campaigns");
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { id, listId } = await anAutomation();
+
+    const box = await addNode(account.orgId, id, { kind });
+    await updateNode(account.orgId, box, { config });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await addMembers(account.orgId, listId, [{ address }], "signup form");
+
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    await runAutomationsOnce();
+    return { id, listId, address };
+  }
+
+  async function personOn(listId: string, address: string) {
+    const { db } = await import("@/db");
+    const { listMember } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    return db.query.listMember.findFirst({
+      where: and(eq(listMember.listId, listId), eq(listMember.address, address)),
+    });
+  }
+
+  it("puts a tag on somebody", async () => {
+    const { listId, address } = await liveWith("tag", { tagAction: "add", tag: "customer" });
+    const person = await personOn(listId, address);
+    assert.deepEqual(person?.tags, ["customer"]);
+  });
+
+  it("takes one off without minding that it was never there", async () => {
+    const { listId, address } = await liveWith("tag", { tagAction: "remove", tag: "customer" });
+    const person = await personOn(listId, address);
+    assert.deepEqual(person?.tags, []);
+  });
+
+  it("copies somebody onto another list and keeps them on this one", async () => {
+    const { createList } = await import("@/server/campaigns");
+    const other = await createList(account.orgId, "Customers");
+    const { listId, address } = await liveWith("move", { listAction: "copy", listId: other });
+
+    assert.equal((await personOn(other, address))?.status, "subscribed");
+    // Still here, and still going: a copy is not a departure.
+    assert.equal((await personOn(listId, address))?.status, "subscribed");
+  });
+
+  it("moving takes them off this list, and off this flow", async () => {
+    const { createList } = await import("@/server/campaigns");
+    const { db } = await import("@/db");
+    const { automationRun } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const other = await createList(account.orgId, "Customers");
+    const { id, listId, address } = await liveWith("move", { listAction: "move", listId: other });
+
+    assert.equal((await personOn(other, address))?.status, "subscribed");
+    assert.equal((await personOn(listId, address))?.status, "unsubscribed");
+
+    const [run] = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    // The flow follows this list, so leaving it ends the journey rather than
+    // leaving a run pointing at somebody who is gone.
+    assert.equal(run?.status, "done");
+  });
+
+  it("carries the tags along with a copy", async () => {
+    const { addMembers, createList } = await import("@/server/campaigns");
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+
+    const other = await createList(account.orgId, "Customers");
+    const { id, listId } = await anAutomation();
+
+    const tagBox = await addNode(account.orgId, id, { kind: "tag" });
+    await updateNode(account.orgId, tagBox, { config: { tagAction: "add", tag: "vip" } });
+    const moveBox = await addNode(account.orgId, id, {
+      kind: "move",
+      after: tagBox,
+    });
+    await updateNode(account.orgId, moveBox, { config: { listAction: "copy", listId: other } });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await addMembers(account.orgId, listId, [{ address: "pat@example.com" }], "signup form");
+
+    await runAutomationsOnce();
+
+    const landed = await personOn(other, "pat@example.com");
+    assert.deepEqual(landed?.tags, ["vip"]);
+  });
+
+  it("asks a condition about a tag", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { addNode, updateAutomation, updateNode, findAutomation } = await import(
+      "@/server/automations"
+    );
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { automationRun } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const { id, listId } = await anAutomation();
+    const tagBox = await addNode(account.orgId, id, { kind: "tag" });
+    await updateNode(account.orgId, tagBox, { config: { tagAction: "add", tag: "vip" } });
+
+    const question = await addNode(account.orgId, id, { kind: "condition", after: tagBox });
+    await updateNode(account.orgId, question, { config: { test: "tag", tag: "vip" } });
+
+    const yes = await addNode(account.orgId, id, { kind: "wait", after: question });
+    const no = await addNode(account.orgId, id, {
+      kind: "wait",
+      after: question,
+      branch: "nextElse",
+    });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await addMembers(account.orgId, listId, [{ address: "pat@example.com" }], "signup form");
+
+    await runAutomationsOnce();
+
+    const [run] = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    // Tagged two boxes earlier in the same pass, so the answer is yes.
+    assert.equal(
+      run?.nodeId,
+      (await findAutomation(account.orgId, id))?.nodes.find((n) => n.id === yes)?.next ?? null,
+    );
+    assert.notEqual(run?.nodeId, no);
+  });
+});
+
+describe("waiting until a moment", () => {
+  it("holds everybody for the same instant", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { automationRun } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const { id, listId } = await anAutomation();
+    const box = await addNode(account.orgId, id, { kind: "wait" });
+    const moment = new Date(Date.now() + 3 * 86_400_000);
+    await updateNode(account.orgId, box, { waitUntil: moment });
+    // Something after it: a wait with nothing following finishes the run
+    // rather than holding anybody.
+    await addNode(account.orgId, id, { kind: "tag", after: box });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "early@example.com" }, { address: "late@example.com" }],
+      "signup form",
+    );
+    await runAutomationsOnce();
+
+    const runs = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    assert.equal(runs.length, 2);
+    // Both due at the same moment, however long ago each of them joined.
+    for (const run of runs) {
+      assert.equal(run.nextAt.getTime(), moment.getTime());
+    }
+  });
+
+  it("walks straight through a moment that has passed", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { automationRun } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const { id, listId } = await anAutomation();
+    const box = await addNode(account.orgId, id, { kind: "wait" });
+    await updateNode(account.orgId, box, { waitUntil: new Date(Date.now() - 86_400_000) });
+    // Something after it, so there is somewhere to walk to.
+    await addNode(account.orgId, id, { kind: "tag", after: box });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await addMembers(account.orgId, listId, [{ address: "pat@example.com" }], "signup form");
+
+    await runAutomationsOnce();
+
+    const [run] = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    // Holding them until the same date next year is the only alternative,
+    // and nobody means that.
+    assert.equal(run?.status, "done");
+  });
+});
+
+describe("conditions that ask bigger questions", () => {
+  it("asks whether somebody matches a segment", async () => {
+    const { addMembers, createList } = await import("@/server/campaigns");
+    const { createSegment } = await import("@/server/segments");
+    const { addNode, createAutomation, updateAutomation, updateNode } = await import(
+      "@/server/automations"
+    );
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { automationRun, listMember } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const listId = await createList(account.orgId, "Newsletter");
+    const segmentId = await createSegment(account.orgId, {
+      listId,
+      name: "On the pro plan",
+      rules: [{ field: "fields.plan", op: "is", value: "pro" }],
+    });
+
+    const id = await createAutomation(account.orgId, {
+      mailboxId: account.mailboxId,
+      name: "Ask about a segment",
+    });
+    const question = await addNode(account.orgId, id, { kind: "condition" });
+    await updateNode(account.orgId, question, { config: { test: "segment", segmentId } });
+    const yes = await addNode(account.orgId, id, { kind: "tag", after: question });
+    await updateNode(account.orgId, yes, { config: { tagAction: "add", tag: "paid" } });
+    const no = await addNode(account.orgId, id, {
+      kind: "tag",
+      after: question,
+      branch: "nextElse",
+    });
+    await updateNode(account.orgId, no, { config: { tagAction: "add", tag: "free" } });
+
+    await updateAutomation(account.orgId, id, { trigger: "subscribed", listId });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    await addMembers(
+      account.orgId,
+      listId,
+      [
+        { address: "paid@example.com", fields: { plan: "pro" } },
+        { address: "free@example.com", fields: { plan: "free" } },
+      ],
+      "signup form",
+    );
+    await runAutomationsOnce();
+
+    const people = await db.select().from(listMember).where(eq(listMember.listId, listId));
+    assert.deepEqual(people.find((row) => row.address === "paid@example.com")?.tags, ["paid"]);
+    assert.deepEqual(people.find((row) => row.address === "free@example.com")?.tags, ["free"]);
+
+    const runs = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    assert.equal(runs.length, 2);
+  });
+
+  it("asks whether somebody is on another list", async () => {
+    const { addMembers, createList } = await import("@/server/campaigns");
+    const { addNode, createAutomation, updateAutomation, updateNode } = await import(
+      "@/server/automations"
+    );
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { listMember } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+
+    const listId = await createList(account.orgId, "Newsletter");
+    const other = await createList(account.orgId, "Customers");
+    await addMembers(account.orgId, other, [{ address: "buyer@example.com" }], "import");
+
+    const id = await createAutomation(account.orgId, {
+      mailboxId: account.mailboxId,
+      name: "Ask about another list",
+    });
+    const question = await addNode(account.orgId, id, { kind: "condition" });
+    await updateNode(account.orgId, question, {
+      config: { test: "list", listId: other, op: "is" },
+    });
+    const yes = await addNode(account.orgId, id, { kind: "tag", after: question });
+    await updateNode(account.orgId, yes, { config: { tagAction: "add", tag: "customer" } });
+
+    await updateAutomation(account.orgId, id, { trigger: "subscribed", listId });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "buyer@example.com" }, { address: "stranger@example.com" }],
+      "signup form",
+    );
+    await runAutomationsOnce();
+
+    // Asked by address: the same person is a different row on every list.
+    const [buyer] = await db
+      .select()
+      .from(listMember)
+      .where(and(eq(listMember.listId, listId), eq(listMember.address, "buyer@example.com")));
+    const [stranger] = await db
+      .select()
+      .from(listMember)
+      .where(and(eq(listMember.listId, listId), eq(listMember.address, "stranger@example.com")));
+
+    assert.deepEqual(buyer?.tags, ["customer"]);
+    assert.deepEqual(stranger?.tags, []);
   });
 });

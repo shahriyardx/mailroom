@@ -29,6 +29,8 @@ export const SCOPES = [
   "stats:read",
   "lists:read",
   "lists:write",
+  "events:read",
+  "events:write",
 ] as const;
 
 export type Scope = (typeof SCOPES)[number];
@@ -50,6 +52,7 @@ const IMPLIES: Partial<Record<Scope, Scope[]>> = {
   "templates:write": ["templates:read"],
   "emails:send": ["emails:read"],
   "lists:write": ["lists:read"],
+  "events:write": ["events:read"],
 };
 
 /** Everything a list of scopes grants, including what each one implies. */
@@ -229,6 +232,16 @@ export const SCOPE_AREAS: ScopeArea[] = [
       { label: "None", scopes: [] },
       { label: "Read", scopes: ["webhooks:read"] },
       { label: "Manage", scopes: ["webhooks:read", "webhooks:write"] },
+    ],
+  },
+  {
+    id: "events",
+    label: "Events",
+    hint: "Post events from your own code to start an automation",
+    levels: [
+      { label: "None", scopes: [] },
+      { label: "Read", scopes: ["events:read"] },
+      { label: "Send", scopes: ["events:read", "events:write"] },
     ],
   },
   {

@@ -19,6 +19,8 @@ export interface FlowNode {
   kind: AutomationNodeKind;
   subject: string | null;
   delayMinutes: number;
+  /** A moment to hold everybody until, instead of a length of time. */
+  waitUntil: Date | null;
   config: NodeConfig;
   next: string | null;
   nextElse: string | null;
@@ -203,13 +205,34 @@ function elbow(
   toY: number,
 ): Edge {
   const startY = fromY + NODE_HEIGHT;
-  const endY = to ? toY : startY + GAP_Y - 18;
+
+  /*
+   * An empty branch reaches only part of the way towards where a box would
+   * go, and ends in its own drop.
+   *
+   * Drawn the full width it looked like one long horizontal line with a
+   * button at each end — a bar joining "yes" to "no" rather than two arms
+   * leaving one box. Pulled in, each side is visibly its own stub going
+   * down-left and down-right, and the space a real box needs is still
+   * reserved because the layout, not this, decides that.
+   */
+  const armX = to ? toX : fromX + (toX - fromX) * 0.55;
+
+  /*
+   * Both arms turn at the same height.
+   *
+   * They are two answers to one question and nothing distinguishes them but
+   * which way they go, so one sitting lower than the other reads as a
+   * mistake rather than as meaning.
+   */
+  const endY = to ? toY : startY + GAP_Y - 6;
   const bendY = startY + (endY - startY) / 2;
 
-  const bent = Math.abs(toX - fromX) >= 1;
+  const bent = Math.abs(armX - fromX) >= 1;
+  const turn = Math.sign(armX - fromX) * 10;
 
   const path = bent
-    ? `M ${fromX} ${startY} L ${fromX} ${bendY - 10} Q ${fromX} ${bendY} ${fromX + Math.sign(toX - fromX) * 10} ${bendY} L ${toX - Math.sign(toX - fromX) * 10} ${bendY} Q ${toX} ${bendY} ${toX} ${bendY + 10} L ${toX} ${endY}`
+    ? `M ${fromX} ${startY} L ${fromX} ${bendY - 10} Q ${fromX} ${bendY} ${fromX + turn} ${bendY} L ${armX - turn} ${bendY} Q ${armX} ${bendY} ${armX} ${bendY + 10} L ${armX} ${endY}`
     : `M ${fromX} ${startY} L ${fromX} ${endY}`;
 
   /*
@@ -219,13 +242,17 @@ function elbow(
    * both buttons in exactly the same place — one on top of the other, with
    * the "Yes" label hidden underneath the "No". On the arm they belong to,
    * each branch has its own button and its own label.
+   *
+   * On an arm that goes nowhere it sits at the tip rather than half way
+   * along, because there it is the end of the line rather than something
+   * interrupting it.
    */
   return {
     from,
     to,
     branch,
-    x: toX,
-    y: bent ? (bendY + endY) / 2 : (startY + endY) / 2,
+    x: armX,
+    y: to ? (bent ? (bendY + endY) / 2 : (startY + endY) / 2) : endY,
     path,
   };
 }
@@ -238,7 +265,7 @@ function elbow(
  * underneath is only there when it adds something; a card that says "WAIT /
  * 1 day / 1 day" has spent three lines saying one thing.
  */
-export function summarise(node: FlowNode): { title: string; note?: string } {
+export function summarise(node: FlowNode, names?: FlowNames): { title: string; note?: string } {
   switch (node.kind) {
     case "email":
       return {
@@ -246,16 +273,38 @@ export function summarise(node: FlowNode): { title: string; note?: string } {
         note: node.empty ? "Nothing written yet" : undefined,
       };
     case "wait":
+      if (node.waitUntil) {
+        return {
+          title: `Until ${onThe(node.waitUntil)}`,
+          // Everybody reaches the next box at once, which is the whole reason
+          // to use a date rather than a delay.
+          note: "Everybody together",
+        };
+      }
       return {
         title: node.delayMinutes === 0 ? "No pause" : humanDelay(node.delayMinutes),
         note: node.delayMinutes === 0 ? "Straight on to the next box" : undefined,
       };
     case "condition":
-      return { title: describeTest(node.config) };
+      return { title: describeTest(node.config, names) };
     case "field":
       return node.config.field
         ? { title: `${node.config.field} → ${node.config.value || "(empty)"}` }
         : { title: "Pick a field", note: "Nothing set yet" };
+    case "tag": {
+      const tag = node.config.tag?.trim();
+      if (!tag) return { title: "Pick a tag", note: "Nothing set yet" };
+      return node.config.tagAction === "remove"
+        ? { title: `Take off "${tag}"` }
+        : { title: `Tag them "${tag}"` };
+    }
+    case "move": {
+      const where = names?.lists?.[node.config.listId ?? ""];
+      if (!where) return { title: "Pick a list", note: "Nothing set yet" };
+      return node.config.listAction === "move"
+        ? { title: `Move to ${where}`, note: "They leave this one, and this flow" }
+        : { title: `Copy to ${where}`, note: "They stay on this one too" };
+    }
     case "unsubscribe":
       return { title: "Off the list", note: "Their journey ends here" };
     default:
@@ -263,15 +312,81 @@ export function summarise(node: FlowNode): { title: string; note?: string } {
   }
 }
 
-export function describeTest(config: NodeConfig): string {
+/**
+ * The trigger card, in words.
+ *
+ * Says what is missing rather than what is set when half of it is missing: a
+ * card reading "Event received" with nothing under it is how somebody finds
+ * out at switch-on time that they never picked the event.
+ */
+export function describeTrigger(
+  trigger: "subscribed" | "event" | null,
+  listName: string | null,
+  eventName: string | null,
+  segmentName?: string | null,
+): { title: string; note?: string; warn?: boolean } {
+  if (!trigger) return { title: "Nothing yet", note: "Choose what starts this", warn: true };
+
+  // Named on the card when there is one: a flow that quietly runs for a
+  // quarter of the list is the kind of surprise that is found in the numbers
+  // a week later.
+  const who = segmentName ? `${listName} · ${segmentName}` : listName;
+
+  if (trigger === "event") {
+    if (!eventName) return { title: "An event arrives", note: "Pick which event", warn: true };
+    if (!listName) return { title: eventName, note: "Pick a list for these people", warn: true };
+    return { title: eventName, note: `Your code posts it · ${who}` };
+  }
+
+  if (!listName) return { title: "Somebody joins", note: "Pick a list", warn: true };
+  return { title: "Somebody joins", note: who ?? listName };
+}
+
+/**
+ * Names for the things a box points at by id.
+ *
+ * A card has to say "In \"People who never open anything\"", not an id, and
+ * nothing about a segment or a list is stored on the node itself — storing a
+ * copy of the name would go stale the first time somebody renamed one.
+ */
+export interface FlowNames {
+  lists?: Record<string, string>;
+  segments?: Record<string, string>;
+}
+
+export function describeTest(config: NodeConfig, names?: FlowNames): string {
   if (config.test === "opened") return "Opened the last email?";
   if (config.test === "clicked") return "Clicked the last email?";
+  if (config.test === "tag") {
+    return config.tag ? `Tagged "${config.tag}"?` : "Pick a tag to check";
+  }
+  if (config.test === "segment") {
+    // The name is the question here, so the card shows it rather than the
+    // rules behind it — which would not fit and are one click away.
+    const name = names?.segments?.[config.segmentId ?? ""];
+    return name ? `In "${name}"?` : "Pick a segment to check";
+  }
+  if (config.test === "list") {
+    const name = names?.lists?.[config.listId ?? ""];
+    if (!name) return "Pick a list to check";
+    return config.op === "is_not" ? `Not on ${name}?` : `On ${name}?`;
+  }
   if (!config.field) return "Pick something to check";
   const op = config.op ?? "is";
   if (op === "set") return `${config.field} is set`;
   if (op === "not_set") return `${config.field} is empty`;
   const word = op === "is" ? "is" : op === "is_not" ? "is not" : "contains";
   return `${config.field} ${word} ${config.value || "…"}`;
+}
+
+/** A date, short enough for a card: "3 Oct, 09:00". */
+export function onThe(when: Date) {
+  return when.toLocaleString(undefined, {
+    day: "numeric",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 }
 
 /** Minutes, in the unit somebody would have said it in. */

@@ -12,7 +12,7 @@ import {
 } from "@/components/kit";
 import { AutomationCanvas } from "@/components/mail/automation-canvas";
 import type { Automation } from "@/db/schema";
-import type { FlowNode } from "@/lib/automation-flow";
+import { type FlowNode, describeTrigger } from "@/lib/automation-flow";
 import { updateAutomationAction } from "@/server/actions";
 import { ArrowLeft, Pause, Play } from "lucide-react";
 import Link from "next/link";
@@ -31,16 +31,22 @@ import { toast } from "sonner";
 export function AutomationDetail({
   automation,
   nodes,
-  listName,
+  lists,
+  segments,
+  events,
   mailboxes,
   templates,
+  appUrl,
   running,
 }: {
   automation: Automation;
   nodes: FlowNode[];
-  listName: string;
+  lists: { id: string; name: string; subscribed: number }[];
+  segments: { id: string; listId: string; name: string; size: number }[];
+  events: { id: string; name: string; seenCount: number }[];
   mailboxes: { id: string; address: string }[];
   templates: { id: string; name: string }[];
+  appUrl: string;
   running: number;
 }) {
   const router = useRouter();
@@ -50,6 +56,9 @@ export function AutomationDetail({
 
   const live = automation.status === "active";
   const emails = nodes.filter((node) => node.kind === "email").length;
+  const listName = lists.find((row) => row.id === automation.listId)?.name ?? null;
+  const segmentName = segments.find((row) => row.id === automation.segmentId)?.name ?? null;
+  const said = describeTrigger(automation.trigger, listName, automation.eventName, segmentName);
 
   async function change(patch: Parameters<typeof updateAutomationAction>[1]) {
     setBusy(true);
@@ -74,11 +83,20 @@ export function AutomationDetail({
         title="Switch this automation on?"
         description={automation.name}
         consequences={
-          <>
-            Everybody who joins {listName} from now on is put through this flow. People already on
-            the list are left alone — only new joiners are enrolled, so switching on a welcome
-            series does not welcome everybody who has been a subscriber for two years.
-          </>
+          automation.trigger === "event" ? (
+            <>
+              Every <strong>{automation.eventName}</strong> your code posts from now on puts that
+              person through this flow. Nothing happens to anybody until one arrives, so switching
+              this on is safe until your own code starts calling.
+            </>
+          ) : (
+            <>
+              Everybody who joins {listName ?? "the list"} from now on is put through this flow.
+              People already on the list are left alone — only new joiners are enrolled, so
+              switching on a welcome series does not welcome everybody who has been a subscriber for
+              two years.
+            </>
+          )
         }
         confirmLabel="Switch it on"
         onConfirm={() => {
@@ -127,7 +145,12 @@ export function AutomationDetail({
         {/* The first thing to go when the bar is tight: it is context, and
             the list is named on the trigger card anyway. */}
         <span className="hidden min-w-0 truncate text-[12.5px] text-muted-foreground lg:inline">
-          {emails} {emails === 1 ? "email" : "emails"} · to {listName}
+          {emails} {emails === 1 ? "email" : "emails"} ·{" "}
+          <span className={said.warn ? "text-warn" : undefined}>
+            {automation.trigger === "event" ? "on " : ""}
+            {said.title.toLowerCase()}
+            {automation.trigger !== "event" && listName ? ` ${listName}` : ""}
+          </span>
           {live && ` · ${running} part-way through`}
         </span>
 
@@ -165,7 +188,14 @@ export function AutomationDetail({
               size="sm"
               pill
               onClick={() => setSwitching(true)}
-              disabled={busy || nodes.length === 0}
+              disabled={busy || nodes.length === 0 || said.warn}
+              title={
+                said.warn
+                  ? "Choose what starts it first"
+                  : nodes.length === 0
+                    ? "Put something on the canvas first"
+                    : undefined
+              }
             >
               <Play />
               Switch on
@@ -178,8 +208,15 @@ export function AutomationDetail({
         automationId={automation.id}
         nodes={nodes}
         entryNodeId={automation.entryNodeId}
-        listName={listName}
+        trigger={automation.trigger}
+        eventName={automation.eventName}
+        listId={automation.listId}
+        segmentId={automation.segmentId}
+        lists={lists}
+        segments={segments}
+        events={events}
         templates={templates}
+        appUrl={appUrl}
         live={live}
       />
     </div>

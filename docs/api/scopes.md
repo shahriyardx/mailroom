@@ -26,6 +26,8 @@ Scopes say **what kind of call** is allowed.
 | `suppressions:write` | Blocking and unblocking |
 | `webhooks:read` | Listing endpoints and deliveries |
 | `webhooks:write` | Creating, changing, testing, replaying |
+| `events:read` | Listing the event names your code posts |
+| `events:write` | `POST /events` — starting an automation from your own code |
 | `stats:read` | `GET /stats` |
 | `*` | All of the above, and anything added later |
 

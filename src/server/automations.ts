@@ -3,17 +3,20 @@ import { db } from "@/db";
 import {
   type AutomationNodeKind,
   type AutomationStatus,
+  type AutomationTrigger,
   type NodeConfig,
   automation,
   automationNode,
   automationRun,
   mailbox,
   mailingList,
+  segment,
 } from "@/db/schema";
 import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
 import { and, asc, count, eq, sql } from "drizzle-orm";
+import { normaliseEventName } from "./custom-events";
 
 /**
  * Series of emails that start when one person does something.
@@ -27,31 +30,28 @@ import { and, asc, count, eq, sql } from "drizzle-orm";
  * nobody has to drag anything to keep the picture readable.
  */
 
-export async function createAutomation(
-  orgId: string,
-  input: { listId: string; mailboxId: string; name: string },
-) {
+/**
+ * A new automation, with nothing decided but its name and who it comes from.
+ *
+ * No trigger and no list: both are chosen on the canvas, in the same place
+ * and the same way as everything else that happens in the flow. Asking "what
+ * starts this" in a dialog before anybody has seen the canvas is asking it
+ * where the answer cannot be seen in context.
+ */
+export async function createAutomation(orgId: string, input: { mailboxId: string; name: string }) {
   const name = input.name.trim();
   if (!name) throw new Error("Give the automation a name");
 
-  const [list, box] = await Promise.all([
-    db.query.mailingList.findFirst({
-      where: and(eq(mailingList.id, input.listId), eq(mailingList.organizationId, orgId)),
-      columns: { id: true },
-    }),
-    db.query.mailbox.findFirst({
-      where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
-      columns: { id: true },
-    }),
-  ]);
-  if (!list) throw new Error("No such list");
+  const box = await db.query.mailbox.findFirst({
+    where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
+    columns: { id: true },
+  });
   if (!box) throw new Error("No such mailbox");
 
   const id = newId("aut");
   await db.insert(automation).values({
     id,
     organizationId: orgId,
-    listId: input.listId,
     mailboxId: input.mailboxId,
     name,
   });
@@ -76,20 +76,68 @@ export async function findAutomation(orgId: string, id: string) {
 export async function updateAutomation(
   orgId: string,
   id: string,
-  input: { name?: string; mailboxId?: string; status?: AutomationStatus },
+  input: {
+    name?: string;
+    mailboxId?: string;
+    status?: AutomationStatus;
+    trigger?: AutomationTrigger;
+    listId?: string | null;
+    eventName?: string | null;
+    segmentId?: string | null;
+  },
 ) {
   const row = await db.query.automation.findFirst({
     where: and(eq(automation.id, id), eq(automation.organizationId, orgId)),
   });
   if (!row) throw new Error("No such automation");
 
+  if (input.listId) {
+    const list = await db.query.mailingList.findFirst({
+      where: and(eq(mailingList.id, input.listId), eq(mailingList.organizationId, orgId)),
+      columns: { id: true },
+    });
+    if (!list) throw new Error("No such list");
+  }
+
+  const trigger = input.trigger ?? row.trigger;
+  const listId = input.listId === undefined ? row.listId : input.listId;
+
+  /*
+   * A segment belongs to one list, so moving the list drops a narrowing that
+   * now asks about the wrong people. Silently keeping it would mean a flow
+   * that enrols nobody and says nothing about why.
+   */
+  let segmentId = input.segmentId === undefined ? row.segmentId : input.segmentId;
+  if (segmentId) {
+    const narrowing = await db.query.segment.findFirst({
+      where: and(eq(segment.id, segmentId), eq(segment.organizationId, orgId)),
+      columns: { id: true, listId: true },
+    });
+    if (!narrowing) throw new Error("No such segment");
+    if (narrowing.listId !== listId) {
+      if (input.segmentId) throw new Error("That segment is about a different list");
+      segmentId = null;
+    }
+  }
+  /* An event name is normalised the same way the API normalises an arriving
+     one, or the two would never meet. */
+  const eventName =
+    input.eventName === undefined
+      ? row.eventName
+      : input.eventName
+        ? normaliseEventName(input.eventName)
+        : null;
+
   /*
    * Turning one on with an empty canvas would enrol everybody into nothing
    * and mark them done, which quietly means they can never be enrolled again
-   * once it is written. Refused here rather than handled in the runner.
+   * once it is written. Refused here rather than handled in the runner, and
+   * with it the two ways a trigger can be half-answered.
    */
-  if (input.status === "active" && !row.entryNodeId) {
-    throw new Error("Put something on the canvas first");
+  if (input.status === "active") {
+    if (!trigger || !listId) throw new Error("Choose what starts this automation first");
+    if (trigger === "event" && !eventName) throw new Error("Choose which event starts it");
+    if (!row.entryNodeId) throw new Error("Put something on the canvas first");
   }
 
   await db
@@ -98,6 +146,10 @@ export async function updateAutomation(
       name: input.name?.trim() || row.name,
       mailboxId: input.mailboxId ?? row.mailboxId,
       status: input.status ?? row.status,
+      trigger,
+      listId,
+      eventName,
+      segmentId,
     })
     .where(eq(automation.id, row.id));
 }
@@ -118,6 +170,8 @@ const BLANK: Record<AutomationNodeKind, Partial<typeof automationNode.$inferInse
   wait: { delayMinutes: 1440 },
   condition: { config: { test: "opened" } },
   field: { config: { field: "", value: "" } },
+  tag: { config: { tagAction: "add", tag: "" } },
+  move: { config: { listAction: "copy", listId: "" } },
   unsubscribe: {},
 };
 
@@ -182,6 +236,8 @@ export async function updateNode(
   input: {
     subject?: string;
     delayMinutes?: number;
+    /** A moment, or null to go back to a length of time. */
+    waitUntil?: Date | null;
     config?: NodeConfig;
     design?: EmailDesign | null;
     html?: string | null;
@@ -230,6 +286,7 @@ export async function updateNode(
         input.delayMinutes === undefined
           ? node.delayMinutes
           : Math.max(0, Math.round(input.delayMinutes)),
+      waitUntil: input.waitUntil === undefined ? node.waitUntil : input.waitUntil,
       config: input.config === undefined ? node.config : input.config,
       html: body.html === undefined ? node.html : (body.html ?? null),
       text: body.text === undefined ? node.text : (body.text ?? null),
@@ -323,6 +380,7 @@ async function nodeOf(orgId: string, nodeId: string) {
       kind: automationNode.kind,
       subject: automationNode.subject,
       delayMinutes: automationNode.delayMinutes,
+      waitUntil: automationNode.waitUntil,
       config: automationNode.config,
       html: automationNode.html,
       text: automationNode.text,
@@ -344,8 +402,13 @@ async function nodeOf(orgId: string, nodeId: string) {
 export interface AutomationRow {
   id: string;
   name: string;
-  listId: string;
-  listName: string;
+  /** Null until a trigger has been chosen on the canvas. */
+  trigger: AutomationTrigger | null;
+  eventName: string | null;
+  /** What it is narrowed to, if anything. */
+  segmentName: string | null;
+  listId: string | null;
+  listName: string | null;
   from: string;
   status: AutomationStatus;
   /** How many boxes are on the canvas, of every kind. */
@@ -361,6 +424,9 @@ export async function automationsView(orgId: string): Promise<AutomationRow[]> {
     .select({
       id: automation.id,
       name: automation.name,
+      trigger: automation.trigger,
+      eventName: automation.eventName,
+      segmentName: segment.name,
       listId: automation.listId,
       listName: mailingList.name,
       from: mailbox.address,
@@ -368,7 +434,10 @@ export async function automationsView(orgId: string): Promise<AutomationRow[]> {
       createdAt: automation.createdAt,
     })
     .from(automation)
-    .innerJoin(mailingList, eq(mailingList.id, automation.listId))
+    // Left, because an automation exists before its trigger does: a new one
+    // has no list until somebody picks one on the canvas.
+    .leftJoin(mailingList, eq(mailingList.id, automation.listId))
+    .leftJoin(segment, eq(segment.id, automation.segmentId))
     .innerJoin(mailbox, eq(mailbox.id, automation.mailboxId))
     .where(eq(automation.organizationId, orgId))
     .orderBy(asc(automation.name));

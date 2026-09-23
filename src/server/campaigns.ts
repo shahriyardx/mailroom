@@ -515,6 +515,8 @@ export interface MemberRow {
   address: string;
   name: string | null;
   status: ListMemberStatus;
+  /** Labels put on them by hand or by an automation. */
+  tags: string[];
   consentSource: string | null;
   consentAt: Date | null;
 }
@@ -532,6 +534,7 @@ export async function membersView(orgId: string, listId: string, limit = 200) {
       address: row.address,
       name: row.name,
       status: row.status,
+      tags: row.tags,
       consentSource: row.consentSource,
       consentAt: row.consentAt,
     }),
