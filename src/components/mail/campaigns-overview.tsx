@@ -55,7 +55,7 @@ export function CampaignsOverviewPanel({ overview }: { overview: CampaignsOvervi
           <Empty
             icon={<Megaphone />}
             title="Nothing sent yet"
-            hint="Make a list, then write your first broadcast. It is saved as a draft until you send it."
+            hint="Make a list, then write your first campaign. It is saved as a draft until you send it."
           />
         ) : (
           overview.recent.map((entry) => (

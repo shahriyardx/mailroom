@@ -35,7 +35,7 @@ export default async function LogsPage({
 
   return (
     <Panel
-      title="Email log"
+      title="Activity"
       description="Every message this account sent or received, what happened to it, and what it looked like."
     >
       <LogTable rows={log.rows} direction={direction} keys={keys} nextCursor={log.nextCursor} />

@@ -53,7 +53,7 @@ interface Item {
 /*
  * One list, in the order a sender works through it.
  *
- * The screens from Broadcasts down to Media are the campaigns view itself;
+ * The screens from Campaigns down to Media are the campaigns view itself;
  * the rest live in settings and are shared with the inbox side. They are
  * listed here rather than left three clicks away behind a gear, because
  * somebody sending a broadcast checks their domain and their logs far more
@@ -63,15 +63,15 @@ interface Item {
  */
 const NAV: Item[] = [
   { href: "/campaigns", label: "Overview", icon: Gauge },
-  { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
+  { href: "/campaigns/broadcasts", label: "Campaigns", icon: Megaphone },
   { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
   { href: "/campaigns/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
   { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
   { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
-  { href: "/campaigns/metrics", label: "Metrics", icon: Activity, needs: "mail:read" },
-  { href: "/campaigns/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
+  { href: "/campaigns/metrics", label: "Stats", icon: Activity, needs: "mail:read" },
+  { href: "/campaigns/logs", label: "Activity", icon: ScrollText, needs: "mail:read" },
   { href: "/campaigns/reporting", label: "Delivery", icon: Activity, needs: "domain:manage" },
-  { href: "/campaigns/blocked", label: "Blocked", icon: ShieldOff, needs: "rules:manage" },
+  { href: "/campaigns/blocked", label: "Blocklist", icon: ShieldOff, needs: "rules:manage" },
   { href: "/campaigns/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
   { href: "/campaigns/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
 ];

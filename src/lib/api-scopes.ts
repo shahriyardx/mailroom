@@ -213,7 +213,7 @@ export const SCOPE_AREAS: ScopeArea[] = [
   },
   {
     id: "suppressions",
-    label: "Blocked addresses",
+    label: "Blocklist",
     hint: "Addresses that bounced or complained",
     levels: [
       { label: "None", scopes: [] },

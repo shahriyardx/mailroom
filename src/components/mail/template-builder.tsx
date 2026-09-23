@@ -501,7 +501,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           return;
         }
         saved.current = JSON.stringify({ details, design, html });
-        toast.success("Broadcast saved");
+        toast.success("Campaign saved");
         router.refresh();
       });
       return;
@@ -555,7 +555,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           onClick={() => (dirty ? setLeaving(true) : router.push(basePath))}
         >
           <ArrowLeft />
-          {target.kind === "broadcast" ? "Broadcasts" : "Templates"}
+          {target.kind === "broadcast" ? "Campaigns" : "Templates"}
         </Button>
 
         <span className="h-5 w-px bg-border" />
@@ -2711,7 +2711,7 @@ function Inspector({
               <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
             </Row>
             <Note>
-              Broadcasts fill <code className="font-mono">{"{{ unsubscribe_url }}"}</code> in for
+              Campaigns fill <code className="font-mono">{"{{ unsubscribe_url }}"}</code> in for
               each recipient.
             </Note>
           </>
@@ -2834,7 +2834,7 @@ function BroadcastDetails({
 }) {
   return (
     <div>
-      <Section title="Broadcast">
+      <Section title="Campaign">
         <Row label="Subject">
           <Input
             value={subject}
@@ -2851,7 +2851,7 @@ function BroadcastDetails({
         </Row>
         <Note>
           {status === "draft"
-            ? "Nothing goes out until you press Send on the broadcasts screen."
+            ? "Nothing goes out until you press Send on the campaigns screen."
             : "This has already started. What went out is what went out, so it cannot be edited."}
         </Note>
       </Section>

@@ -66,7 +66,7 @@ export function ListsPanel({ lists }: { lists: ListSummary[] }) {
           <Empty
             icon={<ListChecks />}
             title="No lists yet"
-            hint="A list is a group of people who agreed to hear from you. A broadcast goes to one, so this is the first thing to make."
+            hint="A list is a group of people who agreed to hear from you. A campaign goes to one, so this is the first thing to make."
           >
             {create}
           </Empty>

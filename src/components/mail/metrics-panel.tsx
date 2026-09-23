@@ -82,7 +82,7 @@ export function MetricsPanel({ view }: { view: MetricsView }) {
 
   return (
     <Panel
-      title="Metrics"
+      title="Stats"
       description="What this account has sent, and how much of it arrived."
       action={filters}
     >

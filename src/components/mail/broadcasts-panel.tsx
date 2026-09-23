@@ -34,7 +34,7 @@ import { toast } from "sonner";
 /**
  * One message, written once, sent to a whole list.
  *
- * Writing happens in a dialog rather than on the page. A broadcast is written
+ * Writing happens in a dialog rather than on the page. A campaign is written
  * occasionally and read constantly, so the screen belongs to the list of what
  * has been sent — a compose form sitting permanently above it pushes the
  * thing you actually came to look at below the fold.
@@ -99,19 +99,19 @@ export function BroadcastsPanel({
   const create = (
     <Button variant="solid" size="md" disabled={!ready} onClick={() => setOpen(true)}>
       <Plus />
-      Create broadcast
+      Create campaign
     </Button>
   );
 
   return (
     <>
-      <PageHeader title="Broadcasts" count={broadcasts.length}>
+      <PageHeader title="Campaigns" count={broadcasts.length}>
         {create}
       </PageHeader>
 
       {broadcasts.length > 0 ? (
         <Toolbar>
-          <SearchBox value={query} onChange={setQuery} placeholder="Search broadcasts…" />
+          <SearchBox value={query} onChange={setQuery} placeholder="Search campaigns…" />
           <Select
             value={status}
             onValueChange={(value) => setStatus(value as (typeof STATUSES)[number])}
@@ -147,13 +147,13 @@ export function BroadcastsPanel({
         {broadcasts.length === 0 ? (
           <Empty
             icon={<Megaphone />}
-            title="No broadcasts yet"
+            title="No campaigns yet"
             hint={
               ready
                 ? "Reach everybody on a list at once. Write one and it is saved as a draft until you send it."
                 : lists.length === 0
-                  ? "Make a list first — a broadcast has to have somewhere to go."
-                  : "Make a mailbox first — a broadcast has to come from an address."
+                  ? "Make a list first — a campaign has to have somewhere to go."
+                  : "Make a mailbox first — a campaign has to come from an address."
             }
           >
             {ready ? create : null}
@@ -162,7 +162,7 @@ export function BroadcastsPanel({
           <Empty
             icon={<Megaphone />}
             title="Nothing matches"
-            hint="No broadcast matches what you have typed or the filters you have set."
+            hint="No campaign matches what you have typed or the filters you have set."
           />
         ) : (
           shown.map((entry) => (
@@ -234,7 +234,7 @@ export function BroadcastsPanel({
       <Dialog open={open} onOpenChange={setOpen}>
         <DialogContent className="sm:max-w-[560px]">
           <DialogHeader>
-            <DialogTitle>Write a broadcast</DialogTitle>
+            <DialogTitle>Write a campaign</DialogTitle>
             <DialogDescription>
               Saved as a draft, and opened in the builder. Nothing is sent until you press Send on
               it.
@@ -313,7 +313,7 @@ export function BroadcastsPanel({
                 it goes to and who it comes from — plus where to start. */}
             <Field
               label="Start from"
-              hint="A template is copied, not linked: editing it later will not change this broadcast."
+              hint="A template is copied, not linked: editing it later will not change this campaign."
             >
               <Select value={templateId} onValueChange={setTemplateId}>
                 <SelectTrigger>

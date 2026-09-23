@@ -52,7 +52,7 @@ export function SuppressionPanel({ rows, query, matching, total, page, pageCount
 
   return (
     <Panel
-      title="Suppression list"
+      title="Blocklist"
       description="Added automatically after a hard bounce or a spam complaint. Sending to these is refused."
       meta={`${total}`}
     >

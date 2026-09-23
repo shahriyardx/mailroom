@@ -136,7 +136,7 @@ export function LogDetail(props: DetailProps) {
           className="mb-3 inline-flex items-center gap-1.5 text-[12.5px] text-muted-foreground hover:text-foreground"
         >
           <ArrowLeft className="size-3.5" />
-          Email log
+          Activity
         </Link>
         <div className="flex flex-wrap items-center gap-2">
           <h1 className="min-w-0 truncate text-[20px] font-semibold tracking-[-0.01em]">{first}</h1>

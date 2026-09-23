@@ -81,7 +81,7 @@ export function SetupWizard({ state }: { state: SetupState }) {
         toast.error(result.error);
         return;
       }
-      router.push(state.inboxEnabled ? "/mail" : "/settings/broadcasts");
+      router.push(state.inboxEnabled ? "/mail" : "/campaigns");
     });
   }
 
@@ -109,7 +109,7 @@ export function SetupWizard({ state }: { state: SetupState }) {
               <Choice
                 icon={<Megaphone />}
                 title="Marketing"
-                detail="Lists and broadcasts to many people, with unsubscribe handled for you."
+                detail="Lists and campaigns to many people, with unsubscribe handled for you."
                 chosen={use === "campaigns"}
                 onChoose={() => setUse("campaigns")}
               />

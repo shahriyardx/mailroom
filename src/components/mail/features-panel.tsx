@@ -54,7 +54,7 @@ export function FeaturesPanel({ settings }: { settings: WorkspaceSettings }) {
         <FeatureRow
           icon={<Megaphone />}
           title="Campaigns"
-          detail="Lists, broadcasts to many people at once, unsubscribe handling and open tracking."
+          detail="Lists, campaigns to many people at once, unsubscribe handling and open tracking."
           on={settings.campaignsEnabled}
           disabled={busy}
           onChange={(on) =>

@@ -273,7 +273,7 @@ export function OverviewPanel({ data, windowDays, account }: Props) {
           />
           <Stat label="Mailboxes" value={counts.mailboxes} sub="Addresses you own" />
           <Stat
-            label="Blocked addresses"
+            label="Blocklist"
             value={counts.blocked}
             sub="After bounces and complaints"
             tone={counts.blocked > 0 ? "warn" : undefined}
