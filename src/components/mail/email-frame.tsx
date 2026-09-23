@@ -14,6 +14,16 @@ interface Props {
   sender?: string;
   /** What this reader decided about that sender last time. */
   imagesAllowed?: boolean;
+  /**
+   * Show it the way a client that forces dark mode will.
+   *
+   * For the builder's preview. Gmail on Android and Outlook on Windows do not
+   * ask the message whether it has a dark version — they invert the colours
+   * it has and leave the pictures alone. That is what is copied here, because
+   * the thing worth finding before a send is the dark logo that has just
+   * landed on a dark background.
+   */
+  forceDark?: boolean;
 }
 
 /**
@@ -26,7 +36,14 @@ interface Props {
 /** When to look again after a frame loads, in milliseconds. */
 const SETTLE = [0, 120, 400, 1200];
 
-export function EmailFrame({ html, text, inlineImages, sender, imagesAllowed = false }: Props) {
+export function EmailFrame({
+  html,
+  text,
+  inlineImages,
+  sender,
+  imagesAllowed = false,
+  forceDark = false,
+}: Props) {
   const [showImages, setShowImages] = useState(imagesAllowed);
   const [showQuote, setShowQuote] = useState(false);
   const [dark, setDark] = useState(false);
@@ -110,7 +127,7 @@ export function EmailFrame({ html, text, inlineImages, sender, imagesAllowed = f
         </div>
       )}
 
-      <Frame body={body} themed={themed} onWhite={prepared.ownsBackground} />
+      <Frame body={body} themed={themed} onWhite={prepared.ownsBackground} inverted={forceDark} />
 
       {/*
         A reply carries the whole message it answers, and that message carries
@@ -154,18 +171,30 @@ function Frame({
   body,
   themed,
   onWhite,
+  inverted = false,
 }: {
   body: string;
   themed: boolean;
   onWhite: boolean;
+  /** Invert everything but the pictures, the way a forcing client does. */
+  inverted?: boolean;
 }) {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const [height, setHeight] = useState(0);
 
+  /*
+   * Inverting twice is how the pictures come back: the page is turned inside
+   * out, and every image is turned inside out again inside it. The hue
+   * rotation is what keeps a blue link blue rather than making it orange.
+   */
+  const invert = inverted
+    ? "html{background:#0b0b0c;}body{filter:invert(1) hue-rotate(180deg);}img,video{filter:invert(1) hue-rotate(180deg);}"
+    : "";
+
   const srcDoc = useMemo(
     () =>
-      `<!doctype html><html class="${themed ? "dark" : ""}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}</style></head><body>${body}</body></html>`,
-    [body, themed],
+      `<!doctype html><html class="${themed ? "dark" : ""}"><head><meta charset="utf-8"><base target="_blank"><style>${EMAIL_FRAME_STYLES}${invert}</style></head><body>${body}</body></html>`,
+    [body, themed, invert],
   );
 
   const measure = useCallback(() => {

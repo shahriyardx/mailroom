@@ -12,8 +12,8 @@ import {
 } from "@/components/kit";
 import type { Template } from "@/db/schema";
 import { templateVariables } from "@/lib/template";
-import { deleteTemplateAction } from "@/server/actions";
-import { FileCode2, LayoutTemplate, Plus, Trash2 } from "lucide-react";
+import { deleteTemplateAction, duplicateTemplateAction } from "@/server/actions";
+import { Copy, FileCode2, LayoutTemplate, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
@@ -32,6 +32,29 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
   // half of the app under its own path.
   const base = usePathname();
   const [removing, setRemoving] = useState<Template | null>(null);
+  // Which row is being copied, so its own button says so rather than the
+  // whole list going quiet while the server thinks.
+  const [copying, setCopying] = useState<string | null>(null);
+
+  /*
+   * A copy opens straight away.
+   *
+   * Duplicating is never the thing somebody wanted — changing the copy is —
+   * so landing back on the list with two near-identical rows and having to
+   * work out which is the new one is the wrong end of it.
+   */
+  async function copy(row: Template) {
+    setCopying(row.id);
+    try {
+      const made = await duplicateTemplateAction(row.id);
+      toast.success(`Copied to ${made.slug}`);
+      router.push(`${base}/${made.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not copy it");
+    } finally {
+      setCopying(null);
+    }
+  }
 
   return (
     <Panel
@@ -81,6 +104,8 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
               key={row.id}
               row={row}
               href={`${base}/${row.id}`}
+              copying={copying === row.id}
+              onCopy={() => copy(row)}
               onDelete={() => setRemoving(row)}
             />
           ))}
@@ -99,10 +124,14 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
 function TemplateRow({
   row,
   href,
+  copying,
+  onCopy,
   onDelete,
 }: {
   row: Template;
   href: string;
+  copying: boolean;
+  onCopy: () => void;
   onDelete: () => void;
 }) {
   const names = templateVariables(row.subject, row.html, row.text);
@@ -139,6 +168,9 @@ function TemplateRow({
       </div>
 
       <span className="relative z-10 flex shrink-0 items-center gap-0.5">
+        <IconButton label={`Duplicate ${row.name}`} onClick={onCopy} disabled={copying}>
+          <Copy />
+        </IconButton>
         <IconButton variant="danger" label={`Delete ${row.name}`} onClick={onDelete}>
           <Trash2 />
         </IconButton>

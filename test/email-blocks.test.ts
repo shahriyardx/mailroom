@@ -375,3 +375,67 @@ describe("social links carry icons", () => {
     assert.equal(links[1]?.network, "website", "and the one that did not is a link to a site");
   });
 });
+
+/* -------------------------------------------------------------------------- */
+
+describe("the line the inbox shows", () => {
+  it("writes the preheader where no reader will see it", () => {
+    const html = renderDesign({
+      ...design(newBlock("heading", "b1")),
+      preheader: "Ten minutes of setup, and you are sending.",
+    });
+
+    assert.match(html, /Ten minutes of setup, and you are sending\./);
+    assert.match(html, /display:none;max-height:0/);
+    // The padding is what stops the client reading on into the body.
+    assert.match(html, /&#847;&zwnj;&nbsp;/);
+  });
+
+  it("escapes it, like everything else somebody typed", () => {
+    const html = renderDesign({ ...emptyDesign(), preheader: "<b>hi</b>" });
+    assert.ok(!html.includes("<b>hi</b>"));
+    assert.match(html, /&lt;b&gt;hi&lt;\/b&gt;/);
+  });
+
+  it("writes nothing at all when there is none", () => {
+    const html = renderDesign(design(newBlock("heading", "b1")));
+    assert.ok(!html.includes("mso-hide:all"), "an empty preheader is no element");
+  });
+
+  it("keeps it when the design is read back", () => {
+    const read = readDesign({ version: 1, blocks: [], preheader: "Summary" });
+    assert.equal(read?.preheader, "Summary");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+describe("leaving a block off one size of screen", () => {
+  it("hides it on a phone with a class the media query knows", () => {
+    const block = { ...newBlock("image", "b1"), src: "https://x/a.png", hideOn: "mobile" };
+    const html = renderDesign(design(block as never));
+
+    assert.match(html, /<tr class="mr-no-sm">/);
+    assert.match(html, /\.mr-no-sm\{display:none !important/);
+  });
+
+  it("hides it on a desktop, Outlook included", () => {
+    const block = { ...newBlock("heading", "b1"), hideOn: "desktop" };
+    const html = renderDesign(design(block as never));
+
+    // Hidden by default and shown again only by the media query, because
+    // that is the only way round that a client without one gets right.
+    assert.match(html, /<tr class="mr-only-sm" style="display:none;mso-hide:all;">/);
+    assert.match(html, /\.mr-only-sm\{display:table-row !important/);
+  });
+
+  it("leaves an ordinary block alone", () => {
+    const html = renderDesign(design(newBlock("heading", "b1")));
+    assert.match(html, /<tr><td style=/);
+  });
+
+  it("puts the media query at the width the email is", () => {
+    const wide = { ...emptyDesign(), theme: { ...emptyDesign().theme, width: 900 } };
+    assert.match(renderDesign(wide), /max-width:900px/);
+  });
+});

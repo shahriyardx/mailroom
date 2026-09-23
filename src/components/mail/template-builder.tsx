@@ -92,13 +92,18 @@ import {
   Image as ImageIcon,
   Link2,
   Minus,
+  Monitor,
+  Moon,
   MousePointerClick,
   Plus,
   Quote as QuoteIcon,
+  Redo2,
   Send,
+  Smartphone,
   Table2,
   Trash2,
   Type,
+  Undo2,
   UnfoldVertical,
   UserMinus,
   Youtube,
@@ -106,7 +111,7 @@ import {
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { EmailFrame } from "./email-frame";
 import { MediaPicker } from "./media-panel";
@@ -222,6 +227,95 @@ export function BroadcastBuilder({
   return <Builder target={{ kind: "broadcast", broadcast, listName }} basePath={basePath} />;
 }
 
+/** How many steps back the builder remembers. */
+const HISTORY = 60;
+
+/** Edits closer together than this are one step, not two. Milliseconds. */
+const COALESCE = 700;
+
+interface Past {
+  past: EmailDesign[];
+  present: EmailDesign;
+  future: EmailDesign[];
+}
+
+/**
+ * The design, and the versions of it that came before.
+ *
+ * Every edit here is small and reversible on its own — a colour, a word, a
+ * block moved one place — which is exactly the kind of edit people make forty
+ * of before noticing the one they did not mean. Without an undo the only way
+ * back is to remember what the colour used to be.
+ *
+ * Typing is coalesced, because a keystroke is not a step: a sentence typed
+ * into a text block would otherwise fill the whole stack, and the undo that
+ * was wanted is thirty presses away.
+ */
+function useHistory(initial: () => EmailDesign) {
+  const [state, setState] = useState<Past>(() => ({
+    past: [],
+    present: initial(),
+    future: [],
+  }));
+  const stamp = useRef(0);
+
+  const set = useCallback((update: (current: EmailDesign) => EmailDesign) => {
+    const now = Date.now();
+    const merge = now - stamp.current < COALESCE;
+    stamp.current = now;
+
+    setState((current) => {
+      const next = update(current.present);
+      if (next === current.present) return current;
+      return {
+        past:
+          merge && current.past.length > 0
+            ? current.past
+            : [...current.past, current.present].slice(-HISTORY),
+        present: next,
+        future: [],
+      };
+    });
+  }, []);
+
+  // A step across the line ends whatever was being coalesced, so the edit
+  // after an undo is a step of its own rather than joining the one before it.
+  const undo = useCallback(() => {
+    stamp.current = 0;
+    setState((current) => {
+      const previous = current.past.at(-1);
+      if (!previous) return current;
+      return {
+        past: current.past.slice(0, -1),
+        present: previous,
+        future: [current.present, ...current.future].slice(0, HISTORY),
+      };
+    });
+  }, []);
+
+  const redo = useCallback(() => {
+    stamp.current = 0;
+    setState((current) => {
+      const next = current.future[0];
+      if (!next) return current;
+      return {
+        past: [...current.past, current.present].slice(-HISTORY),
+        present: next,
+        future: current.future.slice(1),
+      };
+    });
+  }, []);
+
+  return {
+    design: state.present,
+    setDesign: set,
+    undo,
+    redo,
+    canUndo: state.past.length > 0,
+    canRedo: state.future.length > 0,
+  };
+}
+
 function Builder({ target, basePath }: { target: BuilderTarget; basePath: string }) {
   const router = useRouter();
   const [busy, submit] = useSubmit();
@@ -238,7 +332,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
     subject: source?.subject ?? "",
   });
 
-  const [design, setDesign] = useState<EmailDesign>(
+  const { design, setDesign, undo, redo, canUndo, canRedo } = useHistory(
     () => readDesign(source?.design) ?? emptyDesign(),
   );
   const [html, setHtml] = useState(source?.html ?? "");
@@ -278,6 +372,10 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"block" | "page" | "details">("details");
   const [previewing, setPreviewing] = useState(false);
+  /* What the preview is pretending to be: a window or a phone, in a client
+     that leaves the colours alone or one that forces its own dark mode. */
+  const [previewOn, setPreviewOn] = useState<"desktop" | "mobile">("desktop");
+  const [previewDark, setPreviewDark] = useState(false);
   const [removing, setRemoving] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -285,6 +383,35 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
   const block = selected ? findBlock(design.blocks, selected) : null;
 
   const dirty = JSON.stringify({ details, design, html }) !== saved.current;
+
+  /*
+   * Undo and redo, the way every other editor spells them.
+   *
+   * A field with its own undo keeps it: pressing ctrl-Z inside a half-typed
+   * sentence should take back the sentence, not the block it is in. So this
+   * steps aside whenever the keystroke went to somewhere that can hold text.
+   */
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "z") return;
+
+      const target = event.target as HTMLElement | null;
+      if (
+        target?.isContentEditable ||
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      if (event.shiftKey) redo();
+      else undo();
+    };
+
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
   // The browser's own warning, for the ways out this page never sees: a
   // closed tab, a typed address, a reload.
@@ -474,6 +601,17 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
         )}
 
         <div className="ml-auto flex items-center gap-2">
+          {pane === "design" && !previewing && !handwritten && (
+            <span className="flex items-center gap-0.5">
+              <IconButton label="Undo" size="sm" onClick={undo} disabled={!canUndo}>
+                <Undo2 className="size-4" />
+              </IconButton>
+              <IconButton label="Redo" size="sm" onClick={redo} disabled={!canRedo}>
+                <Redo2 className="size-4" />
+              </IconButton>
+            </span>
+          )}
+
           <Tabs value={pane} onValueChange={(value) => setPane(value as "design" | "html")}>
             <TabsList variant="segmented">
               <TabsTrigger value="design" disabled={handwritten}>
@@ -555,23 +693,67 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           )}
         >
           {previewing ? (
-            <div
-              // As wide as the email is, rather than a fixed guess: a template
-              // set to 900 was being shown through a 760 window, which reads
-              // as a broken preview rather than a preview of something wide.
-              className="mx-auto overflow-hidden rounded-xl border border-border bg-card"
-              style={{ maxWidth: handwritten ? 760 : design.theme.width + 48 }}
-            >
-              <div className="border-border border-b px-4 py-2.5 text-[13px]">
-                <span className="text-muted-foreground">Subject: </span>
-                {details.subject || <span className="text-muted-foreground">(none)</span>}
+            <>
+              {/* What is being pretended, said out loud and changeable. Every
+                  one of these is a real way the same email arrives. */}
+              <div className="mx-auto mb-4 flex w-fit items-center gap-1 rounded-full border border-border bg-card p-1">
+                <PreviewPick
+                  active={previewOn === "desktop"}
+                  onClick={() => setPreviewOn("desktop")}
+                  icon={<Monitor className="size-3.5" />}
+                  label="Desktop"
+                />
+                <PreviewPick
+                  active={previewOn === "mobile"}
+                  onClick={() => setPreviewOn("mobile")}
+                  icon={<Smartphone className="size-3.5" />}
+                  label="Phone"
+                />
+                <span className="mx-1 h-4 w-px bg-border" />
+                <PreviewPick
+                  active={previewDark}
+                  onClick={() => setPreviewDark((current) => !current)}
+                  icon={<Moon className="size-3.5" />}
+                  label="Dark client"
+                />
               </div>
-              <EmailFrame
-                html={compiled || null}
-                text={handwritten ? (source?.text ?? null) : designToText(design)}
-                imagesAllowed
-              />
-            </div>
+
+              <div
+                /* As wide as the email is, rather than a fixed guess: a
+                   template set to 900 was being shown through a 760 window,
+                   which reads as a broken preview rather than a preview of
+                   something wide. A phone is the one fixed width there is. */
+                className="mx-auto overflow-hidden rounded-xl border border-border bg-card"
+                style={{
+                  maxWidth:
+                    previewOn === "mobile" ? 390 : handwritten ? 760 : design.theme.width + 48,
+                }}
+              >
+                <div className="border-border border-b px-4 py-2.5 text-[13px]">
+                  <span className="text-muted-foreground">Subject: </span>
+                  {details.subject || <span className="text-muted-foreground">(none)</span>}
+                  {/* The second line of an inbox listing, shown where an
+                      inbox shows it rather than described in a form. */}
+                  {!handwritten && design.preheader?.trim() && (
+                    <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
+                      {design.preheader.trim()}
+                    </p>
+                  )}
+                </div>
+                <EmailFrame
+                  html={compiled || null}
+                  text={handwritten ? (source?.text ?? null) : designToText(design)}
+                  imagesAllowed
+                  forceDark={previewDark}
+                />
+              </div>
+
+              <p className="mx-auto mt-3 w-fit max-w-[420px] text-center text-[11.5px] text-muted-foreground">
+                {previewOn === "mobile"
+                  ? "The frame is narrow, so the email's own phone rules apply: columns stack and anything hidden on phones is gone."
+                  : "A browser is not a mail client. Test send is the only way to see what Gmail and Outlook do with it."}
+              </p>
+            </>
           ) : pane === "html" ? (
             <HtmlPane
               handwritten={handwritten}
@@ -647,6 +829,8 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
                       theme: { ...current.theme, ...changes },
                     }))
                   }
+                  preheader={design.preheader ?? ""}
+                  onPreheader={(preheader) => setDesign((current) => ({ ...current, preheader }))}
                 />
               )}
 
@@ -920,6 +1104,36 @@ function HtmlPane({
 /* The canvas                                                                 */
 /* -------------------------------------------------------------------------- */
 
+/** One of the things the preview can pretend to be. */
+function PreviewPick({
+  active,
+  onClick,
+  icon,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  icon: React.ReactNode;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      className={cn(
+        "flex h-7 items-center gap-1.5 rounded-full px-3 text-[12.5px] transition-colors",
+        active
+          ? "bg-primary text-primary-foreground"
+          : "text-muted-foreground hover:bg-accent hover:text-foreground",
+      )}
+    >
+      {icon}
+      {label}
+    </button>
+  );
+}
+
 interface Aim {
   where: Where;
   at: number;
@@ -1159,6 +1373,19 @@ function BlockList(props: ListProps) {
           >
             {LABELS[block.type]}
           </span>
+
+          {/* A block that will not be there is still drawn, because it is
+              still being edited. It says which half of the world misses it. */}
+          {block.hideOn && (
+            <span className="pointer-events-none absolute right-1.5 bottom-1.5 z-20 flex items-center gap-1 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground group-focus-within:hidden group-hover:hidden">
+              {block.hideOn === "mobile" ? (
+                <Monitor className="size-3" />
+              ) : (
+                <Smartphone className="size-3" />
+              )}
+              {block.hideOn === "mobile" ? "Desktop only" : "Phone only"}
+            </span>
+          )}
 
           <div className="absolute top-1.5 right-1.5 z-20 hidden items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-focus-within:flex group-hover:flex">
             <span className="flex size-6 cursor-grab items-center justify-center text-muted-foreground">
@@ -1882,6 +2109,33 @@ function Inspector({
           />
         </Row>
       </Section>
+
+      <Section title="Visibility" open={false}>
+        <Row label="Show on">
+          <Select
+            value={block.hideOn ?? "both"}
+            onValueChange={(value) =>
+              onPatch({
+                hideOn: value === "both" ? undefined : (value as "mobile" | "desktop"),
+              } as Partial<Block>)
+            }
+          >
+            <SelectTrigger className="h-8 text-[12.5px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="both">Everything</SelectItem>
+              <SelectItem value="mobile">Desktop only</SelectItem>
+              <SelectItem value="desktop">Phone only</SelectItem>
+            </SelectContent>
+          </Select>
+        </Row>
+        <Note>
+          A media query does the hiding, and Outlook has none — it shows whatever a desktop would
+          have seen. Use this for a wide picture a phone has no room for, not for anything the
+          message needs.
+        </Note>
+      </Section>
     </>
   );
 
@@ -2359,12 +2613,31 @@ function Inspector({
 function PageStyle({
   theme,
   onChange,
+  preheader,
+  onPreheader,
 }: {
   theme: EmailTheme;
   onChange: (changes: Partial<EmailTheme>) => void;
+  preheader: string;
+  onPreheader: (value: string) => void;
 }) {
   return (
     <div>
+      <Section title="Inbox">
+        <Textarea
+          value={preheader}
+          onChange={(event) => onPreheader(event.target.value.slice(0, 200))}
+          rows={2}
+          placeholder="The line after the subject"
+          className="text-[12.5px]"
+        />
+        <Note>
+          Shown after the subject in the list, before anything is opened. Leave it empty and the
+          client uses the first words of the email instead — which is how "View in browser" ends up
+          being the summary.
+        </Note>
+      </Section>
+
       <Section title="Page">
         <Row label="Background">
           <Swatch value={theme.background} onChange={(background) => onChange({ background })} />

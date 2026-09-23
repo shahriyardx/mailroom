@@ -39,6 +39,34 @@ padding, background and border, under **Typography**, **Spacing** and
 whole email: the page colour behind the card, the card itself, the width, the
 font, and the text and link colours.
 
+`Ctrl`+`Z` takes back the last change and `Ctrl`+`Shift`+`Z` puts it back, or
+use the two arrows in the bar. A field you are typing in keeps its own undo, so
+the shortcut takes back the sentence rather than the block it is in.
+
+### The preheader
+
+**Page → Inbox** holds the grey line an inbox prints after the subject.
+
+Leave it empty and the client picks the first words of the email instead, which
+is how "View this email in your browser" becomes the summary of a newsletter.
+Around 80 characters is what most clients show.
+
+### Leaving a block off one screen
+
+**Visibility → Show on**, on any block: *Everything*, *Desktop only*, or
+*Phone only*.
+
+A media query does the hiding. Outlook has none, so it shows whatever a desktop
+would have seen — which is the right way round, but it does mean a phone-only
+block is not a way to keep something out of Outlook. Use it for a wide picture
+a phone has no room for, never for anything the message needs to make sense.
+
+### Duplicating one
+
+The copy button on a row in the template list makes a second template with the
+same body under a free name — `welcome` becomes `welcome-copy` — and opens it.
+The original keeps sending exactly as it did.
+
 ## Variables
 
 Anything in double braces is filled in when you send.
@@ -66,6 +94,15 @@ filled with their own names in brackets, so you can see where they land.
 The preview beside it is a browser drawing HTML written for mail clients, which
 is the one thing it cannot tell you about. Send yourself a copy before a list
 gets it.
+
+**Preview** offers three switches:
+
+- **Desktop** and **Phone** change the width. The phone frame is narrow enough
+  that the email's own rules for a small screen apply — columns stack, and
+  anything set to desktop only disappears.
+- **Dark client** shows what a client that forces dark mode does: it inverts
+  the colours and leaves the pictures alone. This is where a dark logo on a
+  dark background turns up before a customer finds it.
 
 ## HTML
 

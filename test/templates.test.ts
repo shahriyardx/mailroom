@@ -147,6 +147,36 @@ describe("keeping templates", () => {
     assert.equal(updated.html, "<p>Thanks</p>", "the body was left alone");
     assert.equal(updated.slug, "receipt");
   });
+
+  it("copies one under a name nothing else is using", async () => {
+    const { createTemplate, duplicateTemplate } = await import("@/server/templates");
+    const row = await createTemplate(account.orgId, {
+      name: "Welcome",
+      subject: "Hello",
+      html: "<p>Hello</p>",
+    });
+
+    const copy = await duplicateTemplate(account.orgId, row.id);
+    assert.notEqual(copy.id, row.id, "a copy is a second template, not the same row");
+    assert.equal(copy.name, "Welcome (copy)");
+    assert.equal(copy.slug, "welcome-copy");
+    assert.equal(copy.html, "<p>Hello</p>", "the body came with it");
+
+    // Copying the copy counts rather than failing on the name.
+    const again = await duplicateTemplate(account.orgId, row.id);
+    assert.equal(again.slug, "welcome-copy-2");
+  });
+
+  it("will not copy a template belonging to somebody else", async () => {
+    const { TemplateNotFound, createTemplate, duplicateTemplate } = await import(
+      "@/server/templates"
+    );
+    const row = await createTemplate(account.orgId, { name: "Private" });
+    await assert.rejects(
+      duplicateTemplate("org_elsewhere", row.id),
+      (error: unknown) => error instanceof TemplateNotFound,
+    );
+  });
 });
 
 /* -------------------------------------------------------------------------- */

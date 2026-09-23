@@ -54,6 +54,15 @@ export interface BlockStyle {
 interface Common {
   id: string;
   style?: BlockStyle;
+  /**
+   * Which screens this block is left out of.
+   *
+   * A media query does the hiding, and Outlook has none, so it shows whatever
+   * a desktop would have seen. That is the right way round: "mobile only" is
+   * usually an extra, and "desktop only" is usually the wide thing a phone
+   * was meant to do without.
+   */
+  hideOn?: "mobile" | "desktop";
 }
 
 export interface HeadingBlock extends Common {
@@ -270,6 +279,15 @@ export interface EmailDesign {
   version: 1;
   theme: EmailTheme;
   blocks: Block[];
+  /**
+   * The grey line an inbox prints after the subject.
+   *
+   * Left out, every client picks the first words of the body itself, which is
+   * how "View this email in your browser" ends up being the summary of a
+   * newsletter. It is a property of the message rather than of its look, but
+   * it is written where the rest of the message is written.
+   */
+  preheader?: string;
 }
 
 export const FONTS: { label: string; value: string }[] = [
@@ -436,7 +454,9 @@ export function readDesign(value: unknown): EmailDesign | null {
     .map((entry) => readBlock(entry))
     .filter((entry): entry is Block => entry !== null);
 
-  return { version: 1, theme, blocks };
+  const preheader = typeof raw.preheader === "string" ? raw.preheader.slice(0, 200) : undefined;
+
+  return { version: 1, theme, blocks, preheader };
 }
 
 const KINDS: BlockKind[] = [
@@ -694,11 +714,35 @@ export function renderDesign(design: EmailDesign, origin = ""): string {
   const theme = { ...design.theme, origin };
   const body = design.blocks.map((block) => renderBlock(block, theme)).join("\n");
 
-  // Columns stack on a phone. Gmail and Apple Mail honour this; the ones that
-  // do not simply keep the columns side by side, which is what they did
-  // before there was a media query at all.
-  const stacking =
-    "@media only screen and (max-width:600px){.mr-col{display:block !important;width:100% !important;padding-left:0 !important;padding-right:0 !important;}}";
+  /*
+   * The one media query, at the width the email itself is: anything narrower
+   * than the card is a screen the card does not fit on.
+   *
+   * Columns stack. Blocks marked for one size of screen appear or disappear.
+   * Gmail and Apple Mail honour all of it; the clients that do not keep the
+   * columns side by side and show every block, which is what they did before
+   * there was a media query at all.
+   */
+  const small = clamp(theme.width, 320, 900);
+  const stacking = [
+    `@media only screen and (max-width:${small}px){`,
+    ".mr-col{display:block !important;width:100% !important;padding-left:0 !important;padding-right:0 !important;}",
+    ".mr-no-sm{display:none !important;max-height:0 !important;overflow:hidden !important;}",
+    ".mr-only-sm{display:table-row !important;max-height:none !important;overflow:visible !important;}",
+    "}",
+  ].join("");
+
+  /*
+   * The preheader, and then a run of invisible characters.
+   *
+   * Without the padding the client keeps reading past the line and pulls the
+   * first sentence of the body in after it, so the summary is half of what
+   * was written here and half of something else. Zero-width joiners and
+   * non-breaking spaces fill the rest of the space the inbox has for it.
+   */
+  const preheader = design.preheader?.trim()
+    ? `<div style="display:none;max-height:0;overflow:hidden;mso-hide:all;font-size:1px;line-height:1px;color:${attr(theme.surface)};opacity:0;">${escapeHtml(design.preheader.trim())}${"&#847;&zwnj;&nbsp;".repeat(60)}</div>`
+    : "";
 
   return `<!doctype html>
 <html>
@@ -709,6 +753,7 @@ export function renderDesign(design: EmailDesign, origin = ""): string {
 <style>${stacking}</style>
 </head>
 <body style="margin:0;padding:0;background-color:${attr(theme.background)};">
+${preheader}
 <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color:${attr(theme.background)};">
 <tr>
 <td align="center" style="padding:24px 12px;">
@@ -734,7 +779,20 @@ function cell(block: Block, content: string) {
     if (style.border.radius > 0) rules.push(`border-radius:${clamp(style.border.radius, 0, 40)}px`);
   }
 
-  return `<tr><td style="${rules.join(";")};">${content}</td></tr>`;
+  /*
+   * Hiding is done to the row rather than to what is in it, so nothing is
+   * left holding padding open where the block used to be. Outlook is told
+   * separately, because it reads no media query and would otherwise show the
+   * mobile-only half of a pair as well as the desktop one.
+   */
+  const screens =
+    block.hideOn === "mobile"
+      ? ' class="mr-no-sm"'
+      : block.hideOn === "desktop"
+        ? ' class="mr-only-sm" style="display:none;mso-hide:all;"'
+        : "";
+
+  return `<tr${screens}><td style="${rules.join(";")};">${content}</td></tr>`;
 }
 
 /** The text rules a block's own copy is drawn with. */

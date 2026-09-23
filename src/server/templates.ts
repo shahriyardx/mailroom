@@ -172,6 +172,48 @@ export async function updateTemplate(orgId: string, id: string, input: Partial<T
   return row!;
 }
 
+/**
+ * Copies one, body and all, under a name nothing else is using.
+ *
+ * The copy is a real second template rather than a draft of the first: the
+ * point of it is to change one thing about a working email without risking
+ * the one that is already being sent by name. It keeps the design, so the
+ * copy opens in the builder exactly as the original does.
+ */
+export async function duplicateTemplate(orgId: string, id: string, userId?: string) {
+  const existing = await findTemplate(orgId, id);
+  if (!existing) throw new TemplateNotFound(id);
+
+  /*
+   * "welcome" becomes "welcome-copy", and then "welcome-copy-2" — counting
+   * rather than failing, because the second copy of something is exactly as
+   * ordinary as the first and being told the name is taken helps nobody.
+   */
+  const base = slugify(`${existing.slug}-copy`);
+  let slug = base;
+  for (let attempt = 2; await findTemplate(orgId, slug); attempt += 1) {
+    slug = `${base}-${attempt}`;
+  }
+
+  const [row] = await db
+    .insert(template)
+    .values({
+      id: newId("tpl"),
+      organizationId: orgId,
+      name: `${existing.name} (copy)`,
+      slug,
+      description: existing.description,
+      subject: existing.subject,
+      html: existing.html,
+      text: existing.text,
+      design: existing.design,
+      createdBy: userId ?? null,
+    })
+    .returning();
+
+  return row!;
+}
+
 export async function deleteTemplate(orgId: string, id: string) {
   const existing = await findTemplate(orgId, id);
   if (!existing) return false;
