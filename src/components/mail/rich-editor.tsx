@@ -99,10 +99,16 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
         data-placeholder={placeholder}
         suppressContentEditableWarning
         onInput={(event) => onChange(event.currentTarget.innerHTML)}
-        onClick={(event) => {
+        onClickCapture={(event) => {
           // A link here is something being written, not somewhere to go.
-          // Following it would throw away the email to open a page.
-          if ((event.target as HTMLElement).closest("a")) event.preventDefault();
+          //
+          // Caught on the way down and stopped there. Preventing the default
+          // is not enough on its own: the router's progress bar watches for
+          // clicks on anchors further up, so the page stayed put but the bar
+          // still ran across the top as though it were going somewhere.
+          if (!(event.target as HTMLElement).closest("a")) return;
+          event.preventDefault();
+          event.stopPropagation();
         }}
         onPaste={(event) => {
           // Paste as plain text so foreign styles never leak into the message.
