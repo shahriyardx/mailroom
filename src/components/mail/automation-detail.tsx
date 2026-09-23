@@ -46,6 +46,7 @@ export function AutomationDetail({
   const router = useRouter();
   const [busy, setBusy] = useState(false);
   const [switching, setSwitching] = useState(false);
+  const [name, setName] = useState(automation.name);
 
   const live = automation.status === "active";
   const emails = nodes.filter((node) => node.kind === "email").length;
@@ -101,13 +102,24 @@ export function AutomationDetail({
 
         <span className="h-5 w-px bg-border" />
 
+        {/* Sized to the name rather than to a guess at one. A fixed width
+            leaves a hole between "AAA" and the facts beside it, which reads
+            as two unrelated bits of the bar instead of one line about one
+            automation. Bounded at both ends: wide enough to be a target when
+            it is empty, narrow enough that a long name cannot push the
+            controls off the right. */}
         <Input
-          defaultValue={automation.name}
+          value={name}
           aria-label="Automation name"
-          onBlur={(event) =>
-            event.target.value.trim() !== automation.name && change({ name: event.target.value })
-          }
-          className="h-8 w-40 min-w-0 shrink border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:border-border focus:bg-card lg:w-52"
+          onChange={(event) => setName(event.target.value)}
+          onBlur={() => {
+            // An empty name is a slip, not an instruction: snap back rather
+            // than save a nameless automation into the list.
+            if (!name.trim()) return setName(automation.name);
+            if (name.trim() !== automation.name) change({ name: name.trim() });
+          }}
+          style={{ width: `${Math.min(Math.max(name.length + 2, 5), 30)}ch` }}
+          className="h-8 min-w-0 shrink border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:border-border focus:bg-card"
         />
 
         {/* Beside the name rather than adrift in the middle of the bar: it is
