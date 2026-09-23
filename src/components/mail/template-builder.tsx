@@ -1869,27 +1869,121 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
   );
 }
 
+/** Pixels of travel per step. Low enough to aim, high enough not to jitter. */
+const SCRUB = 3;
+
+/** Movement under this is a click that wobbled, not a drag. */
+const SLOP = 3;
+
+/**
+ * A number, typed or dragged.
+ *
+ * Dragging sideways over the box changes it, the way every drawing program
+ * does it, because most of these are being felt out rather than known: the
+ * answer to "how much padding" is however much looks right, and finding that
+ * by typing 12, tabbing, looking, typing 16 is the slow way round.
+ *
+ * A click still puts the cursor in it, and once it is focused the drag stops
+ * happening at all, so selecting the digits to retype them works as it
+ * always did.
+ */
 function NumberField({
   value,
   onChange,
   unit = "px",
   placeholder,
+  prefix,
+  label,
+  min,
+  max,
 }: {
   value: number | undefined;
   onChange: (value: number | undefined) => void;
   unit?: string;
   placeholder?: string;
+  /** A letter inside the box, for fields that need saying which they are. */
+  prefix?: string;
+  /** What a screen reader calls it, when the box is the only label there is. */
+  label?: string;
+  /** Limits, applied to what is dragged as well as to what is typed. */
+  min?: number;
+  max?: number;
 }) {
+  const input = useRef<HTMLInputElement>(null);
+  const drag = useRef<{ x: number; from: number; moved: boolean } | null>(null);
+  const [scrubbing, setScrubbing] = useState(false);
+
+  function hold(next: number) {
+    if (min !== undefined && next < min) return min;
+    if (max !== undefined && next > max) return max;
+    return next;
+  }
+
   return (
-    <div className="relative">
+    <div
+      className={cn("relative touch-none", !scrubbing && "cursor-ew-resize")}
+      onPointerDown={(event) => {
+        // Only the left button, and never once somebody is typing in it.
+        if (event.button !== 0 || document.activeElement === input.current) return;
+        event.preventDefault();
+        event.currentTarget.setPointerCapture(event.pointerId);
+        drag.current = { x: event.clientX, from: value ?? 0, moved: false };
+      }}
+      onPointerMove={(event) => {
+        const start = drag.current;
+        if (!start) return;
+
+        const travelled = event.clientX - start.x;
+        if (!start.moved && Math.abs(travelled) < SLOP) return;
+        if (!start.moved) {
+          start.moved = true;
+          setScrubbing(true);
+        }
+
+        // Shift moves in tens, for the fields where one pixel at a time is a
+        // long way from 0 to 200.
+        const step = event.shiftKey ? 10 : 1;
+        onChange(hold(start.from + Math.round(travelled / SCRUB) * step));
+      }}
+      onPointerUp={(event) => {
+        const start = drag.current;
+        drag.current = null;
+        setScrubbing(false);
+        event.currentTarget.releasePointerCapture(event.pointerId);
+
+        // A press that went nowhere was a click. The focus it was denied at
+        // the start is given back here, with the digits selected to retype.
+        if (start && !start.moved) {
+          input.current?.focus();
+          input.current?.select();
+        }
+      }}
+      onPointerCancel={() => {
+        drag.current = null;
+        setScrubbing(false);
+      }}
+    >
+      {prefix && (
+        <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 font-medium text-[11px] text-muted-foreground">
+          {prefix}
+        </span>
+      )}
       <Input
+        ref={input}
         type="number"
         value={value ?? ""}
         placeholder={placeholder}
+        aria-label={label}
+        min={min}
+        max={max}
         onChange={(event) =>
-          onChange(event.target.value === "" ? undefined : Number(event.target.value))
+          onChange(event.target.value === "" ? undefined : hold(Number(event.target.value)))
         }
-        className="h-8 pr-8 text-[12.5px] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none"
+        className={cn(
+          "h-8 pr-8 text-[12.5px] [appearance:textfield] [&::-webkit-inner-spin-button]:appearance-none",
+          prefix && "pl-6",
+          !scrubbing && "cursor-ew-resize focus:cursor-text",
+        )}
       />
       <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5 text-[11px] text-muted-foreground">
         {unit}
@@ -1940,13 +2034,24 @@ function AlignPicker({ value, onChange }: { value: Align; onChange: (value: Alig
   );
 }
 
-const SIDES = ["Top", "Right", "Bottom", "Left"] as const;
+/** In the order CSS says them, which is the order they are stored in. */
+const SIDES = [
+  { name: "Top", letter: "T" },
+  { name: "Right", letter: "R" },
+  { name: "Bottom", letter: "B" },
+  { name: "Left", letter: "L" },
+] as const;
 
 /**
  * Padding, either as one number or as four.
  *
  * Linked by default because that is what most blocks want, and because four
  * boxes where one would do is how an inspector starts feeling like a form.
+ *
+ * Opened up, the four are laid out where they are — top above, left and right
+ * either side, bottom below — rather than in a grid with a caption saying
+ * which order they are in. A caption is a thing you read once and then guess
+ * at every time after.
  */
 function PaddingField({
   value,
@@ -1964,26 +2069,12 @@ function PaddingField({
       <div className="flex items-center gap-2">
         <span className="w-[86px] shrink-0 text-[12px] text-muted-foreground">Padding</span>
         <div className="min-w-0 flex-1">
-          {linked ? (
+          {linked && (
             <NumberField
               value={padding[0]}
+              label="Padding on every side"
               onChange={(entry) => onChange([entry ?? 0, entry ?? 0, entry ?? 0, entry ?? 0])}
             />
-          ) : (
-            <div className="grid grid-cols-2 gap-1.5">
-              {SIDES.map((side, index) => (
-                <NumberField
-                  key={side}
-                  value={padding[index]}
-                  placeholder={side}
-                  onChange={(entry) => {
-                    const next = [...padding] as Padding;
-                    next[index] = entry ?? 0;
-                    onChange(next);
-                  }}
-                />
-              ))}
-            </div>
           )}
         </div>
         <button
@@ -2000,9 +2091,47 @@ function PaddingField({
         </button>
       </div>
       {!linked && (
-        <p className="pl-[94px] text-[11px] text-muted-foreground">Top, right, bottom, left.</p>
+        <div className="space-y-1.5">
+          <div className="px-[25%]">
+            <Side index={0} padding={padding} onChange={onChange} />
+          </div>
+          <div className="grid grid-cols-2 gap-1.5">
+            <Side index={3} padding={padding} onChange={onChange} />
+            <Side index={1} padding={padding} onChange={onChange} />
+          </div>
+          <div className="px-[25%]">
+            <Side index={2} padding={padding} onChange={onChange} />
+          </div>
+        </div>
       )}
     </div>
+  );
+}
+
+/** One side of the padding cross. */
+function Side({
+  index,
+  padding,
+  onChange,
+}: {
+  index: number;
+  padding: Padding;
+  onChange: (value: Padding) => void;
+}) {
+  const side = SIDES[index]!;
+  return (
+    <NumberField
+      value={padding[index]}
+      prefix={side.letter}
+      label={`${side.name} padding`}
+      min={0}
+      max={200}
+      onChange={(entry) => {
+        const next = [...padding] as Padding;
+        next[index] = entry ?? 0;
+        onChange(next);
+      }}
+    />
   );
 }
 
