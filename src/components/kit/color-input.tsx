@@ -41,6 +41,7 @@ export function ColorInput({
   className,
   trigger,
   align = "start",
+  keepFocus = false,
 }: {
   value: string | undefined;
   onChange: (value: string) => void;
@@ -50,6 +51,11 @@ export function ColorInput({
   /** Something other than the swatch-and-hex box to open it with. */
   trigger?: React.ReactNode;
   align?: "start" | "center" | "end";
+  /**
+   * Leave the focus where it was. For the text toolbar, where taking it would
+   * throw away the selection the colour is meant to apply to.
+   */
+  keepFocus?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const current = normalise(value) ?? normalise(fallback) ?? "#000000";
@@ -78,7 +84,12 @@ export function ColorInput({
         )}
       </PopoverTrigger>
 
-      <PopoverContent align={align} className="w-[232px] p-3">
+      <PopoverContent
+        align={align}
+        className="w-[232px] p-3"
+        onOpenAutoFocus={(event) => keepFocus && event.preventDefault()}
+        onCloseAutoFocus={(event) => keepFocus && event.preventDefault()}
+      >
         <Picker value={current} onChange={onChange} />
       </PopoverContent>
     </Popover>

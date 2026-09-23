@@ -103,6 +103,7 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
         <ColorInput
           value={undefined}
           fallback="#000000"
+          keepFocus
           onChange={(colour) => {
             restore();
             exec("foreColor", colour);
@@ -111,7 +112,12 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
             <button
               type="button"
               aria-label="Colour of the selected text"
-              onMouseDown={remember}
+              // The same bargain the other tools make: the press must not
+              // move the caret, or there is nothing left to colour.
+              onMouseDown={(event) => {
+                event.preventDefault();
+                remember();
+              }}
               className="ml-0.5 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <Baseline className="size-4" />
