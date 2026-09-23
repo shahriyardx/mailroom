@@ -810,20 +810,42 @@ export function inline(html: string, linkColor: string): string {
 
       if (tag === "br") return "<br>";
 
+      // A colour set on a selection is the one styling worth keeping: it is
+      // how one word, or one link, is made a different colour from the block
+      // around it, and there is nowhere else to say it.
+      const colour = pickColour(rest);
+
       if (tag === "a") {
         const href = /href\s*=\s*["']([^"']*)["']/i.exec(rest)?.[1] ?? "";
         if (!safeHref(href)) {
           open.push("span");
-          return "<span>";
+          return colour ? `<span style="color:${colour};">` : "<span>";
         }
         open.push("a");
-        return `<a href="${attr(href)}" style="color:${attr(linkColor)};text-decoration:underline;">`;
+        return `<a href="${attr(href)}" style="color:${colour ?? attr(linkColor)};text-decoration:underline;">`;
       }
 
       open.push(tag);
-      return `<${tag}>`;
+      return colour ? `<${tag} style="color:${colour};">` : `<${tag}>`;
     },
   );
+}
+
+/**
+ * A colour out of a style attribute, if it is one.
+ *
+ * Matched against a shape rather than parsed: a hex, an rgb(), or a plain
+ * word. Anything else — a url(), an expression, a second declaration smuggled
+ * in behind a semicolon — is not a colour and does not come through.
+ */
+function pickColour(rest: string): string | null {
+  const style = /style\s*=\s*["']([^"']*)["']/i.exec(rest)?.[1];
+  if (!style) return null;
+
+  const value = /(?:^|;)\s*color\s*:\s*([^;]+)/i.exec(style)?.[1]?.trim();
+  if (!value) return null;
+
+  return /^(#[0-9a-f]{3,8}|rgba?\([\d\s.,%]+\)|[a-z]+)$/i.test(value) ? value : null;
 }
 
 function safeHref(href: string) {

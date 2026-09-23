@@ -35,6 +35,7 @@ import {
   removeMember,
   setMemberStatus,
   startBroadcast,
+  updateBroadcast,
 } from "@/server/campaigns";
 import {
   type Width,
@@ -1610,6 +1611,7 @@ export async function createBroadcastAction(input: {
   subject: string;
   html?: string;
   text?: string;
+  templateId?: string | null;
 }) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
@@ -1619,6 +1621,33 @@ export async function createBroadcastAction(input: {
     return { ok: true as const, id };
   } catch (error) {
     return failure(error, "That broadcast could not be made");
+  }
+}
+
+/** Saves a draft broadcast's subject and body. */
+export async function updateBroadcastAction(
+  id: string,
+  input: { subject?: string; design?: unknown; html?: string | null; text?: string | null },
+) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    await updateBroadcast(access.orgId, id, {
+      subject: input.subject,
+      // Checked rather than trusted: the client is where a design comes from.
+      design:
+        input.design === undefined
+          ? undefined
+          : input.design === null
+            ? null
+            : readDesign(input.design),
+      html: input.html,
+      text: input.text,
+    });
+    revalidatePath("/campaigns/broadcasts");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That broadcast could not be saved");
   }
 }
 

@@ -3,6 +3,7 @@
 import { IconButton, Separator } from "@/components/kit";
 import { cn } from "@/lib/utils";
 import {
+  Baseline,
   Bold,
   Italic,
   Link2,
@@ -32,6 +33,9 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
 
   function exec(command: string, argument?: string) {
     ref.current?.focus();
+    // Ask for a style rather than a <font> tag, which is what this produces
+    // otherwise and which nothing downstream keeps.
+    document.execCommand("styleWithCSS", false, "true");
     document.execCommand(command, false, argument);
     onChange(ref.current?.innerHTML ?? "");
   }
@@ -70,6 +74,19 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
         >
           <Link2 className="size-4" />
         </Tool>
+
+        {/* Colours what is selected rather than the whole block, which is the
+            only way to make one word — or one link — a different colour. */}
+        <label className="ml-0.5 flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-accent">
+          <span className="sr-only">Colour of the selected text</span>
+          <Baseline className="size-4" />
+          <input
+            type="color"
+            className="sr-only"
+            onMouseDown={(event) => event.stopPropagation()}
+            onChange={(event) => exec("foreColor", event.target.value)}
+          />
+        </label>
       </div>
 
       <div
@@ -82,6 +99,11 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
         data-placeholder={placeholder}
         suppressContentEditableWarning
         onInput={(event) => onChange(event.currentTarget.innerHTML)}
+        onClick={(event) => {
+          // A link here is something being written, not somewhere to go.
+          // Following it would throw away the email to open a page.
+          if ((event.target as HTMLElement).closest("a")) event.preventDefault();
+        }}
         onPaste={(event) => {
           // Paste as plain text so foreign styles never leak into the message.
           event.preventDefault();

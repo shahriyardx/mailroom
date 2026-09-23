@@ -27,7 +27,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/kit";
-import type { Template } from "@/db/schema";
+import type { Broadcast, Template } from "@/db/schema";
 import {
   type Align,
   type Block,
@@ -54,6 +54,7 @@ import {
   deleteTemplateAction,
   sendTemplateTestAction,
   sendableMailboxesAction,
+  updateBroadcastAction,
   updateTemplateAction,
 } from "@/server/actions";
 import {
@@ -171,6 +172,19 @@ interface Details {
   subject: string;
 }
 
+/**
+ * What this screen is editing.
+ *
+ * A template and a broadcast are the same document with different paperwork
+ * around it: a name and a slug on one, a list and a send button on the other.
+ * Everything between the palette and the inspector is identical, so it is one
+ * screen that knows which of the two it has rather than two screens that will
+ * drift.
+ */
+export type BuilderTarget =
+  | { kind: "template"; template: Template | null }
+  | { kind: "broadcast"; broadcast: Broadcast; listName: string };
+
 export function TemplateBuilder({
   template,
   basePath,
@@ -178,20 +192,41 @@ export function TemplateBuilder({
   template: Template | null;
   basePath: string;
 }) {
+  return <Builder target={{ kind: "template", template }} basePath={basePath} />;
+}
+
+export function BroadcastBuilder({
+  broadcast,
+  listName,
+  basePath,
+}: {
+  broadcast: Broadcast;
+  listName: string;
+  basePath: string;
+}) {
+  return <Builder target={{ kind: "broadcast", broadcast, listName }} basePath={basePath} />;
+}
+
+function Builder({ target, basePath }: { target: BuilderTarget; basePath: string }) {
   const router = useRouter();
   const [busy, submit] = useSubmit();
+
+  const template = target.kind === "template" ? target.template : null;
+  const source = target.kind === "template" ? target.template : target.broadcast;
+  // A broadcast that has gone is a record of what went, not a draft.
+  const locked = target.kind === "broadcast" && target.broadcast.status !== "draft";
 
   const [details, setDetails] = useState<Details>({
     name: template?.name ?? "",
     slug: template?.slug ?? "",
     description: template?.description ?? "",
-    subject: template?.subject ?? "",
+    subject: source?.subject ?? "",
   });
 
   const [design, setDesign] = useState<EmailDesign>(
-    () => readDesign(template?.design) ?? emptyDesign(),
+    () => readDesign(source?.design) ?? emptyDesign(),
   );
-  const [html, setHtml] = useState(template?.html ?? "");
+  const [html, setHtml] = useState(source?.html ?? "");
 
   /*
    * The builder is the document; the HTML is what it compiles to. They are
@@ -203,9 +238,7 @@ export function TemplateBuilder({
    * the API. It has no blocks to show, so it stays hand-written until
    * somebody says otherwise, and the builder is what is switched off.
    */
-  const [handwritten, setHandwritten] = useState(
-    Boolean(template && !template.design && template.html),
-  );
+  const [handwritten, setHandwritten] = useState(Boolean(source && !source.design && source.html));
   const [pane, setPane] = useState<"design" | "html">(handwritten ? "html" : "design");
   const [converting, setConverting] = useState(false);
 
@@ -220,10 +253,10 @@ export function TemplateBuilder({
         name: template?.name ?? "",
         slug: template?.slug ?? "",
         description: template?.description ?? "",
-        subject: template?.subject ?? "",
+        subject: source?.subject ?? "",
       },
-      design: readDesign(template?.design) ?? emptyDesign(),
-      html: template?.html ?? "",
+      design: readDesign(source?.design) ?? emptyDesign(),
+      html: source?.html ?? "",
     }),
   );
 
@@ -329,6 +362,25 @@ export function TemplateBuilder({
   }
 
   function save() {
+    const body = handwritten ? { design: null, html, text: source?.text ?? undefined } : { design };
+
+    if (target.kind === "broadcast") {
+      submit(async () => {
+        const result = await updateBroadcastAction(target.broadcast.id, {
+          subject: details.subject,
+          ...body,
+        });
+        if (!result.ok) {
+          toast.error(result.error);
+          return;
+        }
+        saved.current = JSON.stringify({ details, design, html });
+        toast.success("Broadcast saved");
+        router.refresh();
+      });
+      return;
+    }
+
     const name = details.name.trim();
     if (!name) {
       toast.error("A template needs a name");
@@ -343,7 +395,7 @@ export function TemplateBuilder({
       subject: details.subject,
       // Only one of the two goes: a design compiles to the body on the server,
       // and clearing it is how a template becomes hand-written HTML.
-      ...(handwritten ? { design: null, html, text: template?.text ?? undefined } : { design }),
+      ...body,
     };
 
     submit(async () => {
@@ -377,28 +429,50 @@ export function TemplateBuilder({
           onClick={() => (dirty ? setLeaving(true) : router.push(basePath))}
         >
           <ArrowLeft />
-          Templates
+          {target.kind === "broadcast" ? "Broadcasts" : "Templates"}
         </Button>
 
         <span className="h-5 w-px bg-border" />
 
-        <Input
-          value={details.name}
-          onChange={(event) => {
-            const name = event.target.value;
-            setDetails((current) => ({
-              ...current,
-              name,
-              // The slug follows the name until somebody gives it one of its
-              // own, and never again: a program is holding onto it.
-              slug:
-                template || current.slug !== slugify(current.name) ? current.slug : slugify(name),
-            }));
-          }}
-          placeholder="Untitled template"
-          aria-label="Template name"
-          className="h-8 w-60 border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:bg-card focus:border-border"
-        />
+        {target.kind === "broadcast" ? (
+          /* A broadcast has no name of its own — the subject is what it is
+             called everywhere it is listed, so that is what goes here. */
+          <Input
+            value={details.subject}
+            onChange={(event) =>
+              setDetails((current) => ({ ...current, subject: event.target.value }))
+            }
+            placeholder="Subject line"
+            aria-label="Subject"
+            readOnly={locked}
+            className="h-8 w-72 border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:border-border focus:bg-card"
+          />
+        ) : (
+          <Input
+            value={details.name}
+            onChange={(event) => {
+              const name = event.target.value;
+              setDetails((current) => ({
+                ...current,
+                name,
+                // The slug follows the name until somebody gives it one of its
+                // own, and never again: a program is holding onto it.
+                slug:
+                  template || current.slug !== slugify(current.name) ? current.slug : slugify(name),
+              }));
+            }}
+            placeholder="Untitled template"
+            aria-label="Template name"
+            className="h-8 w-60 border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:border-border focus:bg-card"
+          />
+        )}
+
+        {target.kind === "broadcast" && (
+          <span className="truncate text-[12.5px] text-muted-foreground">
+            to {target.listName}
+            {locked && " · already sent"}
+          </span>
+        )}
 
         <div className="ml-auto flex items-center gap-2">
           <Tabs value={pane} onValueChange={(value) => setPane(value as "design" | "html")}>
@@ -425,14 +499,20 @@ export function TemplateBuilder({
             Test send
           </Button>
 
-          {template && (
+          {target.kind === "template" && template && (
             <IconButton label="Delete template" size="sm" onClick={() => setRemoving(true)}>
               <Trash2 className="size-4" />
             </IconButton>
           )}
 
-          <Button variant="solid" size="sm" pill onClick={save} disabled={busy || !dirty}>
-            {busy ? "Saving…" : !template ? "Create" : dirty ? "Save" : "Saved"}
+          <Button variant="solid" size="sm" pill onClick={save} disabled={busy || !dirty || locked}>
+            {busy
+              ? "Saving…"
+              : target.kind === "template" && !template
+                ? "Create"
+                : dirty
+                  ? "Save"
+                  : "Saved"}
           </Button>
         </div>
       </header>
@@ -483,7 +563,7 @@ export function TemplateBuilder({
               </div>
               <EmailFrame
                 html={compiled || null}
-                text={handwritten ? (template?.text ?? null) : designToText(design)}
+                text={handwritten ? (source?.text ?? null) : designToText(design)}
                 imagesAllowed
               />
             </div>
@@ -565,14 +645,23 @@ export function TemplateBuilder({
                 />
               )}
 
-              {tab === "details" && (
-                <DetailsForm
-                  details={details}
-                  onChange={(changes) => setDetails((current) => ({ ...current, ...changes }))}
-                  variables={variables}
-                  locked={Boolean(template)}
-                />
-              )}
+              {tab === "details" &&
+                (target.kind === "broadcast" ? (
+                  <BroadcastDetails
+                    subject={details.subject}
+                    onSubject={(subject) => setDetails((current) => ({ ...current, subject }))}
+                    listName={target.listName}
+                    status={target.broadcast.status}
+                    variables={variables}
+                  />
+                ) : (
+                  <DetailsForm
+                    details={details}
+                    onChange={(changes) => setDetails((current) => ({ ...current, ...changes }))}
+                    variables={variables}
+                    locked={Boolean(template)}
+                  />
+                ))}
             </div>
           </aside>
         )}
@@ -583,14 +672,14 @@ export function TemplateBuilder({
         onOpenChange={setTesting}
         subject={details.subject}
         html={compiled}
-        text={handwritten ? (template?.text ?? null) : designToText(design)}
+        text={handwritten ? (source?.text ?? null) : designToText(design)}
       />
 
       <ConfirmDialog
         open={leaving}
         onOpenChange={setLeaving}
         title="Leave without saving?"
-        description="This template has changes that have not been saved."
+        description="There are changes here that have not been saved."
         consequences="They are only in this tab. Leaving loses them."
         confirmLabel="Leave"
         onConfirm={() => router.push(basePath)}
@@ -611,7 +700,7 @@ export function TemplateBuilder({
       />
 
       <ConfirmDialog
-        open={removing}
+        open={removing && target.kind === "template"}
         onOpenChange={setRemoving}
         title="Delete this template?"
         description={template ? `${template.name} (${template.slug})` : undefined}
@@ -2193,6 +2282,67 @@ function PageStyle({
           <Swatch value={theme.link} onChange={(link) => onChange({ link })} />
         </Row>
         <Note>A web font will not load in most clients, so these are the ones that are there.</Note>
+      </Section>
+    </div>
+  );
+}
+
+/** What a broadcast has instead of a name and a slug. */
+function BroadcastDetails({
+  subject,
+  onSubject,
+  listName,
+  status,
+  variables,
+}: {
+  subject: string;
+  onSubject: (value: string) => void;
+  listName: string;
+  status: string;
+  variables: string[];
+}) {
+  return (
+    <div>
+      <Section title="Broadcast">
+        <Row label="Subject">
+          <Input
+            value={subject}
+            onChange={(event) => onSubject(event.target.value)}
+            readOnly={status !== "draft"}
+            className="h-8 text-[12.5px]"
+          />
+        </Row>
+        <Row label="To">
+          <span className="text-[12.5px]">{listName}</span>
+        </Row>
+        <Row label="Status">
+          <span className="text-[12.5px] capitalize">{status}</span>
+        </Row>
+        <Note>
+          {status === "draft"
+            ? "Nothing goes out until you press Send on the broadcasts screen."
+            : "This has already started. What went out is what went out, so it cannot be edited."}
+        </Note>
+      </Section>
+
+      <Section title="Variables">
+        {variables.length === 0 ? (
+          <p className="text-[12px] leading-relaxed text-muted-foreground">
+            None. A broadcast can use <code className="font-mono">{"{{ name }}"}</code> and the
+            other fields you hold against each subscriber.
+          </p>
+        ) : (
+          <div className="flex flex-wrap gap-1.5">
+            {variables.map((name) => (
+              <code
+                key={name}
+                className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11.5px] text-muted-foreground"
+              >
+                {name}
+              </code>
+            ))}
+          </div>
+        )}
       </Section>
     </div>
   );

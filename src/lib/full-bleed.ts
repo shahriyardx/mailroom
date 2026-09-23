@@ -14,6 +14,8 @@
 const FULL_BLEED = [
   // A single template, or a new one: /settings/templates/x, /campaigns/templates/x
   /^\/(?:settings|campaigns)\/templates\/[^/]+$/,
+  // One broadcast, in the same builder.
+  /^\/campaigns\/broadcasts\/[^/]+$/,
 ];
 
 export function isFullBleed(pathname: string) {

@@ -17,7 +17,6 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
-  Textarea,
 } from "@/components/kit";
 import { Empty, PageHeader, Row, SearchBox, Surface, Toolbar } from "@/components/mail/page-frame";
 import {
@@ -27,6 +26,7 @@ import {
 } from "@/server/actions";
 import type { BroadcastRow } from "@/server/campaigns";
 import { Megaphone, Plus } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState, useTransition } from "react";
 import { toast } from "sonner";
@@ -49,10 +49,12 @@ export function BroadcastsPanel({
   broadcasts,
   lists,
   mailboxes,
+  templates,
 }: {
   broadcasts: BroadcastRow[];
   lists: { id: string; name: string; subscribed: number }[];
   mailboxes: { id: string; address: string }[];
+  templates: { id: string; name: string }[];
 }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
@@ -65,7 +67,7 @@ export function BroadcastsPanel({
   const [listId, setListId] = useState(lists[0]?.id ?? "");
   const [mailboxId, setMailboxId] = useState(mailboxes[0]?.id ?? "");
   const [subject, setSubject] = useState("");
-  const [body, setBody] = useState("");
+  const [templateId, setTemplateId] = useState("none");
 
   const ready = lists.length > 0 && mailboxes.length > 0;
   const chosen = lists.find((entry) => entry.id === listId);
@@ -170,7 +172,14 @@ export function BroadcastsPanel({
               </span>
               <div className="min-w-0 flex-1">
                 <div className="flex flex-wrap items-center gap-2">
-                  <span className="truncate text-[13.5px] font-medium">{entry.subject}</span>
+                  {/* Opens it in the builder. A draft is written there; one
+                      that has gone is read there. */}
+                  <Link
+                    href={`/campaigns/broadcasts/${entry.id}`}
+                    className="truncate font-medium text-[13.5px] hover:underline"
+                  >
+                    {entry.subject}
+                  </Link>
                   <Badge size="sm" tone={toneFor(entry.status)}>
                     {entry.status}
                   </Badge>
@@ -227,7 +236,8 @@ export function BroadcastsPanel({
           <DialogHeader>
             <DialogTitle>Write a broadcast</DialogTitle>
             <DialogDescription>
-              Saved as a draft. Nothing is sent until you press Send on it.
+              Saved as a draft, and opened in the builder. Nothing is sent until you press Send on
+              it.
             </DialogDescription>
           </DialogHeader>
 
@@ -242,17 +252,19 @@ export function BroadcastsPanel({
                   listId,
                   mailboxId,
                   subject,
-                  html: body || undefined,
+                  templateId: templateId === "none" ? null : templateId,
                 });
                 if (!result.ok) {
                   toast.error(result.error);
                   return;
                 }
-                toast.success("Draft saved");
                 setSubject("");
-                setBody("");
+                setTemplateId("none");
                 setOpen(false);
-                router.refresh();
+                // Straight into the builder: the dialog took the two facts
+                // that cannot be changed later, and the writing happens where
+                // there is room for it.
+                router.push(`/campaigns/broadcasts/${result.id}`);
               });
             }}
           >
@@ -296,17 +308,26 @@ export function BroadcastsPanel({
               />
             </Field>
 
+            {/* The body is written in the builder on the next screen. What
+                is asked here is only what cannot be changed afterwards — who
+                it goes to and who it comes from — plus where to start. */}
             <Field
-              label="Body"
-              hint="{{name}} and {{address}} are filled in per person. Put {{unsubscribe}} where you want the link, or leave it out and one is added at the bottom."
+              label="Start from"
+              hint="A template is copied, not linked: editing it later will not change this broadcast."
             >
-              <Textarea
-                value={body}
-                onChange={(event) => setBody(event.target.value)}
-                rows={8}
-                placeholder={"<p>Hello {{name}},</p>"}
-                disabled={busy}
-              />
+              <Select value={templateId} onValueChange={setTemplateId}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">A blank email</SelectItem>
+                  {templates.map((entry) => (
+                    <SelectItem key={entry.id} value={entry.id}>
+                      {entry.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </Field>
 
             {chosen && chosen.subscribed === 0 ? (

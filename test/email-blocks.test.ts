@@ -216,3 +216,25 @@ describe("the badge does not move what follows it", () => {
     assert.match(html, /height="\d+" valign="middle"/, "the cell reserves the picture's height");
   });
 });
+
+describe("colouring part of a line", () => {
+  it("keeps a colour set on a selection", () => {
+    const out = inline('<span style="color: #ff0000">red</span>', "#111");
+    assert.equal(out, '<span style="color:#ff0000;">red</span>');
+  });
+
+  it("lets a link carry its own colour instead of the theme's", () => {
+    const out = inline('<a href="https://x.test" style="color:#00ff00">go</a>', "#111111");
+    assert.match(out, /color:#00ff00/);
+    assert.ok(!out.includes("#111111"));
+  });
+
+  it("takes nothing that is not a colour", () => {
+    // A url(), or a second declaration smuggled in behind a semicolon.
+    assert.equal(inline('<span style="color:url(x)">x</span>', "#111"), "<span>x</span>");
+    assert.equal(
+      inline('<span style="color:red;position:fixed">x</span>', "#111"),
+      '<span style="color:red;">x</span>',
+    );
+  });
+});

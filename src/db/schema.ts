@@ -1313,6 +1313,8 @@ export const broadcast = pgTable(
     subject: text("subject").notNull(),
     html: text("html"),
     text: text("text"),
+    /** The blocks, when the body was built rather than pasted. See `template`. */
+    design: jsonb("design").$type<EmailDesign>(),
 
     status: broadcastStatusEnum("status").notNull().default("draft"),
     scheduledAt: timestamp("scheduled_at", { withTimezone: true }),

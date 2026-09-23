@@ -361,3 +361,48 @@ describe("subscribing from a signup form", () => {
     );
   });
 });
+
+describe("a broadcast written in the builder", () => {
+  it("compiles its blocks into the body it will send", async () => {
+    const { createBroadcast, updateBroadcast, findBroadcast } = await import("@/server/campaigns");
+    const { emptyDesign, newBlock } = await import("@/lib/email-blocks");
+
+    const id = await createBroadcast(account.orgId, {
+      listId: await aList(),
+      mailboxId: account.mailboxId,
+      subject: "Hello",
+    });
+
+    const design = {
+      ...emptyDesign(),
+      blocks: [{ ...newBlock("heading", "b1"), text: "Shipped" }],
+    };
+    await updateBroadcast(account.orgId, id, { design: design as never });
+
+    const row = await findBroadcast(account.orgId, id);
+    // The blocks are kept, and the body is derived from them — the same rule
+    // a template follows, so the two cannot disagree about what was written.
+    assert.ok(row?.html?.includes("Shipped"));
+    assert.equal(row?.text, "Shipped");
+    assert.equal((row?.design as { blocks: unknown[] }).blocks.length, 1);
+  });
+
+  it("refuses to be edited once it has started", async () => {
+    const { createBroadcast, updateBroadcast, startBroadcast } = await import("@/server/campaigns");
+
+    const { addMembers } = await import("@/server/campaigns");
+    const listId = await aList();
+    await addMembers(account.orgId, listId, [{ address: "ada@example.com" }], "signup form");
+
+    const id = await createBroadcast(account.orgId, {
+      listId,
+      mailboxId: account.mailboxId,
+      subject: "Going out",
+    });
+    await startBroadcast(account.orgId, id, null);
+
+    // What went out is what went out. A record that can be edited afterwards
+    // is not a record.
+    await assert.rejects(() => updateBroadcast(account.orgId, id, { subject: "Changed" }));
+  });
+});

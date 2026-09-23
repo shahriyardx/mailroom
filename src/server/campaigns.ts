@@ -2,6 +2,7 @@ import "server-only";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
 import { broadcast, broadcastRecipient, listMember, mailbox, mailingList } from "@/db/schema";
+import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
 import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
@@ -384,7 +385,15 @@ export async function membersView(orgId: string, listId: string, limit = 200) {
 
 export async function createBroadcast(
   orgId: string,
-  input: { listId: string; mailboxId: string; subject: string; html?: string; text?: string },
+  input: {
+    listId: string;
+    mailboxId: string;
+    subject: string;
+    html?: string;
+    text?: string;
+    /** Start from a saved template: its subject and its blocks are copied. */
+    templateId?: string | null;
+  },
 ) {
   const subject = input.subject.trim();
   if (!subject) throw new Error("Give the broadcast a subject");
@@ -402,17 +411,80 @@ export async function createBroadcast(
   if (!list) throw new Error("No such list");
   if (!box) throw new Error("No such mailbox");
 
+  /*
+   * A template is copied, not referenced. A broadcast is a thing that was
+   * sent on a day, and the template it came from will be edited afterwards —
+   * pointing at it would mean the record of what went out changes every time
+   * somebody fixes a typo for the next one.
+   */
+  let from: { subject?: string; html?: string | null; text?: string | null; design?: unknown } = {};
+  if (input.templateId) {
+    const { findTemplate } = await import("./templates");
+    const row = await findTemplate(orgId, input.templateId);
+    if (!row) throw new Error("No such template");
+    from = { subject: row.subject, html: row.html, text: row.text, design: row.design };
+  }
+
   const id = newId("bct");
   await db.insert(broadcast).values({
     id,
     organizationId: orgId,
     listId: input.listId,
     mailboxId: input.mailboxId,
-    subject,
-    html: input.html ?? null,
-    text: input.text ?? null,
+    subject: subject || from.subject || "",
+    html: input.html ?? from.html ?? null,
+    text: input.text ?? from.text ?? null,
+    design: (from.design as never) ?? null,
   });
   return id;
+}
+
+/**
+ * Changes a draft's subject and body.
+ *
+ * Only a draft. Once a broadcast has started, what went out is what went out,
+ * and a record that can be edited afterwards is not a record.
+ */
+export async function updateBroadcast(
+  orgId: string,
+  id: string,
+  input: {
+    subject?: string;
+    design?: EmailDesign | null;
+    html?: string | null;
+    text?: string | null;
+  },
+) {
+  const row = await db.query.broadcast.findFirst({
+    where: and(eq(broadcast.id, id), eq(broadcast.organizationId, orgId)),
+  });
+  if (!row) throw new Error("No such broadcast");
+  if (row.status !== "draft") throw new Error("That broadcast has already been sent");
+
+  // The same rule as a template: a design decides the body, compiled here so
+  // the canvas and what goes out cannot disagree.
+  const body = input.design
+    ? { html: renderDesign(input.design), text: designToText(input.design) }
+    : { html: input.html, text: input.text };
+
+  await db
+    .update(broadcast)
+    .set({
+      subject: input.subject?.trim() || row.subject,
+      html: body.html === undefined ? row.html : (body.html ?? null),
+      text: body.text === undefined ? row.text : (body.text ?? null),
+      design: input.design === undefined ? row.design : input.design,
+    })
+    .where(eq(broadcast.id, row.id));
+
+  return row.id;
+}
+
+export async function findBroadcast(orgId: string, id: string) {
+  const row = await db.query.broadcast.findFirst({
+    where: and(eq(broadcast.id, id), eq(broadcast.organizationId, orgId)),
+  });
+  return row ?? null;
 }
 
 /**
