@@ -2,7 +2,7 @@
 
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/kit/popover";
 import { cn } from "@/lib/utils";
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 /**
  * A colour, picked properly.
@@ -121,20 +121,35 @@ function Picker({
   onChange: (value: string) => void;
   onCommit?: (value: string) => void;
 }) {
-  const [hue, saturation, lightness] = toHsv(value);
+  /*
+   * Hue, saturation and value are held here rather than read back out of the
+   * colour every time, because the conversion is lossy at the edges: black is
+   * every hue at once, and so is white. Reading them back meant that dragging
+   * the hue rail from black produced black, whatever hue it was dragged to —
+   * a slider that visibly did nothing.
+   */
+  const [hsv, setHsv] = useState(() => toHsv(value));
   const [text, setText] = useState(value);
   const [typing, setTyping] = useState(false);
-
-  // While somebody is typing a hex, the box is theirs; the rest of the time it
-  // follows the colour, so dragging the square updates what it says.
-  const shown = typing ? text : value;
-
   const latest = useRef(value);
 
-  function set(next: string) {
+  // A colour set from outside — a swatch, a hex, another block being selected
+  // — re-seeds the three. A colour this picker produced does not, or the
+  // drag would fight the thing it is driving.
+  useEffect(() => {
+    if (fromHsv(hsv[0], hsv[1], hsv[2]) !== value) setHsv(toHsv(value));
+    latest.current = value;
+  }, [value, hsv]);
+
+  const [hue, saturation, level] = hsv;
+  const shown = typing ? text : value;
+
+  function set(next: [number, number, number]) {
     setTyping(false);
-    latest.current = next;
-    onChange(next);
+    setHsv(next);
+    const colour = fromHsv(next[0], next[1], next[2]);
+    latest.current = colour;
+    onChange(colour);
   }
 
   function commit() {
@@ -151,15 +166,15 @@ function Picker({
             "linear-gradient(to top, #000, transparent), linear-gradient(to right, #fff, transparent)",
         }}
         x={saturation}
-        y={1 - lightness}
-        onMove={(x, y) => set(fromHsv(hue, x, 1 - y))}
+        y={1 - level}
+        onMove={(x, y) => set([hue, x, 1 - y])}
         onDone={commit}
       >
         <span
           className="-translate-x-1/2 -translate-y-1/2 pointer-events-none absolute size-3.5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
           style={{
             left: `${saturation * 100}%`,
-            top: `${(1 - lightness) * 100}%`,
+            top: `${(1 - level) * 100}%`,
             backgroundColor: value,
           }}
         />
@@ -173,12 +188,17 @@ function Picker({
         }}
         x={hue / 360}
         y={0.5}
-        onMove={(x) => set(fromHsv(x * 360, saturation, lightness))}
+        // Black and white have no hue to change, so moving this rail from one
+        // of them means "that hue" rather than "the same nothing".
+        onMove={(x) => set([x * 360, saturation || 1, level || 1])}
         onDone={commit}
       >
         <span
           className="-translate-x-1/2 -translate-y-1/2 pointer-events-none absolute top-1/2 size-3.5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
-          style={{ left: `${(hue / 360) * 100}%`, backgroundColor: value }}
+          style={{
+            left: `${(hue / 360) * 100}%`,
+            backgroundColor: `hsl(${hue} 100% 50%)`,
+          }}
         />
       </Field>
 
@@ -190,7 +210,11 @@ function Picker({
             setTyping(true);
             setText(event.target.value);
             const parsed = normalise(event.target.value);
-            if (parsed) onChange(parsed);
+            if (parsed) {
+              latest.current = parsed;
+              setHsv(toHsv(parsed));
+              onChange(parsed);
+            }
           }}
           onBlur={() => {
             setTyping(false);
@@ -209,7 +233,10 @@ function Picker({
             type="button"
             aria-label={swatch}
             onClick={() => {
-              set(swatch);
+              setTyping(false);
+              setHsv(toHsv(swatch));
+              latest.current = swatch;
+              onChange(swatch);
               onCommit?.(swatch);
             }}
             className={cn(
