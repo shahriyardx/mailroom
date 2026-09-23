@@ -19,6 +19,7 @@ import {
   SheetTitle,
   Wordmark,
 } from "@/components/kit";
+import { SidebarAccount, ThemeToggle } from "@/components/mail/sidebar-account";
 import { ViewSwitcher } from "@/components/mail/view-switcher";
 import type { Label as LabelRow, Mailbox } from "@/db/schema";
 import { authClient } from "@/lib/auth-client";
@@ -41,7 +42,6 @@ import {
   Layers,
   LogOut,
   Menu,
-  Moon,
   PanelLeft,
   PanelLeftClose,
   PenLine,
@@ -51,7 +51,6 @@ import {
   Settings,
   ShieldAlert,
   Star,
-  Sun,
   Tag,
   Trash2,
 } from "lucide-react";
@@ -575,58 +574,7 @@ function NavPanel({
         )}
       </nav>
 
-      <div className="flex shrink-0 items-center gap-1 px-2.5 pb-2.5">
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <button
-              type="button"
-              className="flex min-w-0 flex-1 items-center gap-2 rounded-xl px-1.5 py-1.5 text-left transition-colors hover:bg-sidebar-accent"
-            >
-              <Avatar size="sm" name={user.name} address={user.email} />
-              <span className="min-w-0 flex-1">
-                <span className="block truncate text-[12.5px] font-medium">{user.name}</span>
-                <span className="block truncate text-[11px] text-muted-foreground">
-                  {user.email}
-                </span>
-              </span>
-            </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-60">
-            <DropdownMenuLabel className="normal-case tracking-normal">
-              <span className="block truncate text-[13px] font-medium text-foreground">
-                {user.name}
-              </span>
-              <span className="block truncate font-mono text-[11px] font-normal text-muted-foreground">
-                {user.email}
-              </span>
-            </DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link href={settingsHref}>
-                <Settings /> Settings
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={async () => {
-                await authClient.signOut();
-                router.push("/sign-in");
-                router.refresh();
-              }}
-            >
-              <LogOut /> Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-
-        <Hint label="Settings" side="top">
-          <IconButton size="md" label="Settings" asChild>
-            <Link href={settingsHref}>
-              <Settings />
-            </Link>
-          </IconButton>
-        </Hint>
-        <ThemeToggle />
-      </div>
+      <SidebarAccount user={user} settingsHref={settingsHref} />
     </>
   );
 }
@@ -1029,34 +977,12 @@ function SearchField({
       />
       {/* The shortcut lives where you look for the field, not in a status
           bar — and not at all on a phone, which has no key to press. */}
-      <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5 hidden md:block">
+      {/* A flex box rather than an inline one: inline puts the badge on the
+          text baseline, which leaves it sitting a pixel or two low against a
+          field that is centred by its box. */}
+      <span className="-translate-y-1/2 pointer-events-none absolute top-1/2 right-2.5 hidden items-center md:flex">
         <span className="kbd">/</span>
       </span>
     </div>
-  );
-}
-
-function ThemeToggle() {
-  const [dark, setDark] = useState(false);
-
-  useEffect(() => setDark(document.documentElement.classList.contains("dark")), []);
-
-  return (
-    <Hint label={dark ? "Light theme" : "Dark theme"} side="top">
-      <IconButton
-        size="md"
-        label={dark ? "Light theme" : "Dark theme"}
-        onClick={() => {
-          const next = !dark;
-          setDark(next);
-          document.documentElement.classList.toggle("dark", next);
-          localStorage.setItem("theme", next ? "dark" : "light");
-          // Settings offers the same choice, so this writes where that reads.
-          void saveAppearanceAction({ theme: next ? "dark" : "light" });
-        }}
-      >
-        {dark ? <Sun /> : <Moon />}
-      </IconButton>
-    </Hint>
   );
 }

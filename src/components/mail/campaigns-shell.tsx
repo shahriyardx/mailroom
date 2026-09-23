@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  Avatar,
   IconButton,
   SectionProvider,
   Sheet,
@@ -9,11 +8,14 @@ import {
   SheetTitle,
   Wordmark,
 } from "@/components/kit";
+import { SidebarAccount } from "@/components/mail/sidebar-account";
+import { VersionNote } from "@/components/mail/version-note";
 import { ViewSwitcher } from "@/components/mail/view-switcher";
 import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
+  AtSign,
   FileText,
   Gauge,
   Globe,
@@ -23,7 +25,6 @@ import {
   Megaphone,
   Menu,
   ScrollText,
-  Settings,
   ShieldOff,
   Webhook,
   Workflow,
@@ -72,6 +73,13 @@ const NAV: Item[] = [
   { href: "/campaigns/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
   { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
   { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+  /*
+   * A campaign has to come from an address, and on an instance running only
+   * this half there is no inbox navigation to find one in. Without this, the
+   * blank slate on Automations says "add a mailbox first" and there is
+   * nowhere to go and do it.
+   */
+  { href: "/campaigns/mailboxes", label: "Addresses", icon: AtSign, needs: "mailbox:manage" },
   { href: "/campaigns/metrics", label: "Stats", icon: Activity, needs: "mail:read" },
   { href: "/campaigns/logs", label: "Activity", icon: ScrollText, needs: "mail:read" },
   { href: "/campaigns/reporting", label: "Delivery", icon: Activity, needs: "domain:manage" },
@@ -106,7 +114,9 @@ export function CampaignsShell({
   const nav = (
     <div className="flex h-full flex-col">
       <div className="flex h-14 shrink-0 items-center px-4">
-        <Wordmark />
+        {/* The same line the inbox carries. Somebody running only the
+            campaigns view needs the version in a bug report just as much. */}
+        <Wordmark sub={<VersionNote />} />
       </div>
 
       {showSwitcher ? (
@@ -142,15 +152,8 @@ export function CampaignsShell({
         </ul>
       </nav>
 
-      <div className="shrink-0 border-t border-border p-2.5">
-        <Link
-          href="/settings"
-          className="flex items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-muted-foreground transition-colors hover:bg-card/60 hover:text-foreground"
-        >
-          <Avatar name={user.name} size="sm" />
-          <span className="min-w-0 flex-1 truncate">{user.name}</span>
-          <Settings className="size-4 shrink-0" />
-        </Link>
+      <div className="shrink-0 border-t border-border pt-2.5">
+        <SidebarAccount user={user} />
       </div>
     </div>
   );
