@@ -555,7 +555,13 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           )}
         >
           {previewing ? (
-            <div className="mx-auto max-w-[760px] overflow-hidden rounded-xl border border-border bg-card">
+            <div
+              // As wide as the email is, rather than a fixed guess: a template
+              // set to 900 was being shown through a 760 window, which reads
+              // as a broken preview rather than a preview of something wide.
+              className="mx-auto overflow-hidden rounded-xl border border-border bg-card"
+              style={{ maxWidth: handwritten ? 760 : design.theme.width + 48 }}
+            >
               <div className="border-border border-b px-4 py-2.5 text-[13px]">
                 <span className="text-muted-foreground">Subject: </span>
                 {details.subject || <span className="text-muted-foreground">(none)</span>}
@@ -2369,7 +2375,9 @@ function PageStyle({
         <Row label="Width">
           <NumberField
             value={theme.width}
-            onChange={(width) => onChange({ width: width ?? 600 })}
+            // Below about 320 nothing reads; above about 900 a desktop client
+            // puts a horizontal scrollbar under the message.
+            onChange={(width) => onChange({ width: Math.min(900, Math.max(320, width ?? 600)) })}
           />
         </Row>
         <Row label="Corners">
