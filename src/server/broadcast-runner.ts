@@ -3,7 +3,7 @@ import { db } from "@/db";
 import { broadcast, broadcastRecipient, listMember, workspace } from "@/db/schema";
 import { merge, withFooter } from "@/lib/campaign-body";
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
-import { unsubscribeUrl } from "./campaigns";
+import { archiveUrl, unsubscribeUrl } from "./campaigns";
 import { deliverMessage } from "./send";
 
 /**
@@ -84,6 +84,9 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
       .where(eq(workspace.organizationId, job.organizationId))
       .limit(1);
     const footer = { postalAddress: site?.postalAddress ?? null };
+    // The same for everybody on this campaign: the web copy is of the
+    // campaign, not of one person's copy of it.
+    const web = archiveUrl(job.id);
 
     for (const target of pending) {
       /*
@@ -108,6 +111,12 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
       }
 
       const url = unsubscribeUrl(member.id);
+      /*
+       * Handed in as a field rather than handled as a placeholder of its own,
+       * so it substitutes, escapes and falls back like everything else — and
+       * so an automation, which has no web copy, simply does not have it.
+       */
+      const person = { ...member, fields: { ...member.fields, view_in_browser: web } };
 
       try {
         const result = await deliverMessage({
@@ -117,13 +126,13 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
           // Which subject line this copy was assigned when the audience froze.
           subject: merge(
             target.variant === "b" && job.subjectB ? job.subjectB : job.subject,
-            member,
+            person,
           ),
           html: job.html
-            ? withFooter(merge(job.html, member, true), { ...footer, unsubscribeUrl: url }, true)
+            ? withFooter(merge(job.html, person, true), { ...footer, unsubscribeUrl: url }, true)
             : null,
           text: job.text
-            ? withFooter(merge(job.text, member), { ...footer, unsubscribeUrl: url }, false)
+            ? withFooter(merge(job.text, person), { ...footer, unsubscribeUrl: url }, false)
             : null,
           headers: {
             /*

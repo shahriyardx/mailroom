@@ -115,6 +115,17 @@ export function CampaignReport({
         meta={report.status}
         action={
           <span className="flex items-center gap-2">
+            {/* The same page the "view in browser" link in the email goes
+                to. Offered here because the other reason people want one is
+                to put the campaign somewhere that is not an inbox. */}
+            {report.webUrl && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={report.webUrl} target="_blank" rel="noreferrer">
+                  <ExternalLink />
+                  Web copy
+                </a>
+              </Button>
+            )}
             <Button variant="outline" size="sm" onClick={copy} disabled={busy}>
               <Copy />
               Duplicate

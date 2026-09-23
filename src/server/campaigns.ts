@@ -74,6 +74,61 @@ export function unsubscribeUrl(memberId: string) {
 }
 
 /**
+ * The link to the web copy of a campaign.
+ *
+ * Over the broadcast and nobody in particular, deliberately. A "view in
+ * browser" link is the one in an email most likely to be forwarded to
+ * somebody else, and a link that carried a recipient's identity would hand
+ * that person's row to whoever it was forwarded to.
+ *
+ * It also means the page can be cached and shared, which is what people
+ * actually want from it.
+ */
+export function archiveToken(broadcastId: string) {
+  const mac = createHmac("sha256", env.authSecret)
+    .update(`archive:${broadcastId}`)
+    .digest("base64url");
+  return `${broadcastId}.${mac}`;
+}
+
+export function readArchiveToken(token: string): string | null {
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return null;
+
+  const broadcastId = token.slice(0, dot);
+  const given = Buffer.from(token.slice(dot + 1));
+  const want = Buffer.from(
+    createHmac("sha256", env.authSecret).update(`archive:${broadcastId}`).digest("base64url"),
+  );
+
+  if (given.length !== want.length) return null;
+  return timingSafeEqual(given, want) ? broadcastId : null;
+}
+
+export function archiveUrl(broadcastId: string) {
+  return `${env.appUrl}/archive/${archiveToken(broadcastId)}`;
+}
+
+/**
+ * The web copy of one campaign, or null.
+ *
+ * A draft has none: there is nothing to look back at, and a link that worked
+ * before a campaign was sent would be a way to read one early.
+ */
+export async function archivedBroadcast(broadcastId: string) {
+  const row = await db.query.broadcast.findFirst({
+    where: eq(broadcast.id, broadcastId),
+    columns: { id: true, subject: true, html: true, design: true, status: true, startedAt: true },
+  });
+  if (!row || row.status === "draft" || row.status === "cancelled") return null;
+
+  const html = row.html ?? (row.design ? renderDesign(row.design, env.appUrl) : null);
+  if (!html) return null;
+
+  return { subject: row.subject, html, sentAt: row.startedAt };
+}
+
+/**
  * The link in a "please confirm" email.
  *
  * Signed the same way as an unsubscribe link, but over a different string, so
@@ -1161,6 +1216,9 @@ export interface BroadcastReport {
   bounced: number;
   complained: number;
 
+  /** The public web copy, once there is one. Null on a draft. */
+  webUrl: string | null;
+
   variants: VariantTally[];
   links: LinkTally[];
   /** The people it went to, newest activity first. Capped; the list is for eyes. */
@@ -1312,6 +1370,9 @@ export async function broadcastReport(orgId: string, id: string): Promise<Broadc
     unsubscribed: tallies.reduce((sum, row) => sum + row.left, 0),
     bounced: feedback?.bounced ?? 0,
     complained: feedback?.complained ?? 0,
+    // A draft has no web copy: a link that worked before a campaign was sent
+    // would be a way to read one early.
+    webUrl: head.status === "draft" || head.status === "cancelled" ? null : archiveUrl(id),
     variants: byVariant
       .map((row) => ({ ...row, subject: subjects[row.variant] }))
       .sort((left, right) => left.variant.localeCompare(right.variant)),

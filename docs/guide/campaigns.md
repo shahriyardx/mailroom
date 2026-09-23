@@ -263,6 +263,25 @@ spreadsheet somebody else exported; they are not trusted to be HTML.
 Leave <code v-pre>{{unsubscribe}}</code> out and a plain one is added at the bottom. There is no
 way to send without it, and that is deliberate.
 
+### View in browser
+
+Put <code v-pre>{{view_in_browser}}</code> in a campaign and it becomes a link
+to a web copy of that message. It is also on the campaign's report, as **Web
+copy**, for putting a newsletter somewhere that is not an inbox.
+
+The page needs no sign-in — somebody whose mail client mangled your layout is
+by definition not a user of your instance. Its link is signed rather than
+stored, so one dug out of a year-old email still works, and it is marked
+`noindex`: a campaign is not a page anybody asked to publish.
+
+The link carries the **campaign**, not the reader. It is the link in an email
+most likely to be forwarded, and one that identified the person it was sent to
+would hand their row to whoever it reached. So the web copy is not
+personalised — a greeting reads "Hi there".
+
+A draft has no web copy. A link that worked before a campaign was sent would
+be a way to read one early.
+
 ## The report
 
 A campaign that has started opens as its report rather than in the builder.

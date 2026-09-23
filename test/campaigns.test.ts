@@ -969,7 +969,7 @@ describe("getting people back out", () => {
     const segmentId = await createSegment(account.orgId, {
       listId: two,
       name: "Everybody on two",
-      match: "all",
+      matchAll: true,
       rules: [],
     });
 

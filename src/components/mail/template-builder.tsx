@@ -3139,7 +3139,9 @@ function BroadcastDetails({
           />
         </Row>
 
-        <MergeFields fields={list?.fields ?? []} />
+        {/* `view_in_browser` is a campaign's own web copy, so it is offered
+            here and not in an automation, which has none. */}
+        <MergeFields fields={[...(list?.fields ?? []), "view_in_browser"]} />
 
         <Row label="List">
           {draft && !followUp ? (

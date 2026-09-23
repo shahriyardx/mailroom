@@ -162,3 +162,26 @@ describe("the footer", () => {
     assert.ok(!out.includes("<br><br>"));
   });
 });
+
+describe("the web copy of a campaign", () => {
+  it("round-trips a signed token", async () => {
+    process.env.BETTER_AUTH_SECRET ??= "test-secret-for-archive-tests";
+    const { archiveToken, readArchiveToken } = await import("@/server/campaigns");
+    assert.equal(readArchiveToken(archiveToken("bcast_1")), "bcast_1");
+  });
+
+  it("refuses a token signed for something else", async () => {
+    // An unsubscribe link that also worked as an archive link, or the other
+    // way round, is the sort of bug nobody finds until it matters.
+    process.env.BETTER_AUTH_SECRET ??= "test-secret-for-archive-tests";
+    const { readArchiveToken, unsubscribeToken } = await import("@/server/campaigns");
+    assert.equal(readArchiveToken(unsubscribeToken("bcast_1")), null);
+  });
+
+  it("refuses a tampered id", async () => {
+    process.env.BETTER_AUTH_SECRET ??= "test-secret-for-archive-tests";
+    const { archiveToken, readArchiveToken } = await import("@/server/campaigns");
+    const token = archiveToken("bcast_1");
+    assert.equal(readArchiveToken(token.replace("bcast_1", "bcast_2")), null);
+  });
+});
