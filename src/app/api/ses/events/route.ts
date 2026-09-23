@@ -1,9 +1,16 @@
 import { db } from "@/db";
-import { mailbox, message, messageEvent, suppression } from "@/db/schema";
+import {
+  broadcastClick,
+  broadcastRecipient,
+  mailbox,
+  message,
+  messageEvent,
+  suppression,
+} from "@/db/schema";
 import { type SnsEnvelope, verifySnsMessage } from "@/lib/sns";
 import { newId } from "@/lib/utils";
 import { type WebhookEvent, dispatchWebhooks } from "@/server/webhooks";
-import { eq, sql } from "drizzle-orm";
+import { and, eq, sql } from "drizzle-orm";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -30,6 +37,7 @@ const WEBHOOK_MAP: Record<string, WebhookEvent> = {
   Bounce: "email.bounced",
   Complaint: "email.complained",
   Open: "email.opened",
+  Click: "email.clicked",
   Reject: "email.rejected",
   DeliveryDelay: "email.delayed",
 };
@@ -61,6 +69,9 @@ interface SesEvent {
   };
   delivery?: { recipients?: string[]; timestamp?: string };
   deliveryDelay?: { delayType?: string };
+  /** SES rewrites the links itself when the configuration set asks it to. */
+  click?: { link?: string; timestamp?: string };
+  open?: { timestamp?: string };
 }
 
 /**
@@ -151,6 +162,69 @@ export async function POST(request: NextRequest) {
         openCount: sql`${message.openCount} + 1`,
       })
       .where(eq(message.id, row.id));
+  }
+
+  /*
+   * The same open, told to the campaign that caused it.
+   *
+   * A message row already knows it was opened; a campaign report needs to know
+   * how many *people* opened, which is a different table. Stamped rather than
+   * counted, because "first opened" is the only moment a report asks about and
+   * a forwarded newsletter would otherwise inflate every number on the page.
+   *
+   * Nothing here builds a redirect of our own. SES rewrites the links, which
+   * means there is no URL of ours that has to keep answering forever or every
+   * link in every email ever sent breaks.
+   */
+  if (row && (kind === "Open" || kind === "Click")) {
+    const [copy] = await db
+      .select({
+        id: broadcastRecipient.id,
+        broadcastId: broadcastRecipient.broadcastId,
+        organizationId: broadcastRecipient.organizationId,
+        openedAt: broadcastRecipient.openedAt,
+        clickedAt: broadcastRecipient.clickedAt,
+      })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.messageId, row.id))
+      .limit(1);
+
+    if (copy) {
+      const when = new Date(
+        event.click?.timestamp ?? event.open?.timestamp ?? event.mail?.timestamp ?? Date.now(),
+      );
+
+      await db
+        .update(broadcastRecipient)
+        .set(
+          kind === "Click"
+            ? // A click is an open by any reasonable reading, and some clients
+              // never fire the pixel. Counting it as both is what stops a
+              // campaign reporting more clicks than opens.
+              { clickedAt: copy.clickedAt ?? when, openedAt: copy.openedAt ?? when }
+            : { openedAt: copy.openedAt ?? when },
+        )
+        .where(eq(broadcastRecipient.id, copy.id));
+
+      const link = event.click?.link;
+      if (kind === "Click" && link) {
+        await db
+          .insert(broadcastClick)
+          .values({
+            id: newId("bcc"),
+            organizationId: copy.organizationId,
+            broadcastId: copy.broadcastId,
+            recipientId: copy.id,
+            url: link.slice(0, 2000),
+            firstAt: when,
+            lastAt: when,
+          })
+          .onConflictDoUpdate({
+            target: [broadcastClick.recipientId, broadcastClick.url],
+            set: { clicks: sql`${broadcastClick.clicks} + 1`, lastAt: when },
+          });
+      }
+    }
   }
 
   const status = STATUS_MAP[kind];

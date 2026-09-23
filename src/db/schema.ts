@@ -1,5 +1,6 @@
 import type { EmailDesign } from "@/lib/email-blocks";
 import { relations, sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   boolean,
   customType,
@@ -61,6 +62,14 @@ export const listMemberStatusEnum = pgEnum("list_member_status", [
   "unsubscribed",
   "bounced",
   "complained",
+  /**
+   * Asked to join a double opt-in list and has not clicked the link yet.
+   *
+   * Deliberately its own status rather than a flag beside "subscribed": every
+   * query that decides who gets written to filters on this column, and a
+   * boolean somewhere else is a boolean somebody forgets.
+   */
+  "pending",
 ]);
 
 export const broadcastStatusEnum = pgEnum("broadcast_status", [
@@ -76,6 +85,16 @@ export const broadcastRecipientStatusEnum = pgEnum("broadcast_recipient_status",
   "sent",
   "failed",
   "skipped",
+]);
+
+/** Whether an automation is running, and whether its author meant it to be. */
+export const automationStatusEnum = pgEnum("automation_status", ["draft", "active", "paused"]);
+
+/** Where one person is in one automation. */
+export const automationRunStatusEnum = pgEnum("automation_run_status", [
+  "active",
+  "done",
+  "stopped",
 ]);
 
 export const eventTypeEnum = pgEnum("event_type", [
@@ -1182,6 +1201,12 @@ export type SendJobStatus = (typeof sendJobStatusEnum.enumValues)[number];
 export type DeliveryStatus = (typeof deliveryStatusEnum.enumValues)[number];
 export type Template = typeof template.$inferSelect;
 export type Media = typeof media.$inferSelect;
+export type Segment = typeof segment.$inferSelect;
+export type BroadcastStatus = (typeof broadcastStatusEnum.enumValues)[number];
+export type Automation = typeof automation.$inferSelect;
+export type AutomationStep = typeof automationStep.$inferSelect;
+export type AutomationStatus = (typeof automationStatusEnum.enumValues)[number];
+export type ListMemberStatus = (typeof listMemberStatusEnum.enumValues)[number];
 
 /**
  * How one person likes the app to look. Kept per user rather than per member,
@@ -1223,6 +1248,17 @@ export const workspace = pgTable("workspace", {
   brandLogo: text("brand_logo"),
   brandAccent: text("brand_accent"),
 
+  /**
+   * Where the company actually is, printed at the foot of every campaign.
+   *
+   * Not decoration and not optional in practice. US CAN-SPAM requires a valid
+   * physical postal address in commercial mail, and Gmail's bulk sender rules
+   * lean on the same thing. Left empty, campaigns still send — this app is not
+   * the right place to block somebody's work — but every campaign screen says
+   * so, because the alternative is finding out from a regulator.
+   */
+  postalAddress: text("postal_address"),
+
   /** Null until the first-run wizard is finished. */
   setupCompletedAt: timestamp("setup_completed_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
@@ -1249,6 +1285,19 @@ export const mailingList = pgTable(
       .references(() => organization.id, { onDelete: "cascade" }),
     name: text("name").notNull(),
     description: text("description"),
+
+    /**
+     * Make people confirm by email before they count as subscribed.
+     *
+     * Off by default because turning it on halves the size of a list, and
+     * that has to be somebody's decision rather than a surprise. On, it is
+     * the single best protection against a rival typing a stranger's address
+     * into your signup form — and against the spam complaint that follows.
+     */
+    doubleOptIn: boolean("double_opt_in").notNull().default(false),
+    /** Whether the hosted signup page for this list answers at all. */
+    publicSignup: boolean("public_signup").notNull().default(false),
+
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("mailing_list_org_idx").on(t.organizationId)],
@@ -1283,6 +1332,8 @@ export const listMember = pgTable(
     /** Free text: "imported from mailchimp", "signup form", "added by hand". */
     consentSource: text("consent_source"),
     consentAt: timestamp("consent_at", { withTimezone: true }),
+    /** When they clicked the confirmation link, on a double opt-in list. */
+    confirmedAt: timestamp("confirmed_at", { withTimezone: true }),
     unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
@@ -1293,6 +1344,65 @@ export const listMember = pgTable(
     index("list_member_sendable_idx").on(t.listId, t.status),
   ],
 );
+
+/**
+ * A saved question about a list, not a copy of one.
+ *
+ * Rules are stored and run at send time rather than a membership table being
+ * kept up to date. A segment is only ever read to decide an audience, and an
+ * answer worked out at that moment is the correct one — a stored membership
+ * is a thing that silently goes stale and mails the wrong people.
+ *
+ * The rules themselves are deliberately a small language. Everything here can
+ * be answered by one SQL query over the list and its sends, which is what
+ * keeps a segment of fifty thousand people from being fifty thousand round
+ * trips.
+ */
+export const segment = pgTable(
+  "segment",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    listId: text("list_id")
+      .notNull()
+      .references(() => mailingList.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    /** Meet every rule, or any one of them. */
+    matchAll: boolean("match_all").notNull().default(true),
+    rules: jsonb("rules").$type<SegmentRule[]>().notNull().default(sql`'[]'::jsonb`),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [index("segment_list_idx").on(t.listId), index("segment_org_idx").on(t.organizationId)],
+);
+
+/**
+ * One condition in a segment.
+ *
+ * `field` names either a column on the member, a merge field under
+ * `fields.<name>`, or one of the engagement questions answered from the
+ * broadcast tables. `value` is always text; the query casts it where it has
+ * to, so a rule written by a form and a rule written by the API are the same
+ * shape.
+ */
+export interface SegmentRule {
+  field: string;
+  op:
+    | "is"
+    | "is_not"
+    | "contains"
+    | "not_contains"
+    | "set"
+    | "not_set"
+    | "before"
+    | "after"
+    | "opened"
+    | "not_opened"
+    | "clicked"
+    | "not_clicked";
+  value: string;
+}
 
 /** One message, written once, sent to everybody on a list. */
 export const broadcast = pgTable(
@@ -1310,7 +1420,29 @@ export const broadcast = pgTable(
       .notNull()
       .references(() => mailbox.id, { onDelete: "cascade" }),
 
+    /** Narrows the list to part of it. Null means everybody on the list. */
+    segmentId: text("segment_id").references(() => segment.id, { onDelete: "set null" }),
+    /**
+     * The campaign this one is a second attempt at.
+     *
+     * Set by "send again to the people who did not open it". The audience is
+     * then taken from that campaign's own recipients rather than the list, so
+     * somebody who joined in between is not included — they were never given
+     * the first one, and a follow-up to a mail you never got is nonsense.
+     */
+    resendOfId: text("resend_of_id").references((): AnyPgColumn => broadcast.id, {
+      onDelete: "set null",
+    }),
+
     subject: text("subject").notNull(),
+    /**
+     * The other subject line, when this campaign is testing two.
+     *
+     * Null is the ordinary case. Set, the audience is split in half by a
+     * stable hash of the recipient id, so the same person always lands on the
+     * same side and the two halves are the same size every time.
+     */
+    subjectB: text("subject_b"),
     html: text("html"),
     text: text("text"),
     /** The blocks, when the body was built rather than pasted. See `template`. */
@@ -1362,12 +1494,159 @@ export const broadcastRecipient = pgTable(
     sentAt: timestamp("sent_at", { withTimezone: true }),
     error: text("error"),
     openedAt: timestamp("opened_at", { withTimezone: true }),
+    /** First click on anything in the message. The links are in `broadcast_click`. */
+    clickedAt: timestamp("clicked_at", { withTimezone: true }),
+    /** When this copy is what made them leave, which is the number that matters. */
+    unsubscribedAt: timestamp("unsubscribed_at", { withTimezone: true }),
+    /** "a" or "b" — which subject line this copy was sent under. */
+    variant: text("variant").$type<"a" | "b">().notNull().default("a"),
   },
   (t) => [
     uniqueIndex("broadcast_recipient_unique_idx").on(t.broadcastId, t.listMemberId),
     // The claim query: who on this broadcast has not been sent to yet.
     index("broadcast_recipient_pending_idx").on(t.broadcastId, t.status),
     index("broadcast_recipient_org_idx").on(t.organizationId),
+  ],
+);
+
+/**
+ * One link, in one campaign, clicked by one person.
+ *
+ * A row per person per URL rather than per click. The question a report has
+ * to answer is "how many people clicked this link", and a table that counts
+ * every click answers a different one — a newsletter forwarded round an
+ * office turns into hundreds of rows for one reader. The repeats are still
+ * counted, in `clicks`, for whoever wants them.
+ *
+ * SES does the link rewriting, which is why nothing here is a redirect of our
+ * own. A tracking redirect is a domain that has to stay up forever or every
+ * link in every email ever sent breaks.
+ */
+export const broadcastClick = pgTable(
+  "broadcast_click",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    broadcastId: text("broadcast_id")
+      .notNull()
+      .references(() => broadcast.id, { onDelete: "cascade" }),
+    recipientId: text("recipient_id")
+      .notNull()
+      .references(() => broadcastRecipient.id, { onDelete: "cascade" }),
+    url: text("url").notNull(),
+    clicks: integer("clicks").notNull().default(1),
+    firstAt: timestamp("first_at", { withTimezone: true }).notNull().defaultNow(),
+    lastAt: timestamp("last_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("broadcast_click_unique_idx").on(t.recipientId, t.url),
+    index("broadcast_click_broadcast_idx").on(t.broadcastId),
+  ],
+);
+
+/**
+ * A series of emails, sent on a clock rather than on a day somebody chose.
+ *
+ * The difference from a campaign is who decides when. A campaign goes out to
+ * everybody at once; an automation starts when one person does something, so
+ * the third message lands three days after *their* signup, not three days
+ * after somebody pressed send.
+ *
+ * Deliberately narrow. One trigger, a straight line of steps, no branching.
+ * A welcome series is what almost everybody actually wants, and a visual
+ * flowchart builder is a product of its own.
+ */
+export const automation = pgTable(
+  "automation",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    listId: text("list_id")
+      .notNull()
+      .references(() => mailingList.id, { onDelete: "cascade" }),
+    /** One from-address for the whole series: a welcome note and its follow-up
+        arriving from two different people reads as two different companies. */
+    mailboxId: text("mailbox_id")
+      .notNull()
+      .references(() => mailbox.id, { onDelete: "cascade" }),
+
+    name: text("name").notNull(),
+    /** What starts it. Only "subscribed" today; a column so it can grow. */
+    trigger: text("trigger").$type<"subscribed">().notNull().default("subscribed"),
+    status: automationStatusEnum("status").notNull().default("draft"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    index("automation_org_idx").on(t.organizationId),
+    index("automation_list_idx").on(t.listId, t.status),
+  ],
+);
+
+/** One email in a series, and how long after the last one it goes. */
+export const automationStep = pgTable(
+  "automation_step",
+  {
+    id: text("id").primaryKey(),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automation.id, { onDelete: "cascade" }),
+    /** 0 is the first. Contiguous, rewritten whenever a step is added or removed. */
+    position: integer("position").notNull(),
+    /**
+     * Minutes to wait before this step, counted from the step before it — or
+     * from the trigger, for the first one. Zero on step 0 means "as soon as
+     * they join", which is what a welcome email is.
+     */
+    delayMinutes: integer("delay_minutes").notNull().default(0),
+
+    subject: text("subject").notNull(),
+    html: text("html"),
+    text: text("text"),
+    design: jsonb("design").$type<EmailDesign>(),
+  },
+  (t) => [uniqueIndex("automation_step_order_idx").on(t.automationId, t.position)],
+);
+
+/**
+ * One person's journey through one automation.
+ *
+ * `nextAt` is the whole scheduler: the runner asks for runs that are active
+ * and due, and nothing else. That means a series with a two-week gap costs
+ * nothing to wait — there is no timer per person, only a row with a date.
+ *
+ * Unique per member per automation, so re-subscribing does not start a second
+ * copy of the welcome series while the first is still running.
+ */
+export const automationRun = pgTable(
+  "automation_run",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automation.id, { onDelete: "cascade" }),
+    listMemberId: text("list_member_id")
+      .notNull()
+      .references(() => listMember.id, { onDelete: "cascade" }),
+
+    /** The step index this run is waiting to send. */
+    step: integer("step").notNull().default(0),
+    status: automationRunStatusEnum("status").notNull().default("active"),
+    /** When that step is due. The runner's only filter. */
+    nextAt: timestamp("next_at", { withTimezone: true }).notNull(),
+    lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    stoppedReason: text("stopped_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (t) => [
+    uniqueIndex("automation_run_unique_idx").on(t.automationId, t.listMemberId),
+    index("automation_run_due_idx").on(t.status, t.nextAt),
   ],
 );
 

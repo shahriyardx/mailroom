@@ -1,11 +1,23 @@
 import "server-only";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
-import { broadcast, broadcastRecipient, listMember, mailbox, mailingList } from "@/db/schema";
+import {
+  type ListMemberStatus,
+  broadcast,
+  broadcastClick,
+  broadcastRecipient,
+  listMember,
+  mailbox,
+  mailingList,
+  message,
+  segment,
+  workspace,
+} from "@/db/schema";
 import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
-import { and, asc, count, desc, eq, inArray, sql } from "drizzle-orm";
+import { findSegment, segmentCondition } from "@/server/segments";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
 
 /**
  * Lists, and the broadcasts sent to them.
@@ -59,6 +71,76 @@ export function unsubscribeUrl(memberId: string) {
 }
 
 /**
+ * The link in a "please confirm" email.
+ *
+ * Signed the same way as an unsubscribe link, but over a different string, so
+ * one cannot be used as the other. A confirmation link that also unsubscribed
+ * — or the other way round — would be a bug nobody found until it mattered.
+ */
+export function confirmToken(memberId: string) {
+  const mac = createHmac("sha256", env.authSecret)
+    .update(`confirm:${memberId}`)
+    .digest("base64url");
+  return `${memberId}.${mac}`;
+}
+
+export function readConfirmToken(token: string): string | null {
+  const dot = token.lastIndexOf(".");
+  if (dot <= 0) return null;
+
+  const memberId = token.slice(0, dot);
+  const given = Buffer.from(token.slice(dot + 1));
+  const want = Buffer.from(
+    createHmac("sha256", env.authSecret).update(`confirm:${memberId}`).digest("base64url"),
+  );
+
+  if (given.length !== want.length) return null;
+  return timingSafeEqual(given, want) ? memberId : null;
+}
+
+export function confirmUrl(memberId: string) {
+  return `${env.appUrl}/subscribe/confirm/${confirmToken(memberId)}`;
+}
+
+/**
+ * Turns a pending member into a subscribed one.
+ *
+ * Idempotent, because a confirmation link gets clicked twice — once by the
+ * person and once by their mail provider's link scanner — and the second must
+ * look like the first worked.
+ */
+export async function confirmByToken(token: string) {
+  const memberId = readConfirmToken(token);
+  if (!memberId) return null;
+
+  const row = await db.query.listMember.findFirst({ where: eq(listMember.id, memberId) });
+  if (!row) return null;
+
+  if (row.status === "pending") {
+    await db
+      .update(listMember)
+      .set({
+        status: "subscribed",
+        confirmedAt: new Date(),
+        consentAt: row.consentAt ?? new Date(),
+      })
+      .where(eq(listMember.id, memberId));
+  }
+
+  const list = await db.query.mailingList.findFirst({
+    where: eq(mailingList.id, row.listId),
+    columns: { name: true },
+  });
+
+  return {
+    address: row.address,
+    listName: list?.name ?? "this list",
+    /** False when they had already confirmed, so the page can say so gently. */
+    fresh: row.status === "pending",
+  };
+}
+
+/**
  * Takes somebody off one list.
  *
  * Deliberately not an account-wide block: leaving the newsletter must not stop
@@ -72,11 +154,38 @@ export async function unsubscribeByToken(token: string) {
   const row = await db.query.listMember.findFirst({ where: eq(listMember.id, memberId) });
   if (!row) return null;
 
-  if (row.status === "subscribed") {
+  if (row.status === "subscribed" || row.status === "pending") {
     await db
       .update(listMember)
       .set({ status: "unsubscribed", unsubscribedAt: new Date() })
       .where(eq(listMember.id, memberId));
+
+    /*
+     * Which campaign lost them.
+     *
+     * Stamped on their most recent sent copy rather than counted separately,
+     * because the only question worth asking is "did this one cost us
+     * people" — and that is a number per campaign, not per person.
+     */
+    const [latest] = await db
+      .select({ id: broadcastRecipient.id })
+      .from(broadcastRecipient)
+      .where(
+        and(
+          eq(broadcastRecipient.listMemberId, memberId),
+          eq(broadcastRecipient.status, "sent"),
+          isNull(broadcastRecipient.unsubscribedAt),
+        ),
+      )
+      .orderBy(desc(broadcastRecipient.sentAt))
+      .limit(1);
+
+    if (latest) {
+      await db
+        .update(broadcastRecipient)
+        .set({ unsubscribedAt: new Date() })
+        .where(eq(broadcastRecipient.id, latest.id));
+    }
   }
 
   const list = await db.query.mailingList.findFirst({
@@ -105,6 +214,49 @@ export async function createList(orgId: string, name: string, description?: stri
   return id;
 }
 
+/** How people are allowed to join a list, and whether they must confirm. */
+export async function updateList(
+  orgId: string,
+  listId: string,
+  input: {
+    name?: string;
+    description?: string | null;
+    doubleOptIn?: boolean;
+    publicSignup?: boolean;
+  },
+) {
+  const row = await db.query.mailingList.findFirst({
+    where: and(eq(mailingList.id, listId), eq(mailingList.organizationId, orgId)),
+  });
+  if (!row) throw new Error("No such list");
+
+  await db
+    .update(mailingList)
+    .set({
+      name: input.name?.trim() || row.name,
+      description:
+        input.description === undefined ? row.description : input.description?.trim() || null,
+      doubleOptIn: input.doubleOptIn ?? row.doubleOptIn,
+      publicSignup: input.publicSignup ?? row.publicSignup,
+    })
+    .where(eq(mailingList.id, row.id));
+}
+
+export async function findList(orgId: string, listId: string) {
+  const row = await db.query.mailingList.findFirst({
+    where: and(eq(mailingList.id, listId), eq(mailingList.organizationId, orgId)),
+  });
+  return row ?? null;
+}
+
+/** A list anyone may sign up to, looked up without an account. */
+export async function publicList(listId: string) {
+  const row = await db.query.mailingList.findFirst({
+    where: and(eq(mailingList.id, listId), eq(mailingList.publicSignup, true)),
+  });
+  return row ?? null;
+}
+
 export async function removeList(orgId: string, listId: string) {
   await db
     .delete(mailingList)
@@ -116,7 +268,11 @@ export interface ListRow {
   name: string;
   description: string | null;
   subscribed: number;
+  /** Asked to join a double opt-in list and has not clicked the link yet. */
+  pending: number;
   total: number;
+  doubleOptIn: boolean;
+  publicSignup: boolean;
 }
 
 export async function listsView(orgId: string): Promise<ListRow[]> {
@@ -144,7 +300,10 @@ export async function listsView(orgId: string): Promise<ListRow[]> {
       name: row.name,
       description: row.description,
       subscribed: mine.find((entry) => entry.status === "subscribed")?.howMany ?? 0,
+      pending: mine.find((entry) => entry.status === "pending")?.howMany ?? 0,
       total: mine.reduce((sum, entry) => sum + entry.howMany, 0),
+      doubleOptIn: row.doubleOptIn,
+      publicSignup: row.publicSignup,
     };
   });
 }
@@ -355,7 +514,7 @@ export interface MemberRow {
   id: string;
   address: string;
   name: string | null;
-  status: "subscribed" | "unsubscribed" | "bounced" | "complained";
+  status: ListMemberStatus;
   consentSource: string | null;
   consentAt: Date | null;
 }
@@ -393,6 +552,8 @@ export async function createBroadcast(
     text?: string;
     /** Start from a saved template: its subject and its blocks are copied. */
     templateId?: string | null;
+    /** Narrow the list to part of it. */
+    segmentId?: string | null;
   },
 ) {
   const subject = input.subject.trim();
@@ -425,12 +586,19 @@ export async function createBroadcast(
     from = { subject: row.subject, html: row.html, text: row.text, design: row.design };
   }
 
+  // A segment that belongs to a different list would silently send to nobody.
+  if (input.segmentId) {
+    const chosen = await findSegment(orgId, input.segmentId);
+    if (!chosen || chosen.listId !== input.listId) throw new Error("No such segment");
+  }
+
   const id = newId("bct");
   await db.insert(broadcast).values({
     id,
     organizationId: orgId,
     listId: input.listId,
     mailboxId: input.mailboxId,
+    segmentId: input.segmentId ?? null,
     subject: subject || from.subject || "",
     html: input.html ?? from.html ?? null,
     text: input.text ?? from.text ?? null,
@@ -450,6 +618,11 @@ export async function updateBroadcast(
   id: string,
   input: {
     subject?: string;
+    /** The rival subject line, or null to stop testing. */
+    subjectB?: string | null;
+    listId?: string;
+    mailboxId?: string;
+    segmentId?: string | null;
     design?: EmailDesign | null;
     html?: string | null;
     text?: string | null;
@@ -467,10 +640,51 @@ export async function updateBroadcast(
     ? { html: renderDesign(input.design, env.appUrl), text: designToText(input.design) }
     : { html: input.html, text: input.text };
 
+  /*
+   * Changing the list drops the segment with it.
+   *
+   * A segment belongs to one list, so keeping it would leave a campaign
+   * pointing at a question about a different set of people — which sends to
+   * nobody, silently, and looks like a bug in the send rather than a stale
+   * field here.
+   */
+  const listId = input.listId ?? row.listId;
+  if (input.listId && input.listId !== row.listId) {
+    const list = await db.query.mailingList.findFirst({
+      where: and(eq(mailingList.id, input.listId), eq(mailingList.organizationId, orgId)),
+      columns: { id: true },
+    });
+    if (!list) throw new Error("No such list");
+  }
+
+  if (input.mailboxId) {
+    const box = await db.query.mailbox.findFirst({
+      where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
+      columns: { id: true },
+    });
+    if (!box) throw new Error("No such mailbox");
+  }
+
+  const segmentId =
+    input.listId && input.listId !== row.listId
+      ? (input.segmentId ?? null)
+      : input.segmentId === undefined
+        ? row.segmentId
+        : input.segmentId;
+
+  if (segmentId) {
+    const chosen = await findSegment(orgId, segmentId);
+    if (!chosen || chosen.listId !== listId) throw new Error("No such segment");
+  }
+
   await db
     .update(broadcast)
     .set({
+      listId,
+      mailboxId: input.mailboxId ?? row.mailboxId,
       subject: input.subject?.trim() || row.subject,
+      subjectB: input.subjectB === undefined ? row.subjectB : input.subjectB?.trim() || null,
+      segmentId,
       html: body.html === undefined ? row.html : (body.html ?? null),
       text: body.text === undefined ? row.text : (body.text ?? null),
       design: input.design === undefined ? row.design : input.design,
@@ -503,12 +717,18 @@ export async function startBroadcast(orgId: string, broadcastId: string, when?: 
   if (!row) throw new Error("No such broadcast");
   if (row.status !== "draft") throw new Error("That broadcast has already been started");
 
-  const audience = await db.query.listMember.findMany({
-    where: and(eq(listMember.listId, row.listId), eq(listMember.status, "subscribed")),
-    columns: { id: true, address: true },
-  });
-  if (audience.length === 0) throw new Error("Nobody on that list is subscribed");
+  const audience = await audienceFor(orgId, row);
+  if (audience.length === 0) {
+    throw new Error(
+      row.resendOfId
+        ? "Everybody who was sent the original has opened it"
+        : row.segmentId
+          ? "Nobody on that list matches the segment"
+          : "Nobody on that list is subscribed",
+    );
+  }
 
+  const testing = Boolean(row.subjectB?.trim());
   await db
     .insert(broadcastRecipient)
     .values(
@@ -518,6 +738,7 @@ export async function startBroadcast(orgId: string, broadcastId: string, when?: 
         broadcastId,
         listMemberId: person.id,
         address: person.address,
+        variant: testing ? variantFor(broadcastId, person.id) : ("a" as const),
       })),
     )
     .onConflictDoNothing();
@@ -533,6 +754,142 @@ export async function startBroadcast(orgId: string, broadcastId: string, when?: 
     .where(eq(broadcast.id, broadcastId));
 
   return { recipients: audience.length, scheduled: Boolean(scheduled) };
+}
+
+/**
+ * Which half of an A/B test somebody lands in.
+ *
+ * Hashed rather than counted, so the split does not depend on the order rows
+ * come back in and is identical if a send is ever rebuilt. The broadcast id is
+ * mixed in so the same person is not permanently the "variant A" person across
+ * every campaign — that would make every test measure the same group twice.
+ */
+export function variantFor(broadcastId: string, memberId: string): "a" | "b" {
+  const digest = createHash("sha256").update(`${broadcastId}:${memberId}`).digest();
+  return (digest[0] & 1) === 0 ? "a" : "b";
+}
+
+/**
+ * Who a campaign actually goes to.
+ *
+ * Three cases, in order of how specific they are. A follow-up takes its
+ * audience from the campaign it follows, because somebody who joined the list
+ * afterwards was never sent the first one and a reminder about an email they
+ * never received is nonsense. A segment narrows the list. Otherwise it is
+ * everybody still subscribed.
+ */
+async function audienceFor(
+  orgId: string,
+  row: { listId: string; segmentId: string | null; resendOfId: string | null },
+) {
+  if (row.resendOfId) {
+    return db
+      .select({ id: listMember.id, address: listMember.address })
+      .from(broadcastRecipient)
+      .innerJoin(listMember, eq(listMember.id, broadcastRecipient.listMemberId))
+      .where(
+        and(
+          eq(broadcastRecipient.broadcastId, row.resendOfId),
+          eq(broadcastRecipient.status, "sent"),
+          isNull(broadcastRecipient.openedAt),
+          eq(listMember.status, "subscribed"),
+        ),
+      );
+  }
+
+  const chosen = row.segmentId ? await findSegment(orgId, row.segmentId) : null;
+
+  return db
+    .select({ id: listMember.id, address: listMember.address })
+    .from(listMember)
+    .where(
+      and(
+        eq(listMember.listId, row.listId),
+        eq(listMember.status, "subscribed"),
+        chosen ? segmentCondition(chosen) : undefined,
+      ),
+    );
+}
+
+/**
+ * How many people a campaign would go to if it were sent now.
+ *
+ * An estimate by definition — the answer is taken again when it starts — but
+ * it is the number somebody needs before they press Send, and "we will tell
+ * you afterwards" is not an acceptable answer to "how many is this".
+ */
+export async function audienceSize(orgId: string, broadcastId: string) {
+  const row = await findBroadcast(orgId, broadcastId);
+  if (!row) return 0;
+  const people = await audienceFor(orgId, row);
+  return people.length;
+}
+
+/**
+ * Copies a campaign back into a draft.
+ *
+ * Everything about the message travels; nothing about the send does. A copy
+ * that kept its schedule, its recipients or its numbers would be a lie about
+ * something that never went out.
+ */
+export async function duplicateBroadcast(orgId: string, id: string) {
+  const row = await findBroadcast(orgId, id);
+  if (!row) throw new Error("No such broadcast");
+
+  const made = newId("bct");
+  await db.insert(broadcast).values({
+    id: made,
+    organizationId: orgId,
+    listId: row.listId,
+    mailboxId: row.mailboxId,
+    segmentId: row.segmentId,
+    subject: `${row.subject} (copy)`,
+    subjectB: row.subjectB,
+    html: row.html,
+    text: row.text,
+    design: row.design,
+  });
+  return made;
+}
+
+/**
+ * A second attempt, aimed only at the people who never opened the first.
+ *
+ * Made as a draft rather than sent, because the whole point is to change the
+ * subject line — sending the identical email to the same inbox a second time
+ * is how a sender teaches a mailbox provider to filter them.
+ */
+export async function resendToNonOpeners(orgId: string, id: string) {
+  const row = await findBroadcast(orgId, id);
+  if (!row) throw new Error("No such broadcast");
+  if (row.status !== "sent") throw new Error("That campaign has not finished sending");
+
+  const [pending] = await db
+    .select({ howMany: sql<number>`count(*)`.mapWith(Number) })
+    .from(broadcastRecipient)
+    .where(
+      and(
+        eq(broadcastRecipient.broadcastId, id),
+        eq(broadcastRecipient.status, "sent"),
+        isNull(broadcastRecipient.openedAt),
+      ),
+    );
+  if ((pending?.howMany ?? 0) === 0) throw new Error("Everybody who got it has opened it");
+
+  const made = newId("bct");
+  await db.insert(broadcast).values({
+    id: made,
+    organizationId: orgId,
+    listId: row.listId,
+    mailboxId: row.mailboxId,
+    resendOfId: row.id,
+    subject: row.subject,
+    html: row.html,
+    text: row.text,
+    design: row.design,
+  });
+
+  return { id: made, audience: pending?.howMany ?? 0 };
 }
 
 export async function cancelBroadcast(orgId: string, broadcastId: string) {
@@ -606,6 +963,208 @@ export async function broadcastsView(orgId: string): Promise<BroadcastRow[]> {
       opened: mine.reduce((sum, entry) => sum + entry.opened, 0),
     };
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* The report                                                                 */
+/* -------------------------------------------------------------------------- */
+
+export interface VariantTally {
+  variant: "a" | "b";
+  subject: string;
+  sent: number;
+  opened: number;
+  clicked: number;
+}
+
+export interface LinkTally {
+  url: string;
+  /** People, not clicks. The second number is there for whoever wants it. */
+  people: number;
+  clicks: number;
+}
+
+export interface BroadcastReport {
+  id: string;
+  subject: string;
+  subjectB: string | null;
+  status: "draft" | "scheduled" | "sending" | "sent" | "cancelled";
+  listName: string;
+  segmentName: string | null;
+  resendOfId: string | null;
+  from: string;
+  startedAt: Date | null;
+  finishedAt: Date | null;
+  scheduledAt: Date | null;
+
+  total: number;
+  sent: number;
+  failed: number;
+  skipped: number;
+  pending: number;
+  opened: number;
+  clicked: number;
+  unsubscribed: number;
+  bounced: number;
+  complained: number;
+
+  variants: VariantTally[];
+  links: LinkTally[];
+  /** The people it went to, newest activity first. Capped; the list is for eyes. */
+  recipients: {
+    address: string;
+    status: "pending" | "sent" | "failed" | "skipped";
+    variant: "a" | "b";
+    openedAt: Date | null;
+    clickedAt: Date | null;
+    unsubscribedAt: Date | null;
+    error: string | null;
+  }[];
+}
+
+/** At most this many recipient rows. Beyond it the list stops being readable. */
+const RECIPIENTS_SHOWN = 200;
+
+/**
+ * Everything one campaign did, in one query each.
+ *
+ * Rates are not computed here. A report hands over counts and lets whatever
+ * draws it decide what to divide by — "opened over sent" and "opened over
+ * delivered" are different numbers, and burying that choice in the server is
+ * how two screens end up disagreeing about the same campaign.
+ */
+export async function broadcastReport(orgId: string, id: string): Promise<BroadcastReport | null> {
+  const [head] = await db
+    .select({
+      id: broadcast.id,
+      subject: broadcast.subject,
+      subjectB: broadcast.subjectB,
+      status: broadcast.status,
+      listName: mailingList.name,
+      segmentId: broadcast.segmentId,
+      resendOfId: broadcast.resendOfId,
+      from: mailbox.address,
+      startedAt: broadcast.startedAt,
+      finishedAt: broadcast.finishedAt,
+      scheduledAt: broadcast.scheduledAt,
+    })
+    .from(broadcast)
+    .innerJoin(mailingList, eq(mailingList.id, broadcast.listId))
+    .innerJoin(mailbox, eq(mailbox.id, broadcast.mailboxId))
+    .where(and(eq(broadcast.id, id), eq(broadcast.organizationId, orgId)))
+    .limit(1);
+  if (!head) return null;
+
+  const [tallies, byVariant, links, recipients, segmentRow] = await Promise.all([
+    db
+      .select({
+        status: broadcastRecipient.status,
+        howMany: count(),
+        opened: sql<number>`count(${broadcastRecipient.openedAt})`.mapWith(Number),
+        clicked: sql<number>`count(${broadcastRecipient.clickedAt})`.mapWith(Number),
+        left: sql<number>`count(${broadcastRecipient.unsubscribedAt})`.mapWith(Number),
+      })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, id))
+      .groupBy(broadcastRecipient.status),
+
+    db
+      .select({
+        variant: broadcastRecipient.variant,
+        sent: sql<number>`count(*) filter (where ${broadcastRecipient.status} = 'sent')`.mapWith(
+          Number,
+        ),
+        opened: sql<number>`count(${broadcastRecipient.openedAt})`.mapWith(Number),
+        clicked: sql<number>`count(${broadcastRecipient.clickedAt})`.mapWith(Number),
+      })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, id))
+      .groupBy(broadcastRecipient.variant),
+
+    db
+      .select({
+        url: broadcastClick.url,
+        people: sql<number>`count(distinct ${broadcastClick.recipientId})`.mapWith(Number),
+        clicks: sql<number>`coalesce(sum(${broadcastClick.clicks}), 0)`.mapWith(Number),
+      })
+      .from(broadcastClick)
+      .where(eq(broadcastClick.broadcastId, id))
+      .groupBy(broadcastClick.url)
+      .orderBy(desc(sql`count(distinct ${broadcastClick.recipientId})`))
+      .limit(25),
+
+    db
+      .select({
+        address: broadcastRecipient.address,
+        status: broadcastRecipient.status,
+        variant: broadcastRecipient.variant,
+        openedAt: broadcastRecipient.openedAt,
+        clickedAt: broadcastRecipient.clickedAt,
+        unsubscribedAt: broadcastRecipient.unsubscribedAt,
+        error: broadcastRecipient.error,
+      })
+      .from(broadcastRecipient)
+      .where(eq(broadcastRecipient.broadcastId, id))
+      .orderBy(
+        desc(broadcastRecipient.clickedAt),
+        desc(broadcastRecipient.openedAt),
+        asc(broadcastRecipient.address),
+      )
+      .limit(RECIPIENTS_SHOWN),
+
+    head.segmentId
+      ? db.query.segment.findFirst({
+          where: eq(segment.id, head.segmentId),
+          columns: { name: true },
+        })
+      : Promise.resolve(null),
+  ]);
+
+  /*
+   * A bounce or a complaint is recorded against the message, not against the
+   * recipient row, because it arrives from SES long after the send finished.
+   * Counted by joining back rather than duplicated onto the recipient, so
+   * there is one place that knows what a bounce is.
+   */
+  const [feedback] = await db
+    .select({
+      bounced: sql<number>`count(*) filter (where ${message.deliveryStatus} = 'bounced')`.mapWith(
+        Number,
+      ),
+      complained:
+        sql<number>`count(*) filter (where ${message.deliveryStatus} = 'complained')`.mapWith(
+          Number,
+        ),
+    })
+    .from(broadcastRecipient)
+    .innerJoin(message, eq(message.id, broadcastRecipient.messageId))
+    .where(eq(broadcastRecipient.broadcastId, id));
+
+  const at = (status: string) => tallies.find((row) => row.status === status)?.howMany ?? 0;
+  const subjects: Record<"a" | "b", string> = {
+    a: head.subject,
+    b: head.subjectB ?? head.subject,
+  };
+
+  return {
+    ...head,
+    segmentName: segmentRow?.name ?? null,
+    total: tallies.reduce((sum, row) => sum + row.howMany, 0),
+    sent: at("sent"),
+    failed: at("failed"),
+    skipped: at("skipped"),
+    pending: at("pending"),
+    opened: tallies.reduce((sum, row) => sum + row.opened, 0),
+    clicked: tallies.reduce((sum, row) => sum + row.clicked, 0),
+    unsubscribed: tallies.reduce((sum, row) => sum + row.left, 0),
+    bounced: feedback?.bounced ?? 0,
+    complained: feedback?.complained ?? 0,
+    variants: byVariant
+      .map((row) => ({ ...row, subject: subjects[row.variant] }))
+      .sort((left, right) => left.variant.localeCompare(right.variant)),
+    links,
+    recipients,
+  };
 }
 
 /** Mailboxes a broadcast can be sent from, for the composer's picker. */
@@ -683,9 +1242,19 @@ export async function subscribe(
 
   const list = await db.query.mailingList.findFirst({
     where: and(eq(mailingList.id, listId), eq(mailingList.organizationId, orgId)),
-    columns: { id: true },
+    columns: { id: true, name: true, doubleOptIn: true },
   });
   if (!list) throw new Error("No such list");
+
+  /*
+   * On a double opt-in list nobody is subscribed by asking.
+   *
+   * They land as "pending", which every send query excludes, and become real
+   * only by clicking the link in the email below. It costs half the list and
+   * it is worth it: a signup form without it is a way for a stranger to sign
+   * somebody else up, and that person reports the next campaign as spam.
+   */
+  const joining: ListMemberStatus = list.doubleOptIn ? "pending" : "subscribed";
 
   const existing = await db.query.listMember.findFirst({
     where: and(eq(listMember.listId, listId), eq(listMember.address, address)),
@@ -710,7 +1279,7 @@ export async function subscribe(
     await db
       .update(listMember)
       .set({
-        status: "subscribed",
+        status: joining,
         unsubscribedAt: null,
         consentAt: now,
         consentSource,
@@ -718,6 +1287,14 @@ export async function subscribe(
       })
       .where(eq(listMember.id, existing.id));
 
+    if (joining === "pending") {
+      await sendConfirmation(
+        orgId,
+        { id: existing.id, address, name: input.name ?? null },
+        list.name,
+      );
+      return { id: existing.id, status: "pending" as const };
+    }
     return { id: existing.id, status: "resubscribed" as const };
   }
 
@@ -729,11 +1306,69 @@ export async function subscribe(
     address,
     name: input.name?.trim() || null,
     fields: input.fields ?? {},
+    status: joining,
     consentSource,
     consentAt: now,
   });
 
+  if (joining === "pending") {
+    await sendConfirmation(orgId, { id, address, name: input.name ?? null }, list.name);
+    return { id, status: "pending" as const };
+  }
+
   return { id, status: "subscribed" as const };
+}
+
+/**
+ * The "did you mean to do this?" email.
+ *
+ * Sent from whichever mailbox the organisation has; there is no per-list from
+ * address, and inventing one would be another thing to configure before a
+ * signup form works at all. A failure here is swallowed on purpose — somebody
+ * pressing Subscribe must not see a stack trace because SES was slow, and the
+ * row already exists as pending for them to be reminded about.
+ */
+async function sendConfirmation(
+  orgId: string,
+  person: { id: string; address: string; name: string | null },
+  listName: string,
+) {
+  const [box] = await db
+    .select({ id: mailbox.id })
+    .from(mailbox)
+    .where(eq(mailbox.organizationId, orgId))
+    .orderBy(asc(mailbox.address))
+    .limit(1);
+  if (!box) return;
+
+  const url = confirmUrl(person.id);
+  const { deliverMessage } = await import("./send");
+
+  try {
+    await deliverMessage({
+      orgId,
+      mailboxId: box.id,
+      to: [{ address: person.address, name: person.name }],
+      subject: `Confirm your subscription to ${listName}`,
+      html: [
+        `<p>Somebody — we hope you — asked to join <strong>${escapeHtml(listName)}</strong>.</p>`,
+        `<p><a href="${url}">Yes, subscribe me</a></p>`,
+        '<p style="color:#6b7280;font-size:12px">If it was not you, ignore this email. Nothing will be sent until the link above is clicked.</p>',
+      ].join(""),
+      text: `Somebody asked to join ${listName}.\n\nConfirm: ${url}\n\nIf it was not you, ignore this email. Nothing will be sent until that link is clicked.`,
+    });
+  } catch {
+    // Already pending; a resend is a button elsewhere rather than a crash here.
+  }
+}
+
+/** The few characters that matter inside the confirmation body. */
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
 }
 
 /** Taking somebody off a list by address, for a client that has no member id. */

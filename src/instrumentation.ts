@@ -16,6 +16,9 @@ export async function register() {
 
   const { startBroadcastWorker } = await import("@/server/broadcast-runner");
   startBroadcastWorker();
+
+  const { startAutomationWorker } = await import("@/server/automation-runner");
+  startAutomationWorker();
 }
 
 async function runMigrations() {

@@ -20,6 +20,14 @@ export interface WorkspaceSettings {
   brandName: string | null;
   brandLogo: string | null;
   brandAccent: string | null;
+  /**
+   * The company's physical address, printed at the foot of every campaign.
+   *
+   * Required by US CAN-SPAM in commercial mail and leaned on by Gmail's bulk
+   * sender rules. Null is allowed — this is not the layer that refuses a send
+   * — but the campaign screens say so until it is filled in.
+   */
+  postalAddress: string | null;
   /** Null until the first-run wizard has been finished. */
   setupCompletedAt: Date | null;
 }
@@ -37,6 +45,7 @@ const DEFAULTS: WorkspaceSettings = {
   brandName: null,
   brandLogo: null,
   brandAccent: null,
+  postalAddress: null,
   setupCompletedAt: null,
 };
 
@@ -52,6 +61,7 @@ export async function workspaceSettings(orgId: string): Promise<WorkspaceSetting
     brandName: row.brandName,
     brandLogo: row.brandLogo,
     brandAccent: row.brandAccent,
+    postalAddress: row.postalAddress,
     setupCompletedAt: row.setupCompletedAt,
   };
 }

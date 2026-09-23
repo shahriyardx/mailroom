@@ -1,6 +1,7 @@
 import "server-only";
 import { db } from "@/db";
-import { broadcast, broadcastRecipient, listMember } from "@/db/schema";
+import { broadcast, broadcastRecipient, listMember, workspace } from "@/db/schema";
+import { merge, withFooter } from "@/lib/campaign-body";
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { unsubscribeUrl } from "./campaigns";
 import { deliverMessage } from "./send";
@@ -28,31 +29,6 @@ const globalForBroadcasts = globalThis as unknown as {
 const TICK_MS = 5_000;
 /** Per pass. Deliberately low: SES rate limits are per second and per account. */
 const BATCH = 25;
-
-/** `{{name}}` and `{{fields.plan}}`, filled from the member row. */
-function merge(template: string, person: { address: string; name: string | null }) {
-  return template
-    .replaceAll("{{address}}", person.address)
-    .replaceAll("{{name}}", person.name ?? person.address);
-}
-
-/**
- * The footer, added when the writer has not written their own.
- *
- * A broadcast with no visible way out is a complaint waiting to happen, and
- * complaints cost far more than the two lines this adds. Somebody who does
- * want their own wording puts `{{unsubscribe}}` in the body and gets the URL
- * where they asked for it instead.
- */
-function withUnsubscribe(body: string, url: string, html: boolean) {
-  if (body.includes("{{unsubscribe}}")) return body.replaceAll("{{unsubscribe}}", url);
-
-  return html
-    ? `${body}<p style="margin-top:32px;font-size:12px;color:#6b7280">
-         <a href="${url}" style="color:#6b7280">Unsubscribe from these emails</a>
-       </p>`
-    : `${body}\n\n---\nUnsubscribe: ${url}`;
-}
 
 export interface BroadcastRun {
   claimed: number;
@@ -97,6 +73,18 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
 
     run.claimed += pending.length;
 
+    /*
+     * The company's own address, read once per campaign rather than per copy.
+     * It goes in the footer of every message, which is what CAN-SPAM asks for
+     * and what Gmail's bulk rules look at.
+     */
+    const [site] = await db
+      .select({ postalAddress: workspace.postalAddress })
+      .from(workspace)
+      .where(eq(workspace.organizationId, job.organizationId))
+      .limit(1);
+    const footer = { postalAddress: site?.postalAddress ?? null };
+
     for (const target of pending) {
       /*
        * Asked again, one recipient at a time.
@@ -126,9 +114,17 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
           orgId: job.organizationId,
           mailboxId: job.mailboxId,
           to: [{ address: member.address, name: member.name }],
-          subject: merge(job.subject, member),
-          html: job.html ? withUnsubscribe(merge(job.html, member), url, true) : null,
-          text: job.text ? withUnsubscribe(merge(job.text, member), url, false) : null,
+          // Which subject line this copy was assigned when the audience froze.
+          subject: merge(
+            target.variant === "b" && job.subjectB ? job.subjectB : job.subject,
+            member,
+          ),
+          html: job.html
+            ? withFooter(merge(job.html, member), { ...footer, unsubscribeUrl: url }, true)
+            : null,
+          text: job.text
+            ? withFooter(merge(job.text, member), { ...footer, unsubscribeUrl: url }, false)
+            : null,
           headers: {
             /*
              * Gmail and Yahoo refuse bulk mail without these. The second is

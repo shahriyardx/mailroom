@@ -26,16 +26,28 @@ import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
 import {
+  addStep,
+  createAutomation,
+  removeAutomation,
+  removeStep,
+  updateAutomation,
+  updateStep,
+} from "@/server/automations";
+import {
   addMembers,
+  audienceSize,
   cancelBroadcast,
   createBroadcast,
   createList,
+  duplicateBroadcast,
   parseMemberList,
   removeList,
   removeMember,
+  resendToNonOpeners,
   setMemberStatus,
   startBroadcast,
   updateBroadcast,
+  updateList,
 } from "@/server/campaigns";
 import {
   type Width,
@@ -59,6 +71,7 @@ import { upsertLabel } from "@/server/labels";
 import { assertCan, can } from "@/server/permissions";
 import { type Appearance, saveAppearance } from "@/server/preferences";
 import { forgetBrowser, forgetEveryBrowser, pushToUsers, rememberBrowser } from "@/server/push";
+import { createSegment, removeSegment, updateSegment } from "@/server/segments";
 import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
 import { saveWorkspaceSettings } from "@/server/workspace";
 import type { EventType } from "@aws-sdk/client-sesv2";
@@ -1518,12 +1531,15 @@ export async function setWorkspaceBrandAction(patch: {
   brandName?: string | null;
   brandLogo?: string | null;
   brandAccent?: string | null;
+  postalAddress?: string | null;
 }) {
   const access = await requireAccess();
   assertCan(access, "instance:manage");
   try {
     await saveWorkspaceSettings(access.orgId, patch);
     revalidatePath("/settings", "layout");
+    // The footer of every campaign is built from this.
+    revalidatePath("/campaigns", "layout");
     return { ok: true as const };
   } catch (error) {
     return failure(error, "That could not be saved");
@@ -1621,6 +1637,7 @@ export async function createBroadcastAction(input: {
   html?: string;
   text?: string;
   templateId?: string | null;
+  segmentId?: string | null;
 }) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
@@ -1636,13 +1653,26 @@ export async function createBroadcastAction(input: {
 /** Saves a draft broadcast's subject and body. */
 export async function updateBroadcastAction(
   id: string,
-  input: { subject?: string; design?: unknown; html?: string | null; text?: string | null },
+  input: {
+    subject?: string;
+    subjectB?: string | null;
+    listId?: string;
+    mailboxId?: string;
+    segmentId?: string | null;
+    design?: unknown;
+    html?: string | null;
+    text?: string | null;
+  },
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
   try {
     await updateBroadcast(access.orgId, id, {
       subject: input.subject,
+      subjectB: input.subjectB,
+      listId: input.listId,
+      mailboxId: input.mailboxId,
+      segmentId: input.segmentId,
       // Checked rather than trusted: the client is where a design comes from.
       design:
         input.design === undefined
@@ -1678,5 +1708,199 @@ export async function cancelBroadcastAction(broadcastId: string) {
   assertCan(access, "mail:send");
   await cancelBroadcast(access.orgId, broadcastId);
   revalidatePath("/campaigns/broadcasts");
+  return { ok: true as const };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Lists, segments and the rest of the marketing side                         */
+/* -------------------------------------------------------------------------- */
+
+export async function updateListAction(
+  listId: string,
+  input: {
+    name?: string;
+    description?: string | null;
+    doubleOptIn?: boolean;
+    publicSignup?: boolean;
+  },
+) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  try {
+    await updateList(access.orgId, listId, input);
+    revalidatePath("/campaigns/lists");
+    revalidatePath(`/campaigns/lists/${listId}`);
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That list could not be changed");
+  }
+}
+
+export async function createSegmentAction(input: {
+  listId: string;
+  name: string;
+  matchAll?: boolean;
+  rules?: unknown;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  try {
+    const id = await createSegment(access.orgId, input);
+    revalidatePath("/campaigns/segments");
+    return { ok: true as const, id };
+  } catch (error) {
+    return failure(error, "That segment could not be made");
+  }
+}
+
+export async function updateSegmentAction(
+  id: string,
+  input: { name?: string; matchAll?: boolean; rules?: unknown },
+) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  try {
+    await updateSegment(access.orgId, id, input);
+    revalidatePath("/campaigns/segments");
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That segment could not be changed");
+  }
+}
+
+export async function removeSegmentAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  await removeSegment(access.orgId, id);
+  revalidatePath("/campaigns/segments");
+  return { ok: true as const };
+}
+
+/** How many people a draft would go to, asked from the builder before sending. */
+export async function audienceSizeAction(broadcastId: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  return { ok: true as const, size: await audienceSize(access.orgId, broadcastId) };
+}
+
+export async function duplicateBroadcastAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const made = await duplicateBroadcast(access.orgId, id);
+    revalidatePath("/campaigns/broadcasts");
+    return { ok: true as const, id: made };
+  } catch (error) {
+    return failure(error, "That campaign could not be copied");
+  }
+}
+
+export async function resendToNonOpenersAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const made = await resendToNonOpeners(access.orgId, id);
+    revalidatePath("/campaigns/broadcasts");
+    return { ok: true as const, ...made };
+  } catch (error) {
+    return failure(error, "That follow-up could not be made");
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Automations                                                                */
+/* -------------------------------------------------------------------------- */
+
+export async function createAutomationAction(input: {
+  listId: string;
+  mailboxId: string;
+  name: string;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const id = await createAutomation(access.orgId, input);
+    revalidatePath("/campaigns/automations");
+    return { ok: true as const, id };
+  } catch (error) {
+    return failure(error, "That automation could not be made");
+  }
+}
+
+export async function updateAutomationAction(
+  id: string,
+  input: { name?: string; mailboxId?: string; status?: "draft" | "active" | "paused" },
+) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    await updateAutomation(access.orgId, id, input);
+    revalidatePath("/campaigns/automations");
+    revalidatePath(`/campaigns/automations/${id}`);
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That automation could not be changed");
+  }
+}
+
+export async function removeAutomationAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await removeAutomation(access.orgId, id);
+  revalidatePath("/campaigns/automations");
+  return { ok: true as const };
+}
+
+export async function addStepAction(
+  automationId: string,
+  input: { subject: string; delayMinutes?: number },
+) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    const id = await addStep(access.orgId, automationId, input);
+    revalidatePath(`/campaigns/automations/${automationId}`);
+    return { ok: true as const, id };
+  } catch (error) {
+    return failure(error, "That email could not be added");
+  }
+}
+
+export async function updateStepAction(
+  stepId: string,
+  input: {
+    subject?: string;
+    delayMinutes?: number;
+    design?: unknown;
+    html?: string | null;
+    text?: string | null;
+  },
+) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  try {
+    await updateStep(access.orgId, stepId, {
+      subject: input.subject,
+      delayMinutes: input.delayMinutes,
+      // Checked rather than trusted: the client is where a design comes from.
+      design:
+        input.design === undefined
+          ? undefined
+          : input.design === null
+            ? null
+            : readDesign(input.design),
+      html: input.html,
+      text: input.text,
+    });
+    return { ok: true as const };
+  } catch (error) {
+    return failure(error, "That email could not be saved");
+  }
+}
+
+export async function removeStepAction(stepId: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await removeStep(access.orgId, stepId);
   return { ok: true as const };
 }
