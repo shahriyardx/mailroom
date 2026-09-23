@@ -1025,7 +1025,10 @@ describe("choosing what you get", () => {
 
     const [row] = await membersView(account.orgId, one);
     const after = await applyPreferences(row?.id ?? "", []);
-    assert.equal(after?.lists.every((entry) => !entry.on), true);
+    assert.equal(
+      after?.lists.every((entry) => !entry.on),
+      true,
+    );
   });
 
   it("will not turn a complained address back on", async () => {
@@ -1067,7 +1070,10 @@ describe("choosing what you get", () => {
     await applyPreferences(ada?.id ?? "", [bob?.id ?? ""]);
 
     const after = await membersView(account.orgId, one);
-    assert.equal(after.find((entry) => entry.address === "ada@example.com")?.status, "unsubscribed");
+    assert.equal(
+      after.find((entry) => entry.address === "ada@example.com")?.status,
+      "unsubscribed",
+    );
     assert.equal(after.find((entry) => entry.address === "bob@example.com")?.status, "subscribed");
   });
 });

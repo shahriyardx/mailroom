@@ -1264,6 +1264,21 @@ export const workspace = pgTable("workspace", {
    */
   postalAddress: text("postal_address"),
 
+  /**
+   * The most bulk mail this instance will send in an hour, across campaigns
+   * and automations together. Null means as fast as the batches allow.
+   *
+   * The reason this exists is domain warming. A new sending domain that goes
+   * from nothing to forty thousand messages in an afternoon is treated as a
+   * compromised account, and the reputation that costs takes weeks to get
+   * back. The cure is boring — a few hundred a day, then a few thousand —
+   * and it is not something anybody can do by watching a progress bar.
+   *
+   * It is a ceiling, not a schedule. Nothing is dropped when it is reached;
+   * the rest goes out in the following hours.
+   */
+  sendRatePerHour: integer("send_rate_per_hour"),
+
   /** Null until the first-run wizard is finished. */
   setupCompletedAt: timestamp("setup_completed_at", { withTimezone: true }),
   updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

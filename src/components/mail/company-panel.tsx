@@ -14,6 +14,8 @@ interface Props {
   canRename: boolean;
   /** Where the company is, printed at the foot of every campaign. */
   postalAddress: string | null;
+  /** The hourly ceiling on bulk mail. Null is no ceiling. */
+  sendRatePerHour: number | null;
 }
 
 /**
@@ -21,7 +23,7 @@ interface Props {
  * rather than under Account, which is about one person's own login: every
  * invitation says the reader is being invited to whatever is written here.
  */
-export function CompanyPanel({ company, canRename, postalAddress }: Props) {
+export function CompanyPanel({ company, canRename, postalAddress, sendRatePerHour }: Props) {
   const router = useRouter();
   const [name, setName] = useState(company.name);
   const [sending, submit] = useSubmit();
@@ -81,7 +83,76 @@ export function CompanyPanel({ company, canRename, postalAddress }: Props) {
       )}
 
       {canRename && <PostalAddress value={postalAddress} />}
+      {canRename && <SendRate value={sendRatePerHour} />}
     </Panel>
+  );
+}
+
+/**
+ * How much bulk mail leaves here in an hour.
+ *
+ * The setting exists for one job: warming a new sending domain. Going from
+ * nothing to tens of thousands of messages in an afternoon is read by every
+ * provider as a compromised account, and the reputation it costs takes weeks
+ * to earn back — so the cure is a few hundred a day, then a few thousand, and
+ * nobody can follow that by watching a progress bar.
+ */
+function SendRate({ value }: { value: number | null }) {
+  const router = useRouter();
+  const [text, setText] = useState(value === null ? "" : String(value));
+  const [sending, submit] = useSubmit();
+
+  const asked = text.trim() === "" ? null : Number(text.trim());
+  const valid = asked === null || (Number.isInteger(asked) && asked > 0);
+  const changed = valid && asked !== value;
+
+  function save() {
+    submit(async () => {
+      const result = await setWorkspaceBrandAction({ sendRatePerHour: asked });
+      if (!result.ok) {
+        toast.error(result.error);
+        return;
+      }
+      toast.success(asked === null ? "Rate limit removed" : "Rate limit saved");
+      router.refresh();
+    });
+  }
+
+  return (
+    <div className="mt-6 border-border border-t pt-5">
+      <Field label="Send no more than" htmlFor="send-rate" className="max-w-xs">
+        <div className="flex items-center gap-2">
+          <Input
+            id="send-rate"
+            inputMode="numeric"
+            value={text}
+            onChange={(event) => setText(event.target.value.replace(/[^0-9]/g, ""))}
+            onKeyDown={(event) => {
+              if (event.key === "Enter" && changed) save();
+            }}
+            placeholder="No limit"
+          />
+          <span className="shrink-0 text-[13px] text-muted-foreground">emails an hour</span>
+        </div>
+      </Field>
+
+      <Note className="mt-2 max-w-md">
+        Counted across campaigns and automations together, over a rolling hour. Nothing is dropped
+        when the ceiling is reached — the rest goes out in the hours after it. Leave it empty for no
+        limit.
+      </Note>
+
+      <Button
+        variant="outline"
+        pill
+        className="mt-3"
+        loading={sending}
+        disabled={!changed || sending}
+        onClick={save}
+      >
+        {asked === null ? "Remove limit" : "Save limit"}
+      </Button>
+    </div>
   );
 }
 

@@ -25,6 +25,7 @@ export default async function OverviewSettingsPage() {
           company={company}
           canRename={canRename}
           postalAddress={settings.postalAddress}
+          sendRatePerHour={settings.sendRatePerHour}
         />
       )}
       <OverviewPanel data={data} windowDays={OVERVIEW_WINDOW_DAYS} account={account} />

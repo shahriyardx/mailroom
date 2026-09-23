@@ -5,6 +5,7 @@ import { merge, withFooter } from "@/lib/campaign-body";
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { archiveUrl, preferencesUrl, unsubscribeUrl } from "./campaigns";
 import { deliverMessage } from "./send";
+import { sendBudget } from "./send-rate";
 
 /**
  * Sending a broadcast, a few people at a time.
@@ -55,12 +56,24 @@ export async function runBroadcastsOnce(): Promise<BroadcastRun> {
   const run: BroadcastRun = { claimed: 0, sent: 0, failed: 0 };
 
   for (const job of running) {
+    /*
+     * The hourly ceiling, if this instance set one.
+     *
+     * Checked per pass rather than once, because an automation sending
+     * alongside this campaign spends from the same allowance. Reaching it
+     * leaves the campaign exactly as it is — still sending, with everybody
+     * unsent still pending — and the next pass after the window rolls picks
+     * it back up. Nothing is dropped and nothing is sent twice.
+     */
+    const budget = await sendBudget(job.organizationId);
+    if (budget.remaining <= 0) continue;
+
     const pending = await db.query.broadcastRecipient.findMany({
       where: and(
         eq(broadcastRecipient.broadcastId, job.id),
         eq(broadcastRecipient.status, "pending"),
       ),
-      limit: BATCH,
+      limit: Math.min(BATCH, budget.remaining),
     });
 
     if (pending.length === 0) {

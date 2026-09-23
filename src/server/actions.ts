@@ -1540,6 +1540,7 @@ export async function setWorkspaceBrandAction(patch: {
   brandLogo?: string | null;
   brandAccent?: string | null;
   postalAddress?: string | null;
+  sendRatePerHour?: number | null;
 }) {
   const access = await requireAccess();
   assertCan(access, "instance:manage");

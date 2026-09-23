@@ -418,6 +418,27 @@ your replies to customers.
 Send broadcasts from their own domain, or at least their own subdomain. It is
 the single most valuable thing on this page.
 
+## Slowing it down on purpose
+
+**Settings → Company → Send no more than** sets a ceiling on how much bulk
+mail leaves this instance in an hour. Empty means no ceiling, which is the
+default.
+
+The reason to set one is **warming a new sending domain**. A domain that goes
+from nothing to tens of thousands of messages in an afternoon is read by every
+provider as a compromised account, and the reputation that costs takes weeks
+to earn back. A few hundred a day for a week, then a few thousand, is the
+boring cure — and it is not something anybody can follow by watching a
+progress bar.
+
+It counts campaigns and automations **together**, over a rolling hour. A cap
+covering only one of them would be a cap you trusted while the other quietly
+spent it, which is worse than no cap at all.
+
+Nothing is dropped when the ceiling is reached. A campaign stays as it is,
+with everybody unsent still pending, and carries on in the hours after — the
+same way it survives a restart.
+
 ## Limits worth knowing
 
 | | |

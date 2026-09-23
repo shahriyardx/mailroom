@@ -496,22 +496,17 @@ function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }
                 {signupUrl}
               </button>
 
-              {/* The same form, for a site rather than a link. Offered here
-                  because this is where somebody is when they decide people
-                  should be able to sign up. */}
+              {/* The same form, for a site rather than a link. Said rather
+                  than shown: nobody reads an iframe tag, and wrapped over two
+                  lines it is the largest thing on the page. */}
               <button
                 type="button"
                 onClick={() => take("embed", embedSnippet)}
-                className="flex w-full items-start gap-1.5 rounded-lg bg-muted px-2 py-1 text-left font-mono text-[11.5px] text-muted-foreground hover:text-foreground"
+                className="flex items-center gap-1.5 rounded-lg bg-muted px-2 py-1 text-[11.5px] text-muted-foreground hover:text-foreground"
               >
-                <span className="mt-0.5 shrink-0">
-                  {copied === "embed" ? <Check className="size-3" /> : <Code className="size-3" />}
-                </span>
-                <span className="min-w-0 break-all">{embedSnippet}</span>
+                {copied === "embed" ? <Check className="size-3" /> : <Code className="size-3" />}
+                {copied === "embed" ? "Embed code copied" : "Copy embed code for your site"}
               </button>
-              <p className="text-[11.5px] text-muted-foreground">
-                Paste that into your own site to put the form on it.
-              </p>
             </div>
           )}
         </div>

@@ -16,6 +16,7 @@ import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { preferencesUrl, subscribe, unsubscribeUrl } from "./campaigns";
 import { segmentCondition } from "./segments";
 import { deliverMessage } from "./send";
+import { sendBudget } from "./send-rate";
 
 /**
  * The clock behind automations.
@@ -451,6 +452,18 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
         at = null;
         break;
       }
+
+      /*
+       * The hourly ceiling, if this instance set one.
+       *
+       * Asked here rather than at the top of the pass because only this
+       * branch sends: a run sitting on a wait or walking a condition costs
+       * nothing and must not be held up by a campaign using the allowance.
+       * Reaching it leaves the run exactly where it is, due now, so the next
+       * pass after the window rolls carries on.
+       */
+      const budget = await sendBudget(job.orgId);
+      if (budget.remaining <= 0) continue;
 
       // An email. Anything below here sends.
       const url = unsubscribeUrl(member.id);

@@ -28,6 +28,14 @@ export interface WorkspaceSettings {
    * — but the campaign screens say so until it is filled in.
    */
   postalAddress: string | null;
+  /**
+   * The most bulk mail this instance sends in an hour. Null is no ceiling.
+   *
+   * Set while warming a new sending domain, where going from nothing to tens
+   * of thousands of messages in an afternoon is read by every provider as a
+   * compromised account.
+   */
+  sendRatePerHour: number | null;
   /** Null until the first-run wizard has been finished. */
   setupCompletedAt: Date | null;
 }
@@ -46,6 +54,7 @@ const DEFAULTS: WorkspaceSettings = {
   brandLogo: null,
   brandAccent: null,
   postalAddress: null,
+  sendRatePerHour: null,
   setupCompletedAt: null,
 };
 
@@ -62,6 +71,7 @@ export async function workspaceSettings(orgId: string): Promise<WorkspaceSetting
     brandLogo: row.brandLogo,
     brandAccent: row.brandAccent,
     postalAddress: row.postalAddress,
+    sendRatePerHour: row.sendRatePerHour,
     setupCompletedAt: row.setupCompletedAt,
   };
 }
