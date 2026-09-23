@@ -96,6 +96,11 @@ export function ColorInput({
         className="w-[232px] p-3"
         onOpenAutoFocus={(event) => keepFocus && event.preventDefault()}
         onCloseAutoFocus={(event) => keepFocus && event.preventDefault()}
+        // Applying a colour to a selection means focusing what holds it, and
+        // that is outside this layer — which would otherwise close it every
+        // time somebody picked something. A press outside still closes it;
+        // the focus moving does not.
+        onFocusOutside={(event) => keepFocus && event.preventDefault()}
       >
         <Picker value={current} onChange={onChange} onCommit={onCommit} />
       </PopoverContent>
