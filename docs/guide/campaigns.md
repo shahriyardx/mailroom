@@ -67,12 +67,97 @@ else on the list.
 The key needs the `lists:write` scope. `DELETE` on the same path with
 `{"address":"…"}` takes somebody off, and `GET /api/v1/lists` lists your lists.
 
-::: warning There is no public, keyless signup endpoint
-Every call needs an API key, so a form on your website posts to **your own
-backend**, which then calls this. A keyless endpoint anybody could find would
-be filled with junk addresses within a week, and junk addresses are what get a
-sender blocked.
+::: warning The API needs a key
+Every call to `/api/v1/lists` needs one, so a form on your website posts to
+**your own backend**, which then calls this.
+
+There is also a **hosted signup page** with no key and no account — see below.
+It is off for every list until you switch it on, because a keyless endpoint
+anybody can find will be filled with junk addresses within a week, and junk
+addresses are what get a sender blocked.
 :::
+
+### The hosted signup page
+
+Open a list and turn on **Give this list a signup page**. The address shown
+next to the switch is a plain page anybody can open:
+
+```
+https://your-instance/subscribe/lst_123
+```
+
+It is plain HTML that posts to itself — no JavaScript, so it works wherever
+you link it from. Off, that address returns a 404 rather than an explanation:
+confirming which list ids exist to anybody who guesses is not information
+worth handing out.
+
+None of its answers say whether the address was already on the list. "You are
+already subscribed" on a public form is a way to find out who is on it, one
+guess at a time.
+
+### Double opt-in
+
+Turn on **Make people confirm by email** and a new signup lands as
+`pending` instead of `subscribed`. They are sent one email with a link, and
+until they click it they are in no audience and get nothing.
+
+It costs you roughly half your signups. It is worth it: a form without it is a
+way for a stranger to sign somebody else up, and that person reports your next
+campaign as spam — which is counted against every other message from your
+domain.
+
+The confirmation link works twice. Mail providers run link scanners that
+follow every URL in a message before the reader sees it, so the second visit
+is usually not even a person.
+
+## Segments
+
+A segment is a **question about a list**, not a copy of one.
+
+| It can ask about | Examples |
+| --- | --- |
+| Engagement | Opened nothing in the last 30 days; clicked a campaign |
+| Their details | Address contains, name is set, joined after a date |
+| Merge fields | `plan is pro`, `city contains London` |
+
+The rules are stored and run **at send time**, never before. A stored list of
+members goes quietly stale — somebody who unsubscribed on Tuesday is still in
+Monday's copy of it, and they get mailed.
+
+The builder counts how many people match as you type, because a segment is a
+question and the only way to know it is the right one is the answer.
+
+A campaign aimed at a segment that matches nobody is **refused with a reason**
+rather than sent to nobody.
+
+## Testing two subject lines
+
+Fill in **Subject B** in the campaign panel. That is the whole switch — there
+is nothing else to turn on.
+
+The audience is split in half by a stable hash of the recipient, so both sides
+are the same size and the same person always lands on the same side. The
+campaign's report shows the open rate for each.
+
+::: tip A difference of a point or two is noise
+On a list of a few hundred, an A/B result only means something when it is
+large. Two subject lines that land within a few points of each other have told
+you they are equally good.
+:::
+
+## Sending it again to the people who never opened it
+
+On a finished campaign's report, **Send again to non-openers** makes a new
+draft aimed at exactly the people who were sent the original and never opened
+it.
+
+Its audience comes from that campaign's own recipients rather than from the
+list, because somebody who joined afterwards was never sent the first one, and
+a reminder about an email you never received is nonsense.
+
+It is a **draft**, not a send. The point is to change the subject line —
+sending the identical email to the same inbox twice is how you teach a mailbox
+provider to filter you.
 
 ### Uploading a file
 
@@ -112,12 +197,39 @@ Three placeholders are filled in per person:
 
 | | |
 | --- | --- |
-| `{{name}}` | Their name, or their address if you have no name |
-| `{{address}}` | Their email address |
-| `{{unsubscribe}}` | The link that takes them off this list |
+| <code v-pre>{{name}}</code> | Their name, or their address if you have no name |
+| <code v-pre>{{address}}</code> | Their email address |
+| <code v-pre>{{unsubscribe}}</code> | The link that takes them off this list |
 
-Leave `{{unsubscribe}}` out and a plain one is added at the bottom. There is no
+Leave <code v-pre>{{unsubscribe}}</code> out and a plain one is added at the bottom. There is no
 way to send without it, and that is deliberate.
+
+## The report
+
+A campaign that has started opens as its report rather than in the builder.
+What went out is what went out, and an editor over it would be offering to
+change history.
+
+| | |
+| --- | --- |
+| Sent, failed, skipped | What happened to each copy |
+| Opened, clicked | People, not events — a newsletter forwarded round an office is one reader |
+| Unsubscribed | Who this campaign cost you |
+| Bounced, complained | Fed back from SES, often hours later |
+| Links | How many **people** followed each one |
+
+Every rate is over the number **sent**, not the number delivered. Sent is the
+number you pressed a button for; dividing by delivered is the flattering
+version most tools quietly use.
+
+::: warning Clicks need switching on in SES
+Link tracking is done by SES rewriting the links in your message, which it
+only does when the configuration set says to. Without it the Links panel stays
+empty — Mailroom never sees a click.
+
+Nothing here is a redirect of our own, deliberately. A tracking domain has to
+answer forever or every link in every email you have ever sent breaks.
+:::
 
 ## How it is sent
 
@@ -156,6 +268,18 @@ directly.
 
 The link is signed rather than stored, so one dug out of a year-old email still
 works.
+
+## Your postal address
+
+Set it in **Settings → Company**. It is printed at the foot of every campaign
+and every automation.
+
+This is not decoration. US CAN-SPAM requires a valid physical postal address
+in commercial email, and Gmail's bulk sender rules lean on the same thing.
+
+Campaigns still send without one — Mailroom is not the right place to block
+your work — but every campaign screen will keep saying so until it is filled
+in.
 
 ## Keep marketing away from your real mail
 

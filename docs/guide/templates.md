@@ -75,8 +75,8 @@ Anything in double braces is filled in when you send.
 Hi {{ name }}, your order {{ order.id }} is on its way.
 ```
 
-`{{ name }}` escapes what it puts in, so a value arriving from a form cannot
-write tags into mail going out under your domain. `{{{ name }}}` does not, for
+<code v-pre>{{ name }}</code> escapes what it puts in, so a value arriving from a form cannot
+write tags into mail going out under your domain. <code v-pre>{{{ name }}}</code> does not, for
 a value that is already markup. A dot reaches into an object.
 
 A missing value is an error rather than an empty string: `Hi ,` going to a
