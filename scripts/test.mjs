@@ -43,6 +43,8 @@ const DOUBLES = {
 const STUBS = {
   "next/server": join(root, "test/fakes/next-server.ts"),
   "next/link": join(root, "test/fakes/next-link.tsx"),
+  "next/headers": join(root, "test/fakes/next-headers.ts"),
+  "next/navigation": join(root, "test/fakes/next-navigation.ts"),
 };
 
 const shims = {

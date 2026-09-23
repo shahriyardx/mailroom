@@ -20,7 +20,7 @@ import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
 import { findSegment, segmentCondition } from "@/server/segments";
-import { and, asc, count, desc, eq, inArray, isNotNull, isNull, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, inArray, isNotNull, isNull, or, sql } from "drizzle-orm";
 
 /**
  * Lists, and the broadcasts sent to them.
@@ -472,9 +472,22 @@ export interface ListRow {
   publicSignup: boolean;
 }
 
-export async function listsView(orgId: string): Promise<ListRow[]> {
+/**
+ * The lists somebody may see.
+ *
+ * `only` is the answer from `readableLists`: "all" when there is nothing to
+ * filter by — whoever runs the place, or a grant on every list — and a set of
+ * ids otherwise. Passing the ids rather than the person keeps this a query
+ * about data instead of a second place that decides who may see what.
+ */
+export async function listsView(orgId: string, only: "all" | string[] = "all"): Promise<ListRow[]> {
+  if (only !== "all" && only.length === 0) return [];
+
   const lists = await db.query.mailingList.findMany({
-    where: eq(mailingList.organizationId, orgId),
+    where:
+      only === "all"
+        ? eq(mailingList.organizationId, orgId)
+        : and(eq(mailingList.organizationId, orgId), inArray(mailingList.id, only)),
     orderBy: (row, { asc: ascending }) => [ascending(row.name)],
   });
   if (lists.length === 0) return [];
@@ -1284,7 +1297,10 @@ export interface BroadcastRow {
   opened: number;
 }
 
-export async function broadcastsView(orgId: string): Promise<BroadcastRow[]> {
+export async function broadcastsView(
+  orgId: string,
+  only: "all" | string[] = "all",
+): Promise<BroadcastRow[]> {
   const rows = await db
     .select({
       id: broadcast.id,
@@ -1297,7 +1313,24 @@ export async function broadcastsView(orgId: string): Promise<BroadcastRow[]> {
     })
     .from(broadcast)
     .leftJoin(mailingList, eq(mailingList.id, broadcast.listId))
-    .where(eq(broadcast.organizationId, orgId))
+    .where(
+      only === "all"
+        ? eq(broadcast.organizationId, orgId)
+        : and(
+            eq(broadcast.organizationId, orgId),
+            /*
+             * A campaign aimed at nobody is still visible.
+             *
+             * A draft has no audience yet, so there is no audience to be kept
+             * away from — and hiding one would mean somebody who starts a
+             * campaign before choosing a list watches it disappear.
+             */
+            or(
+              isNull(broadcast.listId),
+              only.length > 0 ? inArray(broadcast.listId, only) : sql`false`,
+            ),
+          ),
+    )
     .orderBy(desc(broadcast.createdAt));
 
   if (rows.length === 0) return [];
@@ -1585,18 +1618,33 @@ export interface CampaignsOverview {
   recent: BroadcastRow[];
 }
 
-export async function campaignsOverview(orgId: string): Promise<CampaignsOverview> {
+/** The people on the lists this view covers. */
+function memberScope(orgId: string, only: "all" | string[]) {
+  if (only === "all") return eq(listMember.organizationId, orgId);
+  if (only.length === 0) return sql`false`;
+  return and(eq(listMember.organizationId, orgId), inArray(listMember.listId, only));
+}
+
+export async function campaignsOverview(
+  orgId: string,
+  only: "all" | string[] = "all",
+): Promise<CampaignsOverview> {
   const since = new Date(Date.now() - RECENTLY * 24 * 60 * 60 * 1000);
 
   const [lists, tallies, broadcasts, movement, feedback, flows, running, events] =
     await Promise.all([
-      db.$count(mailingList, eq(mailingList.organizationId, orgId)),
+      db.$count(
+        mailingList,
+        only === "all"
+          ? eq(mailingList.organizationId, orgId)
+          : and(eq(mailingList.organizationId, orgId), inArray(mailingList.id, only)),
+      ),
       db
         .select({ status: listMember.status, howMany: count() })
         .from(listMember)
-        .where(eq(listMember.organizationId, orgId))
+        .where(memberScope(orgId, only))
         .groupBy(listMember.status),
-      broadcastsView(orgId),
+      broadcastsView(orgId, only),
       db
         .select({
           joined:
@@ -1608,7 +1656,7 @@ export async function campaignsOverview(orgId: string): Promise<CampaignsOvervie
           ),
         })
         .from(listMember)
-        .where(eq(listMember.organizationId, orgId)),
+        .where(memberScope(orgId, only)),
       /*
        * Asked of the message rows rather than the recipient rows, because a
        * bounce arrives from SES hours later against the message and never

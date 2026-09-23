@@ -16,7 +16,7 @@ import {
 import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { env } from "@/lib/env";
 import { newId } from "@/lib/utils";
-import { and, asc, count, eq, sql } from "drizzle-orm";
+import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
 import { normaliseEventName } from "./custom-events";
 
 /**
@@ -487,7 +487,8 @@ export interface AutomationRow {
   segmentName: string | null;
   listId: string | null;
   listName: string | null;
-  from: string;
+  /** Null until an address has been chosen for it. */
+  from: string | null;
   status: AutomationStatus;
   /** How many boxes are on the canvas, of every kind. */
   steps: number;
@@ -497,7 +498,10 @@ export interface AutomationRow {
   createdAt: Date;
 }
 
-export async function automationsView(orgId: string): Promise<AutomationRow[]> {
+export async function automationsView(
+  orgId: string,
+  only: "all" | string[] = "all",
+): Promise<AutomationRow[]> {
   const rows = await db
     .select({
       id: automation.id,
@@ -516,8 +520,22 @@ export async function automationsView(orgId: string): Promise<AutomationRow[]> {
     // has no list until somebody picks one on the canvas.
     .leftJoin(mailingList, eq(mailingList.id, automation.listId))
     .leftJoin(segment, eq(segment.id, automation.segmentId))
-    .innerJoin(mailbox, eq(mailbox.id, automation.mailboxId))
-    .where(eq(automation.organizationId, orgId))
+    // Left, for the same reason: a campaigns-only instance has no mailboxes,
+    // and an inner join here made every automation on one invisible.
+    .leftJoin(mailbox, eq(mailbox.id, automation.mailboxId))
+    .where(
+      only === "all"
+        ? eq(automation.organizationId, orgId)
+        : and(
+            eq(automation.organizationId, orgId),
+            // A flow that has not been pointed at a list yet has no audience
+            // to protect, and hiding it would hide the one somebody is drawing.
+            or(
+              isNull(automation.listId),
+              only.length > 0 ? inArray(automation.listId, only) : sql`false`,
+            ),
+          ),
+    )
     .orderBy(asc(automation.name));
 
   if (rows.length === 0) return [];

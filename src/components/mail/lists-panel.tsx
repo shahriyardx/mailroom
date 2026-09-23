@@ -28,7 +28,20 @@ import { toast } from "sonner";
  * that is usually two items long, and pushed the names — the thing anybody
  * opened the page for — into the remaining gutter.
  */
-export function ListsPanel({ lists }: { lists: ListSummary[] }) {
+export function ListsPanel({
+  lists,
+  canCreate = true,
+}: {
+  lists: ListSummary[];
+  /**
+   * Whether making a new list is theirs to do.
+   *
+   * Somebody granted one list can work on that list; the button that makes
+   * another belongs to whoever was given the whole collection. Hidden rather
+   * than disabled, because a button that refuses is a button that lied.
+   */
+  canCreate?: boolean;
+}) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
 
@@ -42,12 +55,12 @@ export function ListsPanel({ lists }: { lists: ListSummary[] }) {
     return lists.filter((entry) => entry.name.toLowerCase().includes(needle));
   }, [lists, query]);
 
-  const create = (
+  const create = canCreate ? (
     <Button variant="solid" size="md" onClick={() => setOpen(true)}>
       <Plus />
       Create list
     </Button>
-  );
+  ) : null;
 
   return (
     <>
@@ -65,8 +78,12 @@ export function ListsPanel({ lists }: { lists: ListSummary[] }) {
         {lists.length === 0 ? (
           <Empty
             icon={<ListChecks />}
-            title="No lists yet"
-            hint="A list is a group of people who agreed to hear from you. A campaign goes to one, so this is the first thing to make."
+            title={canCreate ? "No lists yet" : "No lists yet for you"}
+            hint={
+              canCreate
+                ? "A list is a group of people who agreed to hear from you. A campaign goes to one, so this is the first thing to make."
+                : "Nobody has given you a list to work on yet. An administrator grants one under Settings → Access."
+            }
           >
             {create}
           </Empty>

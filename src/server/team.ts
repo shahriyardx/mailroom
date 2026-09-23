@@ -6,12 +6,14 @@ import {
   domain as domainTable,
   invitation,
   mailbox as mailboxTable,
+  mailingList,
   member,
   organization,
   team,
   teamMember,
   user,
 } from "@/db/schema";
+import { CAMPAIGN_RESOURCES, MAIL_RESOURCES, type ResourceType } from "@/lib/access-scopes";
 import { newId } from "@/lib/utils";
 import { and, eq, ne } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
@@ -363,7 +365,7 @@ export interface GrantRow {
   subjectName: string;
   /** Set for a person, so two similar names can be told apart. */
   subjectEmail?: string;
-  resourceType: "domain" | "mailbox";
+  resourceType: ResourceType;
   resourceId: string;
   resourceName: string;
   canRead: boolean;
@@ -376,7 +378,7 @@ export async function listGrants() {
   const access = await requireAccess();
   assertCan(access, "access:manage");
 
-  const [rows, teams, members, domains, mailboxes] = await Promise.all([
+  const [rows, teams, members, domains, mailboxes, lists] = await Promise.all([
     db.select().from(accessGrant).where(eq(accessGrant.organizationId, access.orgId)),
     db.select().from(team).where(eq(team.organizationId, access.orgId)),
     db
@@ -386,6 +388,7 @@ export async function listGrants() {
       .where(eq(member.organizationId, access.orgId)),
     db.select().from(domainTable).where(eq(domainTable.organizationId, access.orgId)),
     db.select().from(mailboxTable).where(eq(mailboxTable.organizationId, access.orgId)),
+    db.select().from(mailingList).where(eq(mailingList.organizationId, access.orgId)),
   ]);
 
   const nameOf = (row: (typeof rows)[number]) => {
@@ -399,6 +402,10 @@ export async function listGrants() {
   const resourceOf = (row: (typeof rows)[number]) => {
     if (row.resourceType === "domain") {
       return domains.find((entry) => entry.id === row.resourceId)?.name ?? "a deleted domain";
+    }
+    if (row.resourceType === "lists") return "Every list";
+    if (row.resourceType === "list") {
+      return lists.find((entry) => entry.id === row.resourceId)?.name ?? "a deleted list";
     }
     return mailboxes.find((entry) => entry.id === row.resourceId)?.address ?? "a deleted mailbox";
   };
@@ -414,7 +421,7 @@ export async function listGrants() {
     subjectId: row.subjectId,
     subjectName: nameOf(row),
     subjectEmail: emailOf(row),
-    resourceType: row.resourceType as "domain" | "mailbox",
+    resourceType: row.resourceType as ResourceType,
     resourceId: row.resourceId,
     resourceName: resourceOf(row),
     canRead: row.canRead,
@@ -424,18 +431,22 @@ export async function listGrants() {
   }));
 
   return {
-    grants,
+    // Split here rather than in the browser, so each half of the screen is
+    // handed exactly what it is about.
+    mailGrants: grants.filter((grant) => MAIL_RESOURCES.includes(grant.resourceType)),
+    campaignGrants: grants.filter((grant) => CAMPAIGN_RESOURCES.includes(grant.resourceType)),
     teams: teams.map(({ id, name, isRoot }) => ({ id, name, isRoot })),
     members: members.map(({ id, name, email }) => ({ id, name: name || email, email })),
     domains: domains.map(({ id, name }) => ({ id, name })),
     mailboxes: mailboxes.map(({ id, address }) => ({ id, address })),
+    lists: lists.map(({ id, name }) => ({ id, name })),
   };
 }
 
 export interface GrantInput {
   subjectType: "team" | "member";
   subjectId: string;
-  resourceType: "domain" | "mailbox";
+  resourceType: ResourceType;
   /** One or many. Granting several at once writes one grant for each. */
   resourceIds: string[];
   canSend: boolean;
@@ -464,13 +475,14 @@ export async function setGrantsAction(input: GrantInput) {
 
   revalidatePath("/settings/access");
   revalidatePath("/mail", "layout");
+  revalidatePath("/campaigns", "layout");
   return { ok: true as const, count: input.resourceIds.length };
 }
 
 export async function setGrantAction(input: {
   subjectType: "team" | "member";
   subjectId: string;
-  resourceType: "domain" | "mailbox";
+  resourceType: ResourceType;
   resourceId: string;
   canRead: boolean;
   canSend: boolean;
@@ -505,6 +517,7 @@ export async function setGrantAction(input: {
 
   revalidatePath("/settings/access");
   revalidatePath("/mail", "layout");
+  revalidatePath("/campaigns", "layout");
   return { ok: true as const };
 }
 
@@ -553,6 +566,7 @@ export async function removeGrantAction(grantId: string) {
     .where(and(eq(accessGrant.id, grantId), eq(accessGrant.organizationId, access.orgId)));
   revalidatePath("/settings/access");
   revalidatePath("/mail", "layout");
+  revalidatePath("/campaigns", "layout");
 }
 
 /** Issues a new link for an invitation that was never opened. */

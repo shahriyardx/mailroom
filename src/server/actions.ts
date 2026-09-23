@@ -35,6 +35,17 @@ import {
   updateNode,
 } from "@/server/automations";
 import {
+  assertCanCreateList,
+  assertCanManageList,
+  assertCanRunAutomation,
+  assertCanSendBroadcast,
+  assertCanSendToList,
+  automationOfNode,
+  hasCampaignAccess,
+  listOfMember,
+  listOfSegment,
+} from "@/server/campaign-access";
+import {
   addMembers,
   audienceSize,
   cancelBroadcast,
@@ -1627,7 +1638,7 @@ export async function finishSetupAction() {
 
 export async function createListAction(name: string, description?: string) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  await assertCanCreateList(access);
   try {
     await createList(access.orgId, name, description);
     revalidatePath("/campaigns/lists");
@@ -1639,7 +1650,7 @@ export async function createListAction(name: string, description?: string) {
 
 export async function removeListAction(listId: string) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  await assertCanManageList(access, listId);
   try {
     await removeList(access.orgId, listId);
     revalidatePath("/campaigns/lists");
@@ -1653,7 +1664,7 @@ export async function removeListAction(listId: string) {
 
 export async function addListMembersAction(listId: string, text: string, consentSource: string) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  await assertCanManageList(access, listId);
   try {
     const result = await addMembers(
       access.orgId,
@@ -1673,7 +1684,9 @@ export async function setListMemberStatusAction(
   status: "subscribed" | "unsubscribed",
 ) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  const onList = await listOfMember(access.orgId, memberId);
+  if (!onList) throw new Error("No such person");
+  await assertCanManageList(access, onList);
   await setMemberStatus(access.orgId, memberId, status);
   revalidatePath("/campaigns/lists");
   return { ok: true as const };
@@ -1681,7 +1694,9 @@ export async function setListMemberStatusAction(
 
 export async function removeListMemberAction(memberId: string) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  const onList = await listOfMember(access.orgId, memberId);
+  if (!onList) throw new Error("No such person");
+  await assertCanManageList(access, onList);
   await removeMember(access.orgId, memberId);
   revalidatePath("/campaigns/lists");
   return { ok: true as const };
@@ -1699,6 +1714,7 @@ export async function createBroadcastAction(input: {
 }) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendToList(access, input.listId);
   try {
     const id = await createBroadcast(access.orgId, input);
     revalidatePath("/campaigns/broadcasts");
@@ -1724,6 +1740,9 @@ export async function updateBroadcastAction(
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendBroadcast(access, id);
+  // Aiming a draft somewhere new needs the right to send there as well.
+  await assertCanSendToList(access, input.listId);
   try {
     await updateBroadcast(access.orgId, id, {
       subject: input.subject,
@@ -1751,6 +1770,7 @@ export async function updateBroadcastAction(
 export async function startBroadcastAction(broadcastId: string, when?: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendBroadcast(access, broadcastId);
   try {
     const at = when ? new Date(when) : null;
     const result = await startBroadcast(access.orgId, broadcastId, at);
@@ -1764,6 +1784,7 @@ export async function startBroadcastAction(broadcastId: string, when?: string) {
 export async function cancelBroadcastAction(broadcastId: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendBroadcast(access, broadcastId);
   await cancelBroadcast(access.orgId, broadcastId);
   revalidatePath("/campaigns/broadcasts");
   return { ok: true as const };
@@ -1783,7 +1804,7 @@ export async function updateListAction(
   },
 ) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  await assertCanManageList(access, listId);
   try {
     await updateList(access.orgId, listId, input);
     revalidatePath("/campaigns/lists");
@@ -1801,7 +1822,7 @@ export async function createSegmentAction(input: {
   rules?: unknown;
 }) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  await assertCanManageList(access, input.listId);
   try {
     const id = await createSegment(access.orgId, input);
     revalidatePath("/campaigns/lists");
@@ -1816,7 +1837,9 @@ export async function updateSegmentAction(
   input: { name?: string; matchAll?: boolean; rules?: unknown },
 ) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  const describes = await listOfSegment(access.orgId, id);
+  if (!describes) throw new Error("No such segment");
+  await assertCanManageList(access, describes);
   try {
     await updateSegment(access.orgId, id, input);
     revalidatePath("/campaigns/lists");
@@ -1839,7 +1862,7 @@ export async function segmentPreviewAction(input: {
   rules: unknown;
 }) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  await assertCanManageList(access, input.listId);
   try {
     const size = await segmentSize(access.orgId, {
       listId: input.listId,
@@ -1855,7 +1878,9 @@ export async function segmentPreviewAction(input: {
 
 export async function removeSegmentAction(id: string) {
   const access = await requireAccess();
-  assertCan(access, "rules:manage");
+  const describes = await listOfSegment(access.orgId, id);
+  if (!describes) throw new Error("No such segment");
+  await assertCanManageList(access, describes);
   await removeSegment(access.orgId, id);
   revalidatePath("/campaigns/lists");
   return { ok: true as const };
@@ -1868,12 +1893,14 @@ export async function audienceSizeAction(
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendBroadcast(access, broadcastId);
   return { ok: true as const, size: await audienceSize(access.orgId, broadcastId, aim) };
 }
 
 export async function duplicateBroadcastAction(id: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendBroadcast(access, id);
   try {
     const made = await duplicateBroadcast(access.orgId, id);
     revalidatePath("/campaigns/broadcasts");
@@ -1886,6 +1913,7 @@ export async function duplicateBroadcastAction(id: string) {
 export async function resendToNonOpenersAction(id: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanSendBroadcast(access, id);
   try {
     const made = await resendToNonOpeners(access.orgId, id);
     revalidatePath("/campaigns/broadcasts");
@@ -1906,6 +1934,7 @@ export async function createAutomationAction(input: {
 }) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  if (!(await hasCampaignAccess(access))) throw new Error("You cannot create an automation");
   try {
     const id = await createAutomation(access.orgId, input);
     revalidatePath("/campaigns/automations");
@@ -1931,6 +1960,9 @@ export async function updateAutomationAction(
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, id);
+  // Pointing it at another list needs the right to send to that one too.
+  await assertCanSendToList(access, input.listId);
   try {
     await updateAutomation(access.orgId, id, input);
     revalidatePath("/campaigns/automations");
@@ -1944,6 +1976,7 @@ export async function updateAutomationAction(
 export async function removeAutomationAction(id: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, id);
   await removeAutomation(access.orgId, id);
   revalidatePath("/campaigns/automations");
   return { ok: true as const };
@@ -1955,6 +1988,7 @@ export async function addNodeAction(
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, automationId);
   try {
     const id = await addNode(access.orgId, automationId, input);
     revalidatePath(`/campaigns/automations/${automationId}`);
@@ -1980,6 +2014,9 @@ export async function updateNodeAction(
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  const owning = await automationOfNode(access.orgId, nodeId);
+  if (!owning) throw new Error("No such step");
+  await assertCanRunAutomation(access, owning);
   try {
     await updateNode(access.orgId, nodeId, {
       subject: input.subject,
@@ -2011,6 +2048,7 @@ export async function updateNodeAction(
 export async function removeNodeAction(automationId: string, nodeId: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, automationId);
   await removeNode(access.orgId, nodeId);
   revalidatePath(`/campaigns/automations/${automationId}`);
   return { ok: true as const };

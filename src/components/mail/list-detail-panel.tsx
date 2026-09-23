@@ -67,6 +67,7 @@ export function ListDetailPanel({
   members,
   segments,
   appUrl,
+  canManage = true,
 }: {
   list: ListSummary;
   members: MemberRow[];
@@ -74,6 +75,15 @@ export function ListDetailPanel({
   segments: SegmentRow[];
   /** Where this instance answers, so the signup link can be shown in full. */
   appUrl: string;
+  /**
+   * Whether changing the list is theirs to do.
+   *
+   * A grant can say read without saying manage, and somebody who may look at
+   * an audience should not be shown a delete button that refuses. Taking a
+   * copy away — the export — is the strongest thing on this screen, so it
+   * goes with managing rather than with reading.
+   */
+  canManage?: boolean;
 }) {
   const router = useRouter();
   const [busy, startTransition] = useTransition();
@@ -125,12 +135,12 @@ export function ListDetailPanel({
     });
   }
 
-  const add = (
+  const add = canManage ? (
     <Button variant="solid" size="md" onClick={() => setAdding(true)}>
       <UserPlus />
       Add people
     </Button>
-  );
+  ) : null;
 
   return (
     <>
@@ -155,22 +165,26 @@ export function ListDetailPanel({
         {/* A plain link, not a fetch: the browser saves a file it was sent,
             and building a blob here would put the whole audience into a
             string first for no reason. */}
-        <Button asChild variant="ghost" size="md">
-          <a href={`/api/campaigns/lists/${list.id}/export`} download>
-            <Download />
-            Export
-          </a>
-        </Button>
-        <Button variant="danger" size="md" disabled={busy} onClick={() => setDeleting(true)}>
-          <Trash2 />
-          Delete
-        </Button>
+        {canManage && (
+          <>
+            <Button asChild variant="ghost" size="md">
+              <a href={`/api/campaigns/lists/${list.id}/export`} download>
+                <Download />
+                Export
+              </a>
+            </Button>
+            <Button variant="danger" size="md" disabled={busy} onClick={() => setDeleting(true)}>
+              <Trash2 />
+              Delete
+            </Button>
+          </>
+        )}
         {add}
       </PageHeader>
 
-      <JoiningSettings list={list} appUrl={appUrl} />
+      {canManage && <JoiningSettings list={list} appUrl={appUrl} />}
 
-      <ListSegments list={list} segments={segments} />
+      <ListSegments list={list} segments={segments} canManage={canManage} />
 
       {members.length > 0 ? (
         <Toolbar>
@@ -183,7 +197,11 @@ export function ListDetailPanel({
           <Empty
             icon={<Users />}
             title="Nobody on this list yet"
-            hint="Add the people who agreed to hear from you. You will be asked where they came from."
+            hint={
+              canManage
+                ? "Add the people who agreed to hear from you. You will be asked where they came from."
+                : "Nobody has been added to this list yet."
+            }
           >
             {add}
           </Empty>
@@ -236,7 +254,7 @@ export function ListDetailPanel({
                 </div>
               </div>
 
-              {person.status === "subscribed" ? (
+              {canManage && person.status === "subscribed" ? (
                 <Button
                   variant="outline"
                   size="sm"
@@ -252,14 +270,16 @@ export function ListDetailPanel({
                 </Button>
               ) : null}
 
-              <Button
-                variant="danger-ghost"
-                size="sm"
-                disabled={busy}
-                onClick={() => run(() => removeListMemberAction(person.id), "Removed")}
-              >
-                Remove
-              </Button>
+              {canManage && (
+                <Button
+                  variant="danger-ghost"
+                  size="sm"
+                  disabled={busy}
+                  onClick={() => run(() => removeListMemberAction(person.id), "Removed")}
+                >
+                  Remove
+                </Button>
+              )}
             </Row>
           ))
         )}
@@ -528,7 +548,16 @@ function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }
  * the page showing that list — not a screen elsewhere where the first thing
  * to do is pick the list again. The same editor opens in both places.
  */
-function ListSegments({ list, segments }: { list: ListSummary; segments: SegmentRow[] }) {
+function ListSegments({
+  list,
+  segments,
+  canManage,
+}: {
+  list: ListSummary;
+  segments: SegmentRow[];
+  /** A segment is a change to the list, so describing one is managing it. */
+  canManage: boolean;
+}) {
   const router = useRouter();
   const [draft, setDraft] = useState<SegmentDraft | null>(null);
   const [removing, setRemoving] = useState<SegmentRow | null>(null);
@@ -539,10 +568,12 @@ function ListSegments({ list, segments }: { list: ListSummary; segments: Segment
     <Surface className="mb-3">
       <div className="flex items-center gap-2 border-border border-b px-4 pt-3 pb-2">
         <span className="eyebrow flex-1">Segments of this list</span>
-        <Button variant="ghost" size="sm" onClick={() => setDraft(blankSegment(list.id))}>
-          <Plus />
-          New segment
-        </Button>
+        {canManage && (
+          <Button variant="ghost" size="sm" onClick={() => setDraft(blankSegment(list.id))}>
+            <Plus />
+            New segment
+          </Button>
+        )}
       </div>
 
       <ConfirmDialog
@@ -599,21 +630,25 @@ function ListSegments({ list, segments }: { list: ListSummary; segments: Segment
                 ? "nobody yet"
                 : `${row.size} ${row.size === 1 ? "person" : "people"}`}
             </Badge>
-            <IconButton asChild label={`Export ${row.name}`}>
-              <a href={`/api/campaigns/lists/${list.id}/export?segment=${row.id}`} download>
-                <Download />
-              </a>
-            </IconButton>
-            <IconButton label={`Edit ${row.name}`} onClick={() => setDraft(draftFrom(row))}>
-              <Pencil />
-            </IconButton>
-            <IconButton
-              variant="danger"
-              label={`Delete ${row.name}`}
-              onClick={() => setRemoving(row)}
-            >
-              <Trash2 />
-            </IconButton>
+            {canManage && (
+              <>
+                <IconButton asChild label={`Export ${row.name}`}>
+                  <a href={`/api/campaigns/lists/${list.id}/export?segment=${row.id}`} download>
+                    <Download />
+                  </a>
+                </IconButton>
+                <IconButton label={`Edit ${row.name}`} onClick={() => setDraft(draftFrom(row))}>
+                  <Pencil />
+                </IconButton>
+                <IconButton
+                  variant="danger"
+                  label={`Delete ${row.name}`}
+                  onClick={() => setRemoving(row)}
+                >
+                  <Trash2 />
+                </IconButton>
+              </>
+            )}
           </Row>
         ))
       )}

@@ -1,5 +1,6 @@
+import { requireAccess } from "@/server/access";
+import { listRights } from "@/server/campaign-access";
 import { exportMembers, findList } from "@/server/campaigns";
-import { requireCapability } from "@/server/permissions";
 import { type NextRequest, NextResponse } from "next/server";
 
 export const runtime = "nodejs";
@@ -28,8 +29,14 @@ function slug(name: string) {
  * own page. `GET /api/v1/lists` is where a key belongs.
  */
 export async function GET(request: NextRequest, { params }: { params: Promise<{ id: string }> }) {
-  const access = await requireCapability("mail:send");
+  const access = await requireAccess();
   const { id } = await params;
+
+  // Taking a copy of an audience away with you is the strongest thing anybody
+  // does to a list, so it asks for the strongest right on it.
+  if (!(await listRights(access, id)).manage) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
 
   const list = await findList(access.orgId, id);
   if (!list) return NextResponse.json({ error: "not_found" }, { status: 404 });

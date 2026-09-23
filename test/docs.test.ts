@@ -145,9 +145,7 @@ test("a keyword, a string and a comment each get their own colour", () => {
 });
 
 test("a key in JSON is told apart from a value", () => {
-  const markup = renderToStaticMarkup(
-    highlight('{ "id": "msg_1" }', "json") as React.ReactElement,
-  );
+  const markup = renderToStaticMarkup(highlight('{ "id": "msg_1" }', "json") as React.ReactElement);
   // Two strings, coloured differently: the name of the field and its value.
   assert.ok(markup.includes("text-info"), "the key is not marked as a key");
   assert.ok(markup.includes("text-ok"), "the value is not marked as a string");

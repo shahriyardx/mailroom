@@ -199,8 +199,8 @@ export function AutomationsPanel({
                     </p>
                   </Link>
                   <p className="mt-0.5 truncate text-[12px] text-muted-foreground">
-                    {row.steps} {row.steps === 1 ? "box" : "boxes"} · {describeStart(row)} · from{" "}
-                    {row.from}
+                    {row.steps} {row.steps === 1 ? "box" : "boxes"} · {describeStart(row)}
+                    {row.from ? ` · from ${row.from}` : " · no address yet"}
                   </p>
                 </div>
                 <span className="shrink-0 text-right text-[12px] text-muted-foreground tabular-nums">
