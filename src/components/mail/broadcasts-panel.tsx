@@ -3,6 +3,7 @@
 import {
   Badge,
   Button,
+  ConfirmDialog,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -58,6 +59,8 @@ export function BroadcastsPanel({
   templates: { id: string; name: string }[];
 }) {
   const router = useRouter();
+  /** The campaign a Send button has been pressed on, before it is confirmed. */
+  const [sending, setSending] = useState<BroadcastRow | null>(null);
   const [busy, startTransition] = useTransition();
 
   const [open, setOpen] = useState(false);
@@ -144,6 +147,32 @@ export function BroadcastsPanel({
         </Toolbar>
       ) : null}
 
+      {/*
+        Sending is the one thing on this screen that cannot be called back, so
+        it is asked about rather than done. The builder's Send asks too; a
+        button here that fired on one click would mean the same action had two
+        very different amounts of protection depending on where it was pressed.
+      */}
+      <ConfirmDialog
+        open={sending !== null}
+        onOpenChange={(next) => !next && setSending(null)}
+        title="Send this campaign now?"
+        description={sending?.subject}
+        consequences={
+          <>
+            It goes to everybody the campaign is aimed at on {sending?.listName}. This cannot be
+            called back once it starts.
+          </>
+        }
+        confirmLabel="Send it"
+        onConfirm={() => {
+          if (!sending) return;
+          const going = sending;
+          setSending(null);
+          run(() => startBroadcastAction(going.id), "Sending started");
+        }}
+      />
+
       <Surface>
         {broadcasts.length === 0 ? (
           <Empty
@@ -205,13 +234,7 @@ export function BroadcastsPanel({
               ) : null}
 
               {entry.status === "draft" ? (
-                <Button
-                  variant="solid"
-                  size="sm"
-                  disabled={busy}
-                  title="Sends to everyone subscribed to that list. This cannot be undone."
-                  onClick={() => run(() => startBroadcastAction(entry.id), "Sending started")}
-                >
+                <Button variant="solid" size="sm" disabled={busy} onClick={() => setSending(entry)}>
                   Send
                 </Button>
               ) : null}

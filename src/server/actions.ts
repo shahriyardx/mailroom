@@ -72,7 +72,13 @@ import { upsertLabel } from "@/server/labels";
 import { assertCan, can } from "@/server/permissions";
 import { type Appearance, saveAppearance } from "@/server/preferences";
 import { forgetBrowser, forgetEveryBrowser, pushToUsers, rememberBrowser } from "@/server/push";
-import { createSegment, removeSegment, updateSegment } from "@/server/segments";
+import {
+  createSegment,
+  readRules,
+  removeSegment,
+  segmentSize,
+  updateSegment,
+} from "@/server/segments";
 import { emptyTrash, restoreThreads, trashThreads } from "@/server/trash";
 import { saveWorkspaceSettings } from "@/server/workspace";
 import type { EventType } from "@aws-sdk/client-sesv2";
@@ -1766,6 +1772,33 @@ export async function updateSegmentAction(
     return { ok: true as const };
   } catch (error) {
     return failure(error, "That segment could not be changed");
+  }
+}
+
+/**
+ * How many people a segment would match, before it exists.
+ *
+ * Asked as the rules are typed. A segment is a question, and finding out the
+ * answer by saving it and going back to the list is how somebody ends up
+ * aiming a campaign at nobody without noticing.
+ */
+export async function segmentPreviewAction(input: {
+  listId: string;
+  matchAll: boolean;
+  rules: unknown;
+}) {
+  const access = await requireAccess();
+  assertCan(access, "rules:manage");
+  try {
+    const size = await segmentSize(access.orgId, {
+      listId: input.listId,
+      matchAll: input.matchAll,
+      rules: readRules(input.rules),
+    });
+    return { ok: true as const, size };
+  } catch {
+    // A half-typed rule is not an error worth showing; the count just waits.
+    return { ok: false as const, size: 0 };
   }
 }
 

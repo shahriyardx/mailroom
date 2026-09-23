@@ -106,6 +106,33 @@ describe("laying a flow out", () => {
     }
   });
 
+  it("gives each branch its own plus", () => {
+    // Both edges leave a condition from the same point. Anchored there, the
+    // two buttons land on top of each other and the "Yes" label is hidden
+    // underneath the "No".
+    const plan = layout(
+      [node("q", { kind: "condition", next: "yes", nextElse: "no" }), node("yes"), node("no")],
+      "q",
+    );
+    const [first, second] = plan.edges.filter((edge) => edge.from === "q");
+    assert.ok(first && second);
+    assert.ok(Math.abs(first.x - second.x) >= NODE_WIDTH);
+  });
+
+  it("gives each empty branch its own plus too", () => {
+    const plan = layout([node("q", { kind: "condition" })], "q");
+    const [first, second] = plan.edges.filter((edge) => edge.from === "q");
+    assert.ok(first && second);
+    assert.ok(Math.abs(first.x - second.x) >= NODE_WIDTH);
+  });
+
+  it("gives a dead end no way out", () => {
+    // Taking somebody off the list ends their journey. An arrow under it
+    // would offer a "+" and invite a box that could never be reached.
+    const plan = layout([node("bye", { kind: "unsubscribe" })], "bye");
+    assert.equal(plan.edges.filter((edge) => edge.from === "bye").length, 0);
+  });
+
   it("does not hang on a flow that points back at itself", () => {
     // The editor cannot build one. A half-applied edit under an open page in
     // principle could, and walking it forever would freeze the tab.

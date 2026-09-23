@@ -81,6 +81,8 @@ function spread(id: string | null, by: Map<string, FlowNode>, seen: Set<string>)
     // is a branch nobody discovers.
     return spread(node.next, by, seen) + spread(node.nextElse, by, seen);
   }
+  // A dead end takes one column and nothing after it.
+  if (node.kind === "unsubscribe") return 1;
   return Math.max(1, spread(node.next, by, seen));
 }
 
@@ -126,6 +128,16 @@ export function layout(nodes: FlowNode[], entryId: string | null): Layout {
       edges.push(elbow(id, node.next, "next", centre, y, yesCentre, (depth + 1) * row));
       edges.push(elbow(id, node.nextElse, "nextElse", centre, y, noCentre, (depth + 1) * row));
       return centre;
+    }
+
+    /*
+     * Taking somebody off the list ends their journey, so it has no way out.
+     * Drawing one would offer a "+" under it and invite somebody to add a box
+     * that could never be reached.
+     */
+    if (node.kind === "unsubscribe") {
+      placed.push({ id, x: left, y });
+      return left + NODE_WIDTH / 2;
     }
 
     const centre = place(node.next, left, depth + 1);
@@ -194,12 +206,28 @@ function elbow(
   const endY = to ? toY : startY + GAP_Y - 18;
   const bendY = startY + (endY - startY) / 2;
 
-  const path =
-    Math.abs(toX - fromX) < 1
-      ? `M ${fromX} ${startY} L ${fromX} ${endY}`
-      : `M ${fromX} ${startY} L ${fromX} ${bendY - 10} Q ${fromX} ${bendY} ${fromX + Math.sign(toX - fromX) * 10} ${bendY} L ${toX - Math.sign(toX - fromX) * 10} ${bendY} Q ${toX} ${bendY} ${toX} ${bendY + 10} L ${toX} ${endY}`;
+  const bent = Math.abs(toX - fromX) >= 1;
 
-  return { from, to, branch, x: to ? fromX : toX, y: to ? bendY : endY, path };
+  const path = bent
+    ? `M ${fromX} ${startY} L ${fromX} ${bendY - 10} Q ${fromX} ${bendY} ${fromX + Math.sign(toX - fromX) * 10} ${bendY} L ${toX - Math.sign(toX - fromX) * 10} ${bendY} Q ${toX} ${bendY} ${toX} ${bendY + 10} L ${toX} ${endY}`
+    : `M ${fromX} ${startY} L ${fromX} ${endY}`;
+
+  /*
+   * The "+" goes on the child's own arm, not on the parent's centre.
+   *
+   * A condition's two edges leave from the same point, so anchoring there put
+   * both buttons in exactly the same place — one on top of the other, with
+   * the "Yes" label hidden underneath the "No". On the arm they belong to,
+   * each branch has its own button and its own label.
+   */
+  return {
+    from,
+    to,
+    branch,
+    x: toX,
+    y: bent ? (bendY + endY) / 2 : (startY + endY) / 2,
+    path,
+  };
 }
 
 /**

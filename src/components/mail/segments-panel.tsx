@@ -25,11 +25,17 @@ import {
   SelectValue,
 } from "@/components/kit";
 import type { SegmentRule } from "@/db/schema";
-import { createSegmentAction, removeSegmentAction, updateSegmentAction } from "@/server/actions";
+import { cn } from "@/lib/utils";
+import {
+  createSegmentAction,
+  removeSegmentAction,
+  segmentPreviewAction,
+  updateSegmentAction,
+} from "@/server/actions";
 import type { SegmentRow } from "@/server/segments";
 import { Filter, Pencil, Plus, Trash2, X } from "lucide-react";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -307,10 +313,7 @@ export function SegmentsPanel({
                 </Button>
               </div>
 
-              <Note>
-                A segment with no rules is the whole list. Nothing is ever sent to nobody by
-                accident — a send that matches nobody is refused with a reason.
-              </Note>
+              <Matches draft={draft} />
             </div>
 
             <DialogFooter>
@@ -447,5 +450,65 @@ function RuleRow({
         <X />
       </IconButton>
     </div>
+  );
+}
+
+/** How long to sit still before asking the server. Milliseconds. */
+const SETTLE = 450;
+
+/**
+ * How many people the rules currently match.
+ *
+ * Asked as they are typed, because a segment is a question and the only way
+ * to know whether it is the right one is the answer. Without it somebody
+ * saves, goes back to the list, sees "0", and has no idea which rule did it.
+ */
+function Matches({ draft }: { draft: Draft }) {
+  const [size, setSize] = useState<number | null>(null);
+  const [asking, setAsking] = useState(false);
+
+  const question = JSON.stringify({
+    listId: draft.listId,
+    matchAll: draft.matchAll,
+    rules: draft.rules,
+  });
+
+  useEffect(() => {
+    if (!draft.listId) return;
+    let alive = true;
+    setAsking(true);
+
+    // Waited on rather than asked per keystroke: every letter of a value is
+    // otherwise a count over the whole list.
+    const timer = setTimeout(async () => {
+      const result = await segmentPreviewAction(JSON.parse(question));
+      if (!alive) return;
+      setAsking(false);
+      setSize(result.ok ? result.size : null);
+    }, SETTLE);
+
+    return () => {
+      alive = false;
+      clearTimeout(timer);
+    };
+  }, [question, draft.listId]);
+
+  return (
+    <Note className={cn("transition-opacity", asking && "opacity-50")}>
+      {size === null ? (
+        "Counting…"
+      ) : size === 0 ? (
+        <span className="text-warn">
+          Nothing matches these rules. A campaign aimed here would be refused rather than sent to
+          nobody.
+        </span>
+      ) : (
+        <>
+          <strong className="text-foreground">{size}</strong>{" "}
+          {size === 1 ? "person matches" : "people match"} right now. The rules are asked again each
+          time a campaign is sent, so this is never out of date.
+        </>
+      )}
+    </Note>
   );
 }
