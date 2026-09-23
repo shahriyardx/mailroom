@@ -1,38 +1,49 @@
 import "server-only";
 import { db } from "@/db";
-import { domain, mailbox, mailingList } from "@/db/schema";
+import { domain } from "@/db/schema";
 import { env } from "@/lib/env";
 import { and, eq } from "drizzle-orm";
-import { cloudflareStatus } from "./integrations";
-import { workspaceSettings } from "./workspace";
+import { hasWorkspace, workspaceSettings } from "./workspace";
 
 /**
  * What a new instance still has to do.
  *
- * This is a checklist rather than a wizard that walks you through each screen.
- * Four of these steps already have a screen of their own — domains, the
- * inbound worker, mailboxes — and a wizard that reimplemented them would be a
- * second copy to keep in step, and a dead end for anybody who needed to do
- * something the simplified version did not offer.
+ * Two things, and deliberately only two.
  *
- * So the wizard owns the two decisions that have no home elsewhere (what this
- * instance is for, and what it is called) and then reports on the rest,
- * linking to the real screen for each. Leaving and coming back is expected:
- * every item is a live check, not a stored "done" flag, so an item that stops
- * being true goes back to undone.
+ * It used to list five: the inbound worker, a mailbox, a list. Each of those
+ * is a real job with a real screen, and none of them can be done from here —
+ * so they were five links off the end of a wizard, three of which needed a
+ * Cloudflare token or a verified domain that did not exist yet. A checklist
+ * of things you cannot yet do is a list of ways to feel behind.
+ *
+ * What is left is what a new instance genuinely cannot start without: keys to
+ * send with, and a domain to send from. The domain is added here, in a
+ * dialog, because adding one is a single field — publishing its DNS records
+ * is the long part, and that belongs in Settings → Domains where somebody
+ * will be coming back to check on it anyway.
+ *
+ * Neither is a stored "done" flag. Both are live checks, so an item that
+ * stops being true goes back to undone.
  */
 
 export interface SetupStep {
   key: string;
   title: string;
   detail: string;
-  href: string;
+  /** Only where a step is somebody else's page entirely, like the docs. */
+  href?: string;
   done: boolean;
-  /** Not needed by this instance — shown greyed rather than hidden, so the list does not shift. */
-  skipped?: boolean;
 }
 
 export interface SetupState {
+  /**
+   * True once the first two questions have been answered at least once.
+   *
+   * Which is how coming back lands on the checklist rather than on "what will
+   * you use this for?" — a reload used to send somebody to the first screen
+   * to answer a question they had already answered.
+   */
+  started: boolean;
   brandName: string | null;
   inboxEnabled: boolean;
   campaignsEnabled: boolean;
@@ -43,13 +54,12 @@ export interface SetupState {
 
 export async function setupState(orgId: string): Promise<SetupState> {
   const settings = await workspaceSettings(orgId);
+  // The row is written by the first answer, so its existence is the mark.
+  const started = await hasWorkspace(orgId);
 
-  const [domains, verifiedDomains, mailboxes, lists, cloudflare] = await Promise.all([
+  const [domains, verifiedDomains] = await Promise.all([
     db.$count(domain, eq(domain.organizationId, orgId)),
     db.$count(domain, and(eq(domain.organizationId, orgId), eq(domain.sendingEnabled, true))),
-    db.$count(mailbox, eq(mailbox.organizationId, orgId)),
-    db.$count(mailingList, eq(mailingList.organizationId, orgId)),
-    cloudflareStatus(orgId),
   ]);
 
   /*
@@ -76,48 +86,29 @@ export async function setupState(orgId: string): Promise<SetupState> {
     {
       key: "domain",
       title: "Add a domain",
+      /*
+       * Added counts, verified does not.
+       *
+       * Verification is DNS, which is somebody else's console and up to a
+       * day of waiting. Holding the checklist open on it would mean nobody
+       * finishes setting up on the day they install this.
+       */
       detail:
         verifiedDomains > 0
           ? `${verifiedDomains} verified.`
           : domains > 0
-            ? "Added, waiting on DNS. Copy the records and check back."
+            ? "Added. Publish its DNS records in Settings → Domains."
             : "The domain your mail is sent from.",
-      href: "/settings/domains",
-      done: verifiedDomains > 0,
-    },
-    {
-      key: "inbound",
-      title: "Turn on receiving",
-      detail: cloudflare.connected
-        ? "Cloudflare connected."
-        : "Deploy the worker with a Cloudflare token, then switch each domain on.",
-      href: "/settings/inbound",
-      done: cloudflare.connected,
-      skipped: !settings.inboxEnabled,
-    },
-    {
-      key: "mailbox",
-      title: "Make a mailbox",
-      detail: mailboxes > 0 ? `${mailboxes} so far.` : "An address people can write to.",
-      href: "/settings/mailboxes",
-      done: mailboxes > 0,
-      skipped: !settings.inboxEnabled,
-    },
-    {
-      key: "list",
-      title: "Make a list",
-      detail: lists > 0 ? `${lists} so far.` : "Who a broadcast goes to.",
-      href: "/settings/lists",
-      done: lists > 0,
-      skipped: !settings.campaignsEnabled,
+      done: domains > 0,
     },
   ];
 
   return {
+    started,
     brandName: settings.brandName,
     inboxEnabled: settings.inboxEnabled,
     campaignsEnabled: settings.campaignsEnabled,
     steps,
-    remaining: steps.filter((step) => !step.done && !step.skipped).length,
+    remaining: steps.filter((step) => !step.done).length,
   };
 }

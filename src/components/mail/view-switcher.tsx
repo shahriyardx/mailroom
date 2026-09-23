@@ -11,6 +11,10 @@ import Link from "next/link";
  *
  * A pair of links rather than a toggle: each side is a real place with its own
  * URL, and somebody who bookmarks the campaigns view should land there.
+ *
+ * The two halves share the width evenly. The track is as wide as the sidebar
+ * either way, so tabs sized to their own words leave a strip of empty track
+ * on the right that reads as a third option somebody forgot to draw.
  */
 export function ViewSwitcher({ current }: { current: "mail" | "campaigns" }) {
   return (
@@ -41,7 +45,7 @@ function Tab({
       href={href}
       aria-current={active ? "page" : undefined}
       title={label}
-      className={`flex items-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition-colors [&_svg]:size-3.5 ${
+      className={`flex flex-1 items-center justify-center gap-1.5 rounded-md px-2 py-1 text-[12px] font-medium transition-colors [&_svg]:size-3.5 ${
         active ? "bg-card text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
       }`}
     >

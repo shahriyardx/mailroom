@@ -114,6 +114,20 @@ export async function saveWorkspaceSettings(
     .onConflictDoUpdate({ target: workspace.organizationId, set: values });
 }
 
+/**
+ * True once anything has been saved about this instance.
+ *
+ * The row is written by the first answer in the wizard, so its existence is
+ * how a reload knows not to ask the first question again.
+ */
+export async function hasWorkspace(orgId: string) {
+  const row = await db.query.workspace.findFirst({
+    where: eq(workspace.organizationId, orgId),
+    columns: { organizationId: true },
+  });
+  return Boolean(row);
+}
+
 /** True when nobody has been through the first-run wizard yet. */
 export async function needsSetup(orgId: string) {
   const settings = await workspaceSettings(orgId);
