@@ -3,9 +3,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 import { db } from "@/db";
 import {
   type ListMemberStatus,
+  automation,
+  automationRun,
   broadcast,
   broadcastClick,
   broadcastRecipient,
+  customEvent,
   listMember,
   mailbox,
   mailingList,
@@ -1231,38 +1234,129 @@ export async function sendableMailboxes(orgId: string) {
 /* The overview                                                               */
 /* -------------------------------------------------------------------------- */
 
+/** How far back the moving numbers look. */
+const RECENTLY = 30;
+
 export interface CampaignsOverview {
   lists: number;
   subscribers: number;
   unsubscribed: number;
+  /** Joined and left in the last 30 days: which way the audience is going. */
+  joined: number;
+  left: number;
   broadcastsSent: number;
   delivered: number;
   /** Null rather than zero when nothing has been sent: 0% reads as a failure. */
   openRate: number | null;
+  clickRate: number | null;
+  /**
+   * The two that decide whether any of the others ever happen again.
+   *
+   * Gmail's bulk sender rules put the complaint rate somewhere under 0.3%,
+   * and a hard bounce rate over a few per cent is what gets an SES account
+   * reviewed. Every other number on this screen is about how a campaign did.
+   * These are about whether there will be a next one.
+   */
+  bounceRate: number | null;
+  complaintRate: number | null;
+  /** Automations switched on, and people part-way through one right now. */
+  automationsLive: number;
+  inFlight: number;
+  /** Event names declared, and how many have ever arrived. */
+  eventNames: number;
+  eventsSeen: number;
   recent: BroadcastRow[];
 }
 
 export async function campaignsOverview(orgId: string): Promise<CampaignsOverview> {
-  const [lists, tallies, broadcasts] = await Promise.all([
-    db.$count(mailingList, eq(mailingList.organizationId, orgId)),
-    db
-      .select({ status: listMember.status, howMany: count() })
-      .from(listMember)
-      .where(eq(listMember.organizationId, orgId))
-      .groupBy(listMember.status),
-    broadcastsView(orgId),
-  ]);
+  const since = new Date(Date.now() - RECENTLY * 24 * 60 * 60 * 1000);
+
+  const [lists, tallies, broadcasts, movement, feedback, flows, running, events] =
+    await Promise.all([
+      db.$count(mailingList, eq(mailingList.organizationId, orgId)),
+      db
+        .select({ status: listMember.status, howMany: count() })
+        .from(listMember)
+        .where(eq(listMember.organizationId, orgId))
+        .groupBy(listMember.status),
+      broadcastsView(orgId),
+      db
+        .select({
+          joined:
+            sql<number>`count(*) filter (where ${listMember.consentAt} >= ${since.toISOString()}::timestamptz)`.mapWith(
+              Number,
+            ),
+          left: sql<number>`count(*) filter (where ${listMember.unsubscribedAt} >= ${since.toISOString()}::timestamptz)`.mapWith(
+            Number,
+          ),
+        })
+        .from(listMember)
+        .where(eq(listMember.organizationId, orgId)),
+      /*
+       * Asked of the message rows rather than the recipient rows, because a
+       * bounce arrives from SES hours later against the message and never
+       * touches the recipient row that started it.
+       */
+      db
+        .select({
+          clicked:
+            sql<number>`count(*) filter (where ${broadcastRecipient.clickedAt} is not null)`.mapWith(
+              Number,
+            ),
+          bounced:
+            sql<number>`count(*) filter (where ${message.deliveryStatus} = 'bounced')`.mapWith(
+              Number,
+            ),
+          complained:
+            sql<number>`count(*) filter (where ${message.deliveryStatus} = 'complained')`.mapWith(
+              Number,
+            ),
+        })
+        .from(broadcastRecipient)
+        .leftJoin(message, eq(message.id, broadcastRecipient.messageId))
+        .where(
+          and(eq(broadcastRecipient.organizationId, orgId), eq(broadcastRecipient.status, "sent")),
+        ),
+      db.$count(
+        automation,
+        and(eq(automation.organizationId, orgId), eq(automation.status, "active")),
+      ),
+      db.$count(
+        automationRun,
+        and(eq(automationRun.organizationId, orgId), eq(automationRun.status, "active")),
+      ),
+      db
+        .select({
+          names: count(),
+          seen: sql<number>`coalesce(sum(${customEvent.seenCount}), 0)`.mapWith(Number),
+        })
+        .from(customEvent)
+        .where(eq(customEvent.organizationId, orgId)),
+    ]);
 
   const delivered = broadcasts.reduce((sum, row) => sum + row.sent, 0);
   const opened = broadcasts.reduce((sum, row) => sum + row.opened, 0);
+  const rate = (howMany: number) =>
+    delivered > 0 ? Math.round((howMany / delivered) * 1000) / 10 : null;
 
   return {
     lists,
     subscribers: tallies.find((row) => row.status === "subscribed")?.howMany ?? 0,
     unsubscribed: tallies.find((row) => row.status === "unsubscribed")?.howMany ?? 0,
+    joined: movement[0]?.joined ?? 0,
+    left: movement[0]?.left ?? 0,
     broadcastsSent: broadcasts.filter((row) => row.status === "sent").length,
     delivered,
+    // Whole per cent for the two that are usually large, a decimal for the two
+    // that matter at a tenth of one.
     openRate: delivered > 0 ? Math.round((opened / delivered) * 100) : null,
+    clickRate: delivered > 0 ? Math.round(((feedback[0]?.clicked ?? 0) / delivered) * 100) : null,
+    bounceRate: rate(feedback[0]?.bounced ?? 0),
+    complaintRate: rate(feedback[0]?.complained ?? 0),
+    automationsLive: flows,
+    inFlight: running,
+    eventNames: events[0]?.names ?? 0,
+    eventsSeen: events[0]?.seen ?? 0,
     recent: broadcasts.slice(0, 5),
   };
 }

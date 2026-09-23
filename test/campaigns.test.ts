@@ -881,3 +881,42 @@ describe("what a campaign did", () => {
     assert.equal(report.links[0]?.clicks, 3);
   });
 });
+
+describe("the overview", () => {
+  it("counts who joined and who left in the last thirty days", async () => {
+    const { addMembers, campaignsOverview, unsubscribeAddress } = await import(
+      "@/server/campaigns"
+    );
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "ada@example.com" }, { address: "bob@example.com" }],
+      "signup form",
+    );
+    await unsubscribeAddress(account.orgId, listId, "bob@example.com");
+
+    const view = await campaignsOverview(account.orgId);
+    assert.equal(view.subscribers, 1);
+    assert.equal(view.joined, 2);
+    assert.equal(view.left, 1);
+  });
+
+  it("leaves every rate empty until something has been sent", async () => {
+    // Zero reads as a failure. "Nothing has happened yet" is a different fact
+    // from "nothing worked", and a dash is the only way to say the first one.
+    const { campaignsOverview } = await import("@/server/campaigns");
+    const view = await campaignsOverview(account.orgId);
+    assert.equal(view.openRate, null);
+    assert.equal(view.bounceRate, null);
+    assert.equal(view.complaintRate, null);
+  });
+
+  it("reports what is running rather than only what was sent", async () => {
+    const { campaignsOverview } = await import("@/server/campaigns");
+    const view = await campaignsOverview(account.orgId);
+    assert.equal(typeof view.automationsLive, "number");
+    assert.equal(typeof view.inFlight, "number");
+    assert.equal(typeof view.eventNames, "number");
+  });
+});
