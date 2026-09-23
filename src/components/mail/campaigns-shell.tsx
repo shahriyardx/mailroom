@@ -51,57 +51,29 @@ interface Item {
 }
 
 /*
- * Two groups, because they behave differently.
+ * One list, in the order a sender works through it.
  *
- * The first is the campaigns view itself. The second is the screens a sender
- * needs constantly — where mail comes from, what happened to it, who may call
- * the API — which live in settings and are shared with the inbox side. They
- * are listed here rather than left three clicks away behind a gear, because
+ * The screens from Broadcasts down to Media are the campaigns view itself;
+ * the rest live in settings and are shared with the inbox side. They are
+ * listed here rather than left three clicks away behind a gear, because
  * somebody sending a broadcast checks their domain and their logs far more
- * often than they change a password.
- *
- * Neither group is named. The second one used to say "Sending", which is
- * true of every screen in this sidebar and so tells nobody anything: a rule
- * across the gap says the same thing without claiming to be a category.
+ * often than they change a password — and once they are all here, they are
+ * all the same kind of thing to the person reading the list. Grouping them
+ * only draws a line where none is felt.
  */
-const GROUPS: { id: string; items: Item[] }[] = [
-  {
-    id: "campaigns",
-    items: [
-      { href: "/campaigns", label: "Overview", icon: Gauge },
-      { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
-      { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
-      {
-        href: "/campaigns/templates",
-        label: "Templates",
-        icon: FileText,
-        needs: "rules:manage",
-      },
-      { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
-    ],
-  },
-  {
-    id: "operations",
-    items: [
-      { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
-      { href: "/campaigns/metrics", label: "Metrics", icon: Activity, needs: "mail:read" },
-      { href: "/campaigns/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
-      {
-        href: "/campaigns/reporting",
-        label: "Delivery",
-        icon: Activity,
-        needs: "domain:manage",
-      },
-      {
-        href: "/campaigns/blocked",
-        label: "Blocked",
-        icon: ShieldOff,
-        needs: "rules:manage",
-      },
-      { href: "/campaigns/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
-      { href: "/campaigns/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
-    ],
-  },
+const NAV: Item[] = [
+  { href: "/campaigns", label: "Overview", icon: Gauge },
+  { href: "/campaigns/broadcasts", label: "Broadcasts", icon: Megaphone },
+  { href: "/campaigns/lists", label: "Lists", icon: ListChecks },
+  { href: "/campaigns/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
+  { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
+  { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
+  { href: "/campaigns/metrics", label: "Metrics", icon: Activity, needs: "mail:read" },
+  { href: "/campaigns/logs", label: "Logs", icon: ScrollText, needs: "mail:read" },
+  { href: "/campaigns/reporting", label: "Delivery", icon: Activity, needs: "domain:manage" },
+  { href: "/campaigns/blocked", label: "Blocked", icon: ShieldOff, needs: "rules:manage" },
+  { href: "/campaigns/api-keys", label: "API keys", icon: KeyRound, needs: "apikey:manage" },
+  { href: "/campaigns/webhooks", label: "Webhooks", icon: Webhook, needs: "apikey:manage" },
 ];
 
 export function CampaignsShell({
@@ -139,40 +111,31 @@ export function CampaignsShell({
         </div>
       ) : null}
 
-      <nav className="min-h-0 flex-1 space-y-3 overflow-y-auto px-2.5 pb-3">
-        {GROUPS.map((group, index) => {
-          const items = group.items.filter((item) => !item.needs || allowed.includes(item.needs));
-          if (items.length === 0) return null;
-
-          return (
-            <div key={group.id} className={cn(index > 0 && "border-border/70 border-t pt-3")}>
-              <ul className="space-y-0.5">
-                {items.map((item) => {
-                  const active =
-                    item.href === "/campaigns"
-                      ? pathname === "/campaigns"
-                      : pathname.startsWith(item.href);
-                  return (
-                    <li key={item.href}>
-                      <Link
-                        href={item.href}
-                        className={cn(
-                          "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors [&_svg]:size-4",
-                          active
-                            ? "bg-card font-medium text-foreground shadow-sm"
-                            : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
-                        )}
-                      >
-                        <item.icon />
-                        {item.label}
-                      </Link>
-                    </li>
-                  );
-                })}
-              </ul>
-            </div>
-          );
-        })}
+      <nav className="min-h-0 flex-1 overflow-y-auto px-2.5 pb-3">
+        <ul className="space-y-0.5">
+          {NAV.filter((item) => !item.needs || allowed.includes(item.needs)).map((item) => {
+            const active =
+              item.href === "/campaigns"
+                ? pathname === "/campaigns"
+                : pathname.startsWith(item.href);
+            return (
+              <li key={item.href}>
+                <Link
+                  href={item.href}
+                  className={cn(
+                    "flex items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-[13px] transition-colors [&_svg]:size-4",
+                    active
+                      ? "bg-card font-medium text-foreground shadow-sm"
+                      : "text-muted-foreground hover:bg-card/60 hover:text-foreground",
+                  )}
+                >
+                  <item.icon />
+                  {item.label}
+                </Link>
+              </li>
+            );
+          })}
+        </ul>
       </nav>
 
       <div className="shrink-0 border-t border-border p-2.5">
