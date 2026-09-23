@@ -19,6 +19,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/kit";
+import { AddressField } from "@/components/mail/address-field";
 import { Empty, PageHeader, Row, SearchBox, Surface, Toolbar } from "@/components/mail/page-frame";
 import {
   cancelBroadcastAction,
@@ -337,26 +338,12 @@ export function BroadcastsPanel({
                   </SelectContent>
                 </Select>
               </Field>
-              <Field
-                label="From"
-                hint={mailboxes.length === 0 ? "None yet — add one later" : undefined}
-              >
-                <Select
-                  value={mailboxId}
-                  onValueChange={setMailboxId}
-                  disabled={mailboxes.length === 0}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pick an address" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {mailboxes.map((box) => (
-                      <SelectItem key={box.id} value={box.id}>
-                        {box.address}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              <Field label="From" hint="Any address on a domain you have set up">
+                <AddressField
+                  value={mailboxes.find((box) => box.id === mailboxId)?.address ?? ""}
+                  known={mailboxes.map((box) => box.address)}
+                  onResolved={(chosen) => setMailboxId(chosen.id)}
+                />
               </Field>
             </div>
 

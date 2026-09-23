@@ -24,6 +24,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/kit";
+import { AddressField } from "@/components/mail/address-field";
 import { createAutomationAction, removeAutomationAction } from "@/server/actions";
 import type { AutomationRow } from "@/server/automations";
 import { Plus, Trash2, Workflow } from "lucide-react";
@@ -147,32 +148,21 @@ export function AutomationsPanel({
               />
             </Field>
 
-            <Field
-              label="From"
-              hint={mailboxes.length === 0 ? "None yet — add one later" : undefined}
-            >
-              <Select
-                value={draft.mailboxId}
-                disabled={mailboxes.length === 0}
-                onValueChange={(value) => setDraft((current) => ({ ...current, mailboxId: value }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Pick an address" />
-                </SelectTrigger>
-                <SelectContent>
-                  {mailboxes.map((row) => (
-                    <SelectItem key={row.id} value={row.id}>
-                      {row.address}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <Field label="From" hint="Any address on a domain you have set up">
+              <AddressField
+                value={mailboxes.find((row) => row.id === draft.mailboxId)?.address ?? ""}
+                known={mailboxes.map((row) => row.address)}
+                onResolved={(chosen) =>
+                  setDraft((current) => ({ ...current, mailboxId: chosen.id }))
+                }
+              />
             </Field>
 
             <Note>
-              {mailboxes.length === 0
-                ? "There are no sending addresses yet, so this is left blank — draw the flow now and pick one before you switch it on. What starts it is chosen on the canvas too."
-                : "One address for the whole series: a welcome note and its follow-up arriving from two different people reads as two different companies. You pick what starts it — a list somebody joins, or an event your own code posts — on the canvas."}
+              One address for the whole series: a welcome note and its follow-up arriving from two
+              different people reads as two different companies. It can be left empty for now and
+              filled in before you switch the flow on. What starts it — a list somebody joins, or an
+              event your own code posts — is chosen on the canvas.
             </Note>
           </div>
 

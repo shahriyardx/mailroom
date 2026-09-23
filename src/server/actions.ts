@@ -87,13 +87,20 @@ import { and, eq, inArray, ne, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { recomputeThread } from "./aggregate";
-import { addDomain, importFromSes, refreshDomain, removeDomain, useOwnDkimKey } from "./domains";
+import {
+  addDomain,
+  importFromSes,
+  listDomainsForUser,
+  refreshDomain,
+  removeDomain,
+  useOwnDkimKey,
+} from "./domains";
 import { setEventTypes, setUpEvents } from "./events";
 import { type SubdomainReceiving, ensureSubdomainReceiving } from "./inbound";
 import { deployWorker, removeWorker, routeZoneToWorker, unrouteZone } from "./inbound";
 import { connectCloudflare, disconnectCloudflare } from "./integrations";
 import { resolveScope } from "./mailboxes";
-import { sendableMailboxesFor } from "./mailboxes";
+import { mailboxForSending, sendableMailboxesFor } from "./mailboxes";
 import { forgetMedia } from "./media";
 import { cancelJobForMessage } from "./outbox";
 import { deliverMessage } from "./send";
@@ -1399,6 +1406,47 @@ export async function sendTemplateTestAction(input: {
       error: error instanceof Error ? error.message : "It could not be sent",
     };
   }
+}
+
+/**
+ * A typed From address, turned into something that can send.
+ *
+ * Somebody running only the campaigns view does not think in mailboxes. They
+ * think "this goes out from hello@ourcompany.com", and being told to create a
+ * mailbox first is being told to learn an inbox idea to send a newsletter. So
+ * the address is typed, and the mailbox behind it is made here if it does not
+ * exist.
+ *
+ * The domain still has to be one of theirs and verified. That is not
+ * bureaucracy — SES will refuse the send otherwise, and finding out at that
+ * point means finding out after pressing Send.
+ */
+export async function resolveSendingAddressAction(rawAddress: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+
+  const address = rawAddress.trim().toLowerCase();
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address)) {
+    return { ok: false as const, error: "That is not an email address" };
+  }
+
+  const box = await mailboxForSending(access.orgId, address);
+  if (box) return { ok: true as const, id: box.id, address: box.address };
+
+  /*
+   * Said with the answer in it. "No such domain" leaves somebody guessing at
+   * which ones would have worked, and the list is short enough to print.
+   */
+  const domains = await listDomainsForUser(access.orgId);
+  const usable = domains.filter((row) => row.status === "verified" && row.sendingEnabled);
+  const tail = address.split("@")[1] ?? address;
+
+  return {
+    ok: false as const,
+    error: usable.length
+      ? `You cannot send from ${tail} yet. Try ${usable.map((row) => `@${row.name}`).join(", ")}.`
+      : `You cannot send from ${tail} yet. Add that domain under Domains and publish its DNS records first.`,
+  };
 }
 
 /** The mailboxes this person may send a test from. */

@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/kit";
+import { AddressField } from "@/components/mail/address-field";
 import { AutomationCanvas } from "@/components/mail/automation-canvas";
 import type { Automation } from "@/db/schema";
 import { type FlowNode, describeTrigger } from "@/lib/automation-flow";
@@ -159,21 +160,15 @@ export function AutomationDetail({
         </span>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
-          <Select
-            value={automation.mailboxId ?? ""}
-            onValueChange={(value) => change({ mailboxId: value })}
-          >
-            <SelectTrigger className="h-8 w-[160px] shrink-0 text-[12.5px] lg:w-[200px]">
-              <SelectValue placeholder="Pick an address" />
-            </SelectTrigger>
-            <SelectContent>
-              {mailboxes.map((row) => (
-                <SelectItem key={row.id} value={row.id}>
-                  {row.address}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          {/* Typed, not picked: an address is a thing people know, and this
+              screen has nothing to do with an inbox. */}
+          <span className="w-[160px] shrink-0 lg:w-[200px]">
+            <AddressField
+              value={mailboxes.find((row) => row.id === automation.mailboxId)?.address ?? ""}
+              known={mailboxes.map((row) => row.address)}
+              onResolved={(chosen) => change({ mailboxId: chosen.id })}
+            />
+          </span>
 
           {live ? (
             <Button

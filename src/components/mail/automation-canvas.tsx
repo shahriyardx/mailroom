@@ -14,6 +14,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/kit";
+import { MomentField } from "@/components/mail/moment-field";
 import type { AutomationNodeKind, AutomationTrigger, NodeConfig } from "@/db/schema";
 import {
   type FlowNode,
@@ -456,7 +457,10 @@ export function AutomationCanvas({
           follows the theme and costs nothing to load. */}
         <div
           ref={frame}
-          className="h-full w-full cursor-grab touch-none overflow-hidden"
+          /* Nothing on the ground is text to be copied, and a drag across it
+             is a pan — so a pan used to leave every label it passed over
+             highlighted, which reads as the canvas having gone wrong. */
+          className="h-full w-full cursor-grab touch-none select-none overflow-hidden"
           style={{
             backgroundImage:
               "radial-gradient(circle, color-mix(in oklch, var(--color-border) 90%, transparent) 1px, transparent 1px)",
@@ -1049,13 +1053,11 @@ function TriggerInspector({
 
         {trigger === "event" && (
           <div className="space-y-2">
-            <p className="eyebrow">Post it like this</p>
-            {/* Wrapped rather than scrolled sideways: in a pane this narrow a
-                line that runs off the edge hides the half somebody needs, and
-                nobody scrolls a code block horizontally to read it. */}
-            <pre className="whitespace-pre-wrap break-all rounded-lg border border-border bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
-              {call}
-            </pre>
+            {/* The call is copied rather than printed.
+                Four wrapped lines of shell in a pane this narrow is most of
+                the panel spent on something nobody reads off a screen — it
+                gets pasted into a terminal or an editor, and the docs are
+                where it belongs at length. */}
             <Button
               variant="outline"
               className="w-full"
@@ -1463,12 +1465,9 @@ function NodeInspector({
             {node.waitUntil ? (
               <>
                 <Field label="Hold them until" hint="Your own time zone.">
-                  <Input
-                    type="datetime-local"
-                    value={forInput(node.waitUntil)}
-                    onChange={(event) =>
-                      event.target.value && saveUntil(new Date(event.target.value))
-                    }
+                  <MomentField
+                    value={node.waitUntil}
+                    onChange={(when) => when && saveUntil(when)}
                   />
                 </Field>
 

@@ -28,6 +28,8 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/kit";
+import { AddressField } from "@/components/mail/address-field";
+import { MomentField } from "@/components/mail/moment-field";
 import type { AutomationNode, Broadcast, Template } from "@/db/schema";
 import {
   type Align,
@@ -4027,7 +4029,8 @@ function BroadcastDetails({
   const router = useRouter();
   const [busy, submit] = useSubmit();
   const [sending, setSending] = useState(false);
-  const [when, setWhen] = useState("");
+  /** Null means "as soon as I press Send", which is the ordinary case. */
+  const [when, setWhen] = useState<Date | null>(null);
   const [size, setSize] = useState<number | null>(null);
 
   const draft = status === "draft";
@@ -4061,7 +4064,7 @@ function BroadcastDetails({
 
   function send() {
     submit(async () => {
-      const result = await startBroadcastAction(id, when || undefined);
+      const result = await startBroadcastAction(id, when?.toISOString());
       if (!result.ok) {
         toast.error(result.error);
         return;
@@ -4180,21 +4183,16 @@ function BroadcastDetails({
 
         <Row label="From">
           {draft ? (
-            <Select
-              value={details.mailboxId}
-              onValueChange={(value) => onChange({ mailboxId: value })}
-            >
-              <SelectTrigger className="h-8 text-[12.5px]">
-                <SelectValue placeholder="Pick an address" />
-              </SelectTrigger>
-              <SelectContent>
-                {context.mailboxes.map((entry) => (
-                  <SelectItem key={entry.id} value={entry.id}>
-                    {entry.address}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            // Typed rather than picked: an address is a thing people know,
+            // and a dropdown of mailboxes is an inbox idea in a screen that
+            // has nothing to do with an inbox.
+            <AddressField
+              value={
+                context.mailboxes.find((entry) => entry.id === details.mailboxId)?.address ?? ""
+              }
+              known={context.mailboxes.map((entry) => entry.address)}
+              onResolved={(chosen) => onChange({ mailboxId: chosen.id })}
+            />
           ) : (
             <span className="text-[12.5px]">
               {context.mailboxes.find((entry) => entry.id === details.mailboxId)?.address ?? "—"}
@@ -4211,10 +4209,10 @@ function BroadcastDetails({
             {/* Empty means now. A separate "send later" mode would be a switch
                 that has to agree with a date field, and they never do. */}
             <Row label="Send at">
-              <Input
-                type="datetime-local"
+              <MomentField
                 value={when}
-                onChange={(event) => setWhen(event.target.value)}
+                onChange={setWhen}
+                emptyLabel="Send as soon as I press Send"
                 className="h-8 text-[12.5px]"
               />
             </Row>

@@ -15,7 +15,6 @@ import { cn } from "@/lib/utils";
 import type { LucideIcon } from "lucide-react";
 import {
   Activity,
-  AtSign,
   FileText,
   Gauge,
   Globe,
@@ -73,13 +72,6 @@ const NAV: Item[] = [
   { href: "/campaigns/templates", label: "Templates", icon: FileText, needs: "rules:manage" },
   { href: "/campaigns/media", label: "Media", icon: ImageIcon, needs: "rules:manage" },
   { href: "/campaigns/domains", label: "Domains", icon: Globe, needs: "domain:manage" },
-  /*
-   * A campaign has to come from an address, and on an instance running only
-   * this half there is no inbox navigation to find one in. Without this, the
-   * blank slate on Automations says "add a mailbox first" and there is
-   * nowhere to go and do it.
-   */
-  { href: "/campaigns/mailboxes", label: "Addresses", icon: AtSign, needs: "mailbox:manage" },
   { href: "/campaigns/metrics", label: "Stats", icon: Activity, needs: "mail:read" },
   { href: "/campaigns/logs", label: "Activity", icon: ScrollText, needs: "mail:read" },
   { href: "/campaigns/reporting", label: "Delivery", icon: Activity, needs: "domain:manage" },
