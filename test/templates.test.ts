@@ -341,3 +341,24 @@ describe("template scopes", () => {
     assert.equal(hasScope(expandScopes(preset.scopes), "templates:write"), false);
   });
 });
+
+describe("naming a new template", () => {
+  it("is two ordinary words", async () => {
+    const { randomName } = await import("@/lib/random-name");
+    const name = randomName();
+    assert.match(name, /^[a-z]+ [a-z]+$/);
+  });
+
+  it("does not hand out the same one every time", async () => {
+    // Not a guarantee of uniqueness — just that it is not a constant, which
+    // is what "untitled" was.
+    const { randomName } = await import("@/lib/random-name");
+    const seen = new Set(Array.from({ length: 40 }, () => randomName()));
+    assert.ok(seen.size > 1);
+  });
+
+  it("capitalises the one meant to be read", async () => {
+    const { randomTitle } = await import("@/lib/random-name");
+    assert.match(randomTitle(), /^[A-Z][a-z]+ [a-z]+$/);
+  });
+});

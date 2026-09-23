@@ -1,0 +1,170 @@
+/**
+ * A name for something that does not have one yet.
+ *
+ * Two plain English words, joined. The point is that a new template arrives
+ * already named, so saving it never stops to ask — and so a list of drafts
+ * reads as "quiet harbour" and "amber signal" rather than as four rows all
+ * called "Untitled template", which is the state a name is supposed to
+ * prevent.
+ *
+ * Ordinary words on purpose. A name somebody has to read out over a call, or
+ * search for a week later, is worth being able to spell.
+ */
+
+const FIRST = [
+  "amber",
+  "brisk",
+  "calm",
+  "clever",
+  "copper",
+  "crisp",
+  "dawn",
+  "deep",
+  "eager",
+  "early",
+  "fair",
+  "fresh",
+  "gentle",
+  "golden",
+  "grand",
+  "green",
+  "happy",
+  "hidden",
+  "humble",
+  "ivory",
+  "keen",
+  "kind",
+  "late",
+  "light",
+  "lively",
+  "lucky",
+  "mellow",
+  "merry",
+  "mild",
+  "noble",
+  "olive",
+  "open",
+  "patient",
+  "plain",
+  "polite",
+  "proud",
+  "quick",
+  "quiet",
+  "rapid",
+  "rich",
+  "ripe",
+  "rough",
+  "round",
+  "royal",
+  "sage",
+  "scarlet",
+  "sharp",
+  "silent",
+  "silver",
+  "simple",
+  "sleek",
+  "slender",
+  "smooth",
+  "snowy",
+  "solid",
+  "spare",
+  "steady",
+  "still",
+  "stout",
+  "sunny",
+  "swift",
+  "tall",
+  "tidy",
+  "true",
+  "velvet",
+  "warm",
+  "wild",
+  "wise",
+  "witty",
+  "young",
+] as const;
+
+const SECOND = [
+  "anchor",
+  "arbour",
+  "arrow",
+  "beacon",
+  "bell",
+  "bridge",
+  "brook",
+  "canvas",
+  "cedar",
+  "chapter",
+  "cinder",
+  "cliff",
+  "clover",
+  "comet",
+  "compass",
+  "cottage",
+  "crescent",
+  "current",
+  "delta",
+  "ember",
+  "falcon",
+  "feather",
+  "ferry",
+  "field",
+  "forge",
+  "fountain",
+  "garden",
+  "harbour",
+  "harvest",
+  "hollow",
+  "horizon",
+  "island",
+  "journal",
+  "kettle",
+  "lantern",
+  "ledger",
+  "linen",
+  "marble",
+  "meadow",
+  "meridian",
+  "mornings",
+  "orchard",
+  "parlour",
+  "pebble",
+  "pigeon",
+  "pillar",
+  "postbox",
+  "quarry",
+  "ribbon",
+  "river",
+  "sailing",
+  "signal",
+  "sparrow",
+  "spire",
+  "station",
+  "summit",
+  "thicket",
+  "thistle",
+  "tidings",
+  "timber",
+  "trellis",
+  "valley",
+  "verandah",
+  "wagon",
+  "willow",
+  "window",
+  "wharf",
+] as const;
+
+function pick<T>(from: readonly T[]) {
+  return from[Math.floor(Math.random() * from.length)] as T;
+}
+
+/** Two words with a space: "quiet harbour". Title case is the caller's call. */
+export function randomName() {
+  return `${pick(FIRST)} ${pick(SECOND)}`;
+}
+
+/** The same, capitalised, for somewhere a name is read rather than typed. */
+export function randomTitle() {
+  const name = randomName();
+  return name.charAt(0).toUpperCase() + name.slice(1);
+}

@@ -61,6 +61,7 @@ import {
   youtubeId,
   youtubeThumb,
 } from "@/lib/email-blocks";
+import { randomTitle } from "@/lib/random-name";
 import { slugify, templateVariables } from "@/lib/template";
 import { useSubmit } from "@/lib/use-submit";
 import { cn, newId } from "@/lib/utils";
@@ -90,6 +91,7 @@ import {
   Copy,
   CornerDownRight,
   Eye,
+  EyeOff,
   FileCode2,
   GripVertical,
   Heading as HeadingIcon,
@@ -633,6 +635,9 @@ export function BroadcastBuilder({
   return <Builder target={{ kind: "broadcast", broadcast, campaign }} basePath={basePath} />;
 }
 
+/** How long after the last keystroke an unsaved builder writes itself. */
+const AUTOSAVE_MS = 2_000;
+
 /** How many steps back the builder remembers. */
 const HISTORY = 60;
 
@@ -750,6 +755,23 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
     segmentId: campaign?.segmentId ?? "",
   });
 
+  /*
+   * A new template arrives already named, once the browser has it.
+   *
+   * Saving used to stop and say "a template needs a name", which is a refusal
+   * over something the app could have decided itself — and a list of things
+   * all called "Untitled" is the state a name exists to prevent. Two ordinary
+   * words, editable like any other.
+   *
+   * Named after mounting rather than in the initial state, because the name
+   * is random and this component is rendered on the server too: a name picked
+   * there would not be the one picked here, which is a hydration mismatch.
+   */
+  useEffect(() => {
+    if (target.kind !== "template" || template) return;
+    setDetails((current) => (current.name ? current : { ...current, name: randomTitle() }));
+  }, [target.kind, template]);
+
   const { design, setDesign, undo, redo, canUndo, canRedo } = useHistory(
     () => readDesign(source?.design) ?? emptyDesign(),
   );
@@ -803,6 +825,43 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
   const block = selected ? findBlock(design.blocks, selected) : null;
 
   const dirty = JSON.stringify({ details, design, html }) !== saved.current;
+
+  /*
+   * Saving without being asked, a couple of seconds after the typing stops.
+   *
+   * A builder is where somebody spends half an hour, and half an hour of work
+   * lost to a closed tab is the kind of thing people do not come back from.
+   * The Save button stays: it is how you say "now", and it is how you know
+   * the state of things at a glance.
+   *
+   * Through a ref because `save` is rebuilt on every keystroke, and an effect
+   * that depended on it would restart its timer every time — which is a timer
+   * that never fires.
+   */
+  const saveNow = useRef(save);
+  saveNow.current = save;
+
+  /*
+   * A template that does not exist yet waits until there is something in it.
+   *
+   * Otherwise opening the New page and typing nothing would create a row,
+   * and somebody who wandered in and left would find a template they never
+   * made. A campaign and an automation email already exist by this point, so
+   * they save from the first edit.
+   */
+  const worthSaving =
+    target.kind !== "template" ||
+    Boolean(template) ||
+    Boolean(details.subject.trim()) ||
+    design.blocks.length > 0 ||
+    Boolean(html.trim());
+
+  useEffect(() => {
+    // Nothing to write, already writing, or a campaign that has gone out.
+    if (!dirty || busy || locked || !worthSaving) return;
+    const timer = setTimeout(() => saveNow.current(true), AUTOSAVE_MS);
+    return () => clearTimeout(timer);
+  }, [dirty, busy, locked, worthSaving]);
 
   /*
    * Undo and redo, the way every other editor spells them.
@@ -924,7 +983,14 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
     setSelected((current) => (current === id ? null : current));
   }
 
-  function save() {
+  /**
+   * Writes what is on screen.
+   *
+   * `quiet` is the autosave: same work, no toast. A message every few seconds
+   * saying the thing you expected to happen happened is a message people
+   * learn to dismiss, and then they dismiss the one that mattered.
+   */
+  function save(quiet = false) {
     const body = handwritten ? { design: null, html, text: source?.text ?? undefined } : { design };
 
     if (target.kind === "step") {
@@ -938,7 +1004,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           return;
         }
         saved.current = JSON.stringify({ details, design, html });
-        toast.success("Email saved");
+        if (!quiet) toast.success("Email saved");
         router.refresh();
       });
       return;
@@ -959,7 +1025,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
           return;
         }
         saved.current = JSON.stringify({ details, design, html });
-        toast.success("Campaign saved");
+        if (!quiet) toast.success("Campaign saved");
         router.refresh();
       });
       return;
@@ -987,12 +1053,12 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
         if (template) {
           await updateTemplateAction(template.id, payload);
           saved.current = JSON.stringify({ details, design, html });
-          toast.success("Template saved");
+          if (!quiet) toast.success("Template saved");
           router.refresh();
         } else {
           const created = await createTemplateAction(payload);
           saved.current = JSON.stringify({ details, design, html });
-          toast.success("Template created");
+          if (!quiet) toast.success("Template created");
           router.replace(`${basePath}/${created.id}`);
         }
       } catch (error) {
@@ -1079,14 +1145,19 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
             </span>
           )}
 
-          <Tabs value={pane} onValueChange={(value) => setPane(value as "design" | "html")}>
-            <TabsList variant="segmented">
-              <TabsTrigger value="design" disabled={handwritten}>
-                Builder
-              </TabsTrigger>
-              <TabsTrigger value="html">HTML</TabsTrigger>
-            </TabsList>
-          </Tabs>
+          {/* Which way you are editing is not a question while you are not
+              editing. Preview is a mode, so its button says the way out of
+              it rather than the way in. */}
+          {!previewing && (
+            <Tabs value={pane} onValueChange={(value) => setPane(value as "design" | "html")}>
+              <TabsList variant="segmented">
+                <TabsTrigger value="design" disabled={handwritten}>
+                  Builder
+                </TabsTrigger>
+                <TabsTrigger value="html">HTML</TabsTrigger>
+              </TabsList>
+            </Tabs>
+          )}
 
           <Button
             variant={previewing ? "solid" : "outline"}
@@ -1094,8 +1165,8 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
             pill
             onClick={() => setPreviewing((current) => !current)}
           >
-            <Eye />
-            Preview
+            {previewing ? <EyeOff /> : <Eye />}
+            {previewing ? "Exit preview" : "Preview"}
           </Button>
 
           <Button variant="outline" size="sm" pill onClick={() => setTesting(true)}>
@@ -1109,7 +1180,13 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
             </IconButton>
           )}
 
-          <Button variant="solid" size="sm" pill onClick={save} disabled={busy || !dirty || locked}>
+          <Button
+            variant="solid"
+            size="sm"
+            pill
+            onClick={() => save()}
+            disabled={busy || !dirty || locked}
+          >
             {busy
               ? "Saving…"
               : target.kind === "template" && !template
@@ -1802,6 +1879,9 @@ interface ListProps {
   onAdd: (kind: BlockKind, at?: number, where?: Where) => void;
 }
 
+/** Anything a person puts a cursor in. Dragging from one selects text. */
+const TYPEABLE = '[contenteditable="true"], input, textarea, select';
+
 /**
  * A run of blocks, in the document or in a column of one.
  *
@@ -1813,12 +1893,28 @@ function BlockList(props: ListProps) {
   const { blocks, where, theme, selected, aim, dragging, onPoint } = props;
   const pointing = aim && sameWhere(aim.where, where) ? aim.at : null;
 
+  /*
+   * A block stops being draggable while the pointer is in something you can
+   * type into.
+   *
+   * Every block is draggable, and a native drag on an ancestor beats a text
+   * selection inside it — so dragging across a sentence to select it picked
+   * up the whole callout instead. Held down in an editor, nothing here is
+   * draggable; let go, and everything is again.
+   */
+  const [writing, setWriting] = useState(false);
+
   return (
     <>
       {blocks.map((block, index) => (
         <div
           key={block.id}
-          draggable
+          draggable={!writing}
+          onMouseDown={(event) => {
+            const target = event.target as HTMLElement | null;
+            setWriting(Boolean(target?.closest(TYPEABLE)));
+          }}
+          onMouseUp={() => setWriting(false)}
           onDragStart={(event) => {
             event.stopPropagation();
             dragging.current = block.id;
