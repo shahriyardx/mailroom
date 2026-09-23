@@ -53,6 +53,16 @@ person in each:
 | `already_running` | They are part-way through it, so nothing was done |
 | `skipped` | Nothing happened. `reason` says why |
 
+The same reply carries `stopped`: flows this event **ended**, because it was
+what they were for.
+
+```json
+{ "stopped": [{ "id": "aut_…", "name": "Cart recovery" }] }
+```
+
+An event can be both — starting one flow and ending another — which is
+exactly what `order.placed` does.
+
 `matched: 0` means nothing was listening — no automation is switched on for
 that name. The event is still recorded.
 

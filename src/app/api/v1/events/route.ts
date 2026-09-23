@@ -14,8 +14,8 @@ export const dynamic = "force-dynamic";
  * is decided here rather than by the caller — your checkout does not need to
  * know which welcome series is switched on this week.
  *
- * The reply says what happened to that person in every flow listening, and
- * why not where nothing started. An event that quietly does nothing is the
+ * The reply says what happened to that person in every flow listening, what
+ * it stopped, and why nothing started where nothing did. An event that quietly does nothing is the
  * hardest kind of thing to debug from the other end of an HTTP call.
  */
 
@@ -76,6 +76,11 @@ export const POST = apiRoute("events:write", async ({ caller, request }) => {
         name: entry.automation,
         status: entry.status,
         ...(entry.reason ? { reason: entry.reason } : {}),
+      })),
+      /* Flows this event ended, because it was the thing they were for. */
+      stopped: receipt.stopped.map((entry) => ({
+        id: entry.automationId,
+        name: entry.automation,
       })),
     });
   } catch (error) {

@@ -1871,6 +1871,8 @@ export async function updateAutomationAction(
     listId?: string | null;
     eventName?: string | null;
     segmentId?: string | null;
+    exitSegmentId?: string | null;
+    exitEventName?: string | null;
   },
 ) {
   const access = await requireAccess();

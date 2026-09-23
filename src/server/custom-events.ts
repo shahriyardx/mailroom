@@ -157,6 +157,8 @@ export interface EventReceipt {
   /** False when nobody had declared this name before it arrived. */
   declared: boolean;
   matched: EventOutcome[];
+  /** Runs this event ended, because it was what they were waiting for. */
+  stopped: { automationId: string; automation: string }[];
 }
 
 export interface EventInput {
@@ -235,6 +237,16 @@ export async function emitEvent(orgId: string, input: EventInput): Promise<Event
       ),
     );
 
+  /*
+   * The same event can also be the way out.
+   *
+   * "order.placed" starts nothing and ends everything: it is what a
+   * cart-recovery flow was for, and the run has to stop the moment it lands
+   * rather than at the next step, which could be two days later and two
+   * emails too many.
+   */
+  const stopped = await stopOnEvent(orgId, name, address);
+
   const matched: EventOutcome[] = [];
 
   for (const job of waiting) {
@@ -252,7 +264,53 @@ export async function emitEvent(orgId: string, input: EventInput): Promise<Event
     matched.push({ automationId: job.id, automation: job.name, ...outcome });
   }
 
-  return { event: name, declared: known?.declared ?? false, matched };
+  return { event: name, declared: known?.declared ?? false, matched, stopped };
+}
+
+/**
+ * Ends every run this event is the goal of, for this person.
+ *
+ * By address rather than by member id: the same person is a different row on
+ * every list, and an event about them is about the person.
+ */
+async function stopOnEvent(orgId: string, name: string, address: string) {
+  const goals = await db
+    .select({ id: automation.id, name: automation.name })
+    .from(automation)
+    .where(and(eq(automation.organizationId, orgId), eq(automation.exitEventName, name)));
+
+  const out: { automationId: string; automation: string }[] = [];
+
+  for (const job of goals) {
+    const people = await db
+      .select({ id: listMember.id })
+      .from(listMember)
+      .where(and(eq(listMember.organizationId, orgId), eq(listMember.address, address)));
+    if (people.length === 0) continue;
+
+    for (const person of people) {
+      const [run] = await db
+        .select({ id: automationRun.id })
+        .from(automationRun)
+        .where(
+          and(
+            eq(automationRun.automationId, job.id),
+            eq(automationRun.listMemberId, person.id),
+            eq(automationRun.status, "active"),
+          ),
+        )
+        .limit(1);
+      if (!run) continue;
+
+      await db
+        .update(automationRun)
+        .set({ status: "stopped", stoppedReason: `${name} happened` })
+        .where(eq(automationRun.id, run.id));
+      out.push({ automationId: job.id, automation: job.name });
+    }
+  }
+
+  return out;
 }
 
 interface Ready {

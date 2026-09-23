@@ -190,10 +190,13 @@ export function AutomationCanvas({
   eventName,
   listId,
   segmentId,
+  exitSegmentId,
+  exitEventName,
   lists,
   segments,
   events,
   templates,
+  tallies,
   appUrl,
   live,
 }: {
@@ -206,12 +209,17 @@ export function AutomationCanvas({
   listId: string | null;
   /** Narrows who the trigger applies to, or null for everybody on the list. */
   segmentId: string | null;
+  /** Lets somebody out early, whatever step they are on. */
+  exitSegmentId: string | null;
+  exitEventName: string | null;
   lists: { id: string; name: string; subscribed: number }[];
   segments: { id: string; listId: string; name: string; size: number }[];
   /** Event names already known to this account, for the picker. */
   events: { id: string; name: string; seenCount: number }[];
   /** Saved templates an email box can be started from. */
   templates: { id: string; name: string }[];
+  /** How each email box has done, by node id. */
+  tallies: Record<string, { sent: number; opened: number; clicked: number }>;
   /** For the copyable call that starts an event flow. */
   appUrl: string;
   /** Running: the canvas says so, because edits reach real people. */
@@ -650,9 +658,16 @@ export function AutomationCanvas({
                     y={spot.y + PAD}
                     eyebrow={kind?.short ?? node.kind}
                     title={said.title}
-                    note={said.note}
                     icon={kind?.icon ?? Mail}
                     tone={kind?.tone ?? "text-muted-foreground"}
+                    note={
+                      // What it did beats what it is, once it has done
+                      // anything: "48 of 120 opened" is the sentence somebody
+                      // came to this screen to read.
+                      node.kind === "email" && tallies[node.id]?.sent
+                        ? `${tallies[node.id]?.opened ?? 0} of ${tallies[node.id]?.sent} opened`
+                        : said.note
+                    }
                     warn={node.kind === "email" && node.empty}
                     selected={editing === node.id}
                     onOpen={() => setEditing(node.id)}
@@ -791,6 +806,8 @@ export function AutomationCanvas({
           eventName={eventName}
           listId={listId}
           segmentId={segmentId}
+          exitSegmentId={exitSegmentId}
+          exitEventName={exitEventName}
           lists={lists}
           segments={segments}
           events={events}
@@ -807,6 +824,7 @@ export function AutomationCanvas({
           node={chosen}
           lists={lists.filter((row) => row.id !== listId)}
           segments={segments.filter((row) => row.listId === listId)}
+          tally={tallies[chosen.id]}
           templates={templates}
           onClose={() => setEditing(null)}
           onRemove={() => setRemoving(chosen)}
@@ -830,6 +848,8 @@ function TriggerInspector({
   eventName,
   listId,
   segmentId,
+  exitSegmentId,
+  exitEventName,
   lists,
   segments,
   events,
@@ -842,6 +862,8 @@ function TriggerInspector({
   eventName: string | null;
   listId: string | null;
   segmentId: string | null;
+  exitSegmentId: string | null;
+  exitEventName: string | null;
   lists: { id: string; name: string; subscribed: number }[];
   segments: { id: string; listId: string; name: string; size: number }[];
   events: { id: string; name: string; seenCount: number }[];
@@ -1028,7 +1050,10 @@ function TriggerInspector({
         {trigger === "event" && (
           <div className="space-y-2">
             <p className="eyebrow">Post it like this</p>
-            <pre className="overflow-x-auto rounded-lg border border-border bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
+            {/* Wrapped rather than scrolled sideways: in a pane this narrow a
+                line that runs off the edge hides the half somebody needs, and
+                nobody scrolls a code block horizontally to read it. */}
+            <pre className="whitespace-pre-wrap break-all rounded-lg border border-border bg-muted/40 p-2.5 font-mono text-[11px] leading-relaxed">
               {call}
             </pre>
             <Button
@@ -1050,6 +1075,61 @@ function TriggerInspector({
             </Note>
           </div>
         )}
+
+        {/* The way out, beside the way in — they are the same question asked
+            from both ends, and a flow with no way out is the mistake this
+            kind of tool makes most expensively. */}
+        <div className="space-y-3 border-border border-t pt-3">
+          <p className="eyebrow">Stop early when</p>
+
+          <Field
+            label="They match a segment"
+            hint="Checked before every step, so somebody who buys stops being nagged straight away."
+          >
+            <Select
+              value={exitSegmentId ?? EVERYBODY}
+              onValueChange={(value) => save({ exitSegmentId: value === EVERYBODY ? null : value })}
+              disabled={busy || mine.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EVERYBODY}>Never — they finish the flow</SelectItem>
+                {mine.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name} · {row.size}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Field label="An event arrives" hint="The moment it lands, not at the next step.">
+            <Select
+              value={exitEventName ?? EVERYBODY}
+              onValueChange={(value) => save({ exitEventName: value === EVERYBODY ? null : value })}
+              disabled={busy || events.length === 0}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={EVERYBODY}>Never</SelectItem>
+                {events.map((row) => (
+                  <SelectItem key={row.id} value={row.name}>
+                    {row.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Note>
+            A cart-recovery flow that keeps writing to somebody who has already paid is the most
+            expensive thing this kind of tool does. This is how it stops.
+          </Note>
+        </div>
 
         {live && (
           <Note className="text-warn">
@@ -1206,11 +1286,14 @@ function NodeInspector({
   lists,
   segments,
   templates,
+  tally,
   onClose,
   onRemove,
 }: {
   automationId: string;
   node: FlowNode;
+  /** What this box has sent, and what came back. Absent until it has sent. */
+  tally?: { sent: number; opened: number; clicked: number };
   /** Somewhere to copy or move people to: every list but this flow's own. */
   lists: { id: string; name: string; subscribed: number }[];
   /** Segments of this flow's own list, for a condition to ask about. */
@@ -1315,6 +1398,25 @@ function NodeInspector({
               <Pencil className="size-3.5" />
               {node.empty ? "Write it" : "Edit the body"}
             </Button>
+
+            {tally && tally.sent > 0 && (
+              <div className="grid grid-cols-3 gap-2 rounded-lg border border-border p-2.5 text-center">
+                {(
+                  [
+                    { label: "sent", value: tally.sent },
+                    { label: "opened", value: tally.opened },
+                    { label: "clicked", value: tally.clicked },
+                  ] as const
+                ).map((entry) => (
+                  <span key={entry.label}>
+                    <span className="block font-medium text-[15px] tabular-nums">
+                      {entry.value}
+                    </span>
+                    <span className="eyebrow block">{entry.label}</span>
+                  </span>
+                ))}
+              </div>
+            )}
 
             {node.empty && (
               <Note className="text-warn">

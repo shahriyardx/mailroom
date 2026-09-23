@@ -8,6 +8,7 @@ import {
   automation,
   automationNode,
   automationRun,
+  automationSend,
   mailbox,
   mailingList,
   segment,
@@ -84,6 +85,8 @@ export async function updateAutomation(
     listId?: string | null;
     eventName?: string | null;
     segmentId?: string | null;
+    exitSegmentId?: string | null;
+    exitEventName?: string | null;
   },
 ) {
   const row = await db.query.automation.findFirst({
@@ -128,6 +131,28 @@ export async function updateAutomation(
         ? normaliseEventName(input.eventName)
         : null;
 
+  /* The way out is about the same people as the way in, so it is checked
+     the same way. */
+  let exitSegmentId = input.exitSegmentId === undefined ? row.exitSegmentId : input.exitSegmentId;
+  if (exitSegmentId) {
+    const goal = await db.query.segment.findFirst({
+      where: and(eq(segment.id, exitSegmentId), eq(segment.organizationId, orgId)),
+      columns: { id: true, listId: true },
+    });
+    if (!goal) throw new Error("No such segment");
+    if (goal.listId !== listId) {
+      if (input.exitSegmentId) throw new Error("That segment is about a different list");
+      exitSegmentId = null;
+    }
+  }
+
+  const exitEventName =
+    input.exitEventName === undefined
+      ? row.exitEventName
+      : input.exitEventName
+        ? normaliseEventName(input.exitEventName)
+        : null;
+
   /*
    * Turning one on with an empty canvas would enrol everybody into nothing
    * and mark them done, which quietly means they can never be enrolled again
@@ -150,6 +175,8 @@ export async function updateAutomation(
       listId,
       eventName,
       segmentId,
+      exitSegmentId,
+      exitEventName,
     })
     .where(eq(automation.id, row.id));
 }
@@ -393,6 +420,41 @@ async function nodeOf(orgId: string, nodeId: string) {
     .where(and(eq(automationNode.id, nodeId), eq(automation.organizationId, orgId)))
     .limit(1);
   return row ?? null;
+}
+
+/**
+ * How each email box has done.
+ *
+ * The number a flow is judged by is per box, not per flow: "the second one
+ * gets half the opens of the first" is the sentence somebody is trying to
+ * write, and until this existed there was nothing to write it from.
+ */
+export interface StepTally {
+  sent: number;
+  opened: number;
+  clicked: number;
+}
+
+export async function stepTallies(orgId: string, automationId: string) {
+  const rows = await db
+    .select({
+      nodeId: automationSend.nodeId,
+      sent: count(),
+      opened: sql<number>`count(${automationSend.openedAt})::int`,
+      clicked: sql<number>`count(${automationSend.clickedAt})::int`,
+    })
+    .from(automationSend)
+    .where(
+      and(eq(automationSend.organizationId, orgId), eq(automationSend.automationId, automationId)),
+    )
+    .groupBy(automationSend.nodeId);
+
+  const out: Record<string, StepTally> = {};
+  for (const row of rows) {
+    if (!row.nodeId) continue;
+    out[row.nodeId] = { sent: row.sent, opened: row.opened, clicked: row.clicked };
+  }
+  return out;
 }
 
 /* -------------------------------------------------------------------------- */

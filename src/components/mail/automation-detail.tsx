@@ -36,6 +36,7 @@ export function AutomationDetail({
   events,
   mailboxes,
   templates,
+  tallies,
   appUrl,
   running,
 }: {
@@ -46,6 +47,8 @@ export function AutomationDetail({
   events: { id: string; name: string; seenCount: number }[];
   mailboxes: { id: string; address: string }[];
   templates: { id: string; name: string }[];
+  /** How each email box has done, by node id. */
+  tallies: Record<string, { sent: number; opened: number; clicked: number }>;
   appUrl: string;
   running: number;
 }) {
@@ -151,6 +154,7 @@ export function AutomationDetail({
             {said.title.toLowerCase()}
             {automation.trigger !== "event" && listName ? ` ${listName}` : ""}
           </span>
+          {automation.exitEventName || automation.exitSegmentId ? " · stops early" : ""}
           {live && ` · ${running} part-way through`}
         </span>
 
@@ -212,10 +216,13 @@ export function AutomationDetail({
         eventName={automation.eventName}
         listId={automation.listId}
         segmentId={automation.segmentId}
+        exitSegmentId={automation.exitSegmentId}
+        exitEventName={automation.exitEventName}
         lists={lists}
         segments={segments}
         events={events}
         templates={templates}
+        tallies={tallies}
         appUrl={appUrl}
         live={live}
       />

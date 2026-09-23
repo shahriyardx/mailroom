@@ -171,18 +171,38 @@ sent to them is still in the reports. If the other list asks people to confirm
 by email, they arrive there as *not confirmed* and are sent the confirmation
 — being copied is not a way around that setting.
 
+## Letting people out early
+
+A flow is usually trying to make something happen — a purchase, an upgrade, a
+booking — and the worst thing it can do is keep writing to somebody after
+they have already done it.
+
+**Stop early when**, on the trigger card, says when to let them out. Two ways,
+and both can be set:
+
+| | |
+| --- | --- |
+| **They match a segment** | Checked before every step. Tag somebody `customer` when they buy, and a flow watching that segment drops them at the next step rather than at the end |
+| **An event arrives** | Checked the moment it lands. `order.placed` ends the cart-recovery flow that second, not two days later at the next email |
+
+The run is marked **stopped** with the reason, so the record of how far they
+got survives.
+
 ## What can be asked
 
 A condition asks one of three things:
 
 | | |
 | --- | --- |
-| **They opened the last email** | The most recent one Mailroom sent them |
+| **They opened the last email** | The last one **this flow** sent them |
 | **They clicked the last email** | Same, for clicks — needs click tracking on in SES |
 | **A tag on them** | Whether they carry `customer`, `vip`, and so on |
 | **A field on them** | `plan is pro`, `city contains London`, `stage is empty` |
 | **Whether they match a segment** | Anything the segment language can ask, as one question |
 | **Whether they are on another list** | Asked by email address, counting only people still subscribed there |
+
+A condition placed before the flow has sent anything takes the **no** branch:
+they were never written to, so they did not open it.
 
 **Whether they match a segment** is the one worth knowing about: it borrows
 the whole rule language rather than growing a second one here, so a condition
@@ -216,6 +236,16 @@ double opt-in list that means when they *confirm*, not when they ask.
 Somebody can only be in an automation once at a time. Re-subscribing does not
 start a second copy of the welcome series while the first is still running,
 and neither does a second event while the first run is going.
+
+## How each email did
+
+Every email an automation sends is recorded, so each box carries its own
+numbers — **sent**, **opened**, **clicked** — on the card and in its pane.
+That is the sentence worth reading on this screen: the second email gets half
+the opens of the first, and the third barely any.
+
+Opens are the tracking pixel and mean "it was loaded", not "it was read".
+Clicks need click tracking switched on in SES.
 
 ## The clock
 

@@ -1,5 +1,6 @@
 import { db } from "@/db";
 import {
+  automationSend,
   broadcastClick,
   broadcastRecipient,
   mailbox,
@@ -224,6 +225,44 @@ export async function POST(request: NextRequest) {
             set: { clicks: sql`${broadcastClick.clicks} + 1`, lastAt: when },
           });
       }
+    }
+  }
+
+  /*
+   * The same open or click, told to the automation that sent it.
+   *
+   * Separate from the campaign copy above because they are different tables
+   * answering different questions, and a message belongs to at most one of
+   * them. Without this an automation's own mail is invisible to its own
+   * conditions — "did they open the last email" would read campaign rows and
+   * answer no to everybody in a drip.
+   */
+  if (row && (kind === "Open" || kind === "Click")) {
+    const [sent] = await db
+      .select({
+        id: automationSend.id,
+        openedAt: automationSend.openedAt,
+        clickedAt: automationSend.clickedAt,
+      })
+      .from(automationSend)
+      .where(eq(automationSend.messageId, row.id))
+      .limit(1);
+
+    if (sent) {
+      const when = new Date(
+        event.click?.timestamp ?? event.open?.timestamp ?? event.mail?.timestamp ?? Date.now(),
+      );
+
+      await db
+        .update(automationSend)
+        .set(
+          kind === "Click"
+            ? // A click is an open by any reasonable reading, and some clients
+              // never fire the pixel.
+              { clickedAt: sent.clickedAt ?? when, openedAt: sent.openedAt ?? when }
+            : { openedAt: sent.openedAt ?? when },
+        )
+        .where(eq(automationSend.id, sent.id));
     }
   }
 

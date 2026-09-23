@@ -288,6 +288,13 @@
       "when": 1789977010306,
       "tag": "0040_tags_and_moves",
       "breakpoints": true
+    },
+    {
+      "idx": 41,
+      "version": "7",
+      "when": 1789977070306,
+      "tag": "0041_automation_sends",
+      "breakpoints": true
     }
   ]
 }

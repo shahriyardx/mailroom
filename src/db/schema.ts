@@ -1209,6 +1209,7 @@ export type AutomationNodeKind = (typeof automationNodeKindEnum.enumValues)[numb
 export type AutomationStatus = (typeof automationStatusEnum.enumValues)[number];
 /** What starts an automation: joining its list, or an event you post. */
 export type AutomationTrigger = "subscribed" | "event";
+export type AutomationSend = typeof automationSend.$inferSelect;
 export type CustomEvent = typeof customEvent.$inferSelect;
 export type ListMemberStatus = (typeof listMemberStatusEnum.enumValues)[number];
 
@@ -1611,6 +1612,20 @@ export const automation = pgTable(
     /** Which event starts it. Only meaningful when `trigger` is "event". */
     eventName: text("event_name"),
     /**
+     * When to let somebody out early, whatever step they are on.
+     *
+     * The thing a flow is trying to make happen is usually not "reach the
+     * last email" — it is a purchase, a plan upgrade, a booking. Without a
+     * way out, a cart-recovery flow keeps nagging the person who has already
+     * paid, which is the single most expensive mistake this kind of tool
+     * makes.
+     *
+     * Two ways to say it, and both may be set: a segment they come to match,
+     * and an event your own code posts.
+     */
+    exitSegmentId: text("exit_segment_id").references(() => segment.id, { onDelete: "set null" }),
+    exitEventName: text("exit_event_name"),
+    /**
      * Narrows who the trigger applies to, or null for everybody on the list.
      *
      * Asked at the moment somebody would be enrolled rather than stored as a
@@ -1761,6 +1776,54 @@ export const automationNode = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [index("automation_node_automation_idx").on(t.automationId)],
+);
+
+/**
+ * One email an automation sent, and what happened to it.
+ *
+ * Campaigns have had this since the beginning — it is what a report counts —
+ * and automations had nothing, so "did they open the last email" could only
+ * ever look at campaign mail and answered "no" for everybody in a drip. The
+ * branch that every welcome series hangs on was quietly always false.
+ *
+ * A row per send rather than a stamp on the run: a flow sends several, and
+ * the question is usually about one of them.
+ */
+export const automationSend = pgTable(
+  "automation_send",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    automationId: text("automation_id")
+      .notNull()
+      .references(() => automation.id, { onDelete: "cascade" }),
+    /** Which box on the canvas sent it, for per-step numbers. */
+    nodeId: text("node_id").references((): AnyPgColumn => automationNode.id, {
+      onDelete: "set null",
+    }),
+    listMemberId: text("list_member_id")
+      .notNull()
+      .references(() => listMember.id, { onDelete: "cascade" }),
+    /** The message row this became. Null if it was cleaned up. */
+    messageId: text("message_id").references(() => message.id, { onDelete: "set null" }),
+    /** Copied, so a report survives the person being removed from the list. */
+    address: text("address").notNull(),
+    subject: text("subject"),
+
+    sentAt: timestamp("sent_at", { withTimezone: true }).notNull().defaultNow(),
+    openedAt: timestamp("opened_at", { withTimezone: true }),
+    clickedAt: timestamp("clicked_at", { withTimezone: true }),
+  },
+  (t) => [
+    // The condition's question: what did this flow last send this person.
+    index("automation_send_person_idx").on(t.automationId, t.listMemberId, t.sentAt),
+    // The other direction: how did the email in this box do.
+    index("automation_send_node_idx").on(t.nodeId),
+    // What an arriving open or click is matched by.
+    index("automation_send_message_idx").on(t.messageId),
+  ],
 );
 
 /**

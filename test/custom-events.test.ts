@@ -414,6 +414,49 @@ describe("narrowing a flow to a segment", () => {
   });
 });
 
+describe("an event as the way out", () => {
+  it("ends a run the moment the goal event arrives", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { updateAutomation } = await import("@/server/automations");
+    const { emitEvent } = await import("@/server/custom-events");
+    const { db } = await import("@/db");
+    const { automationRun } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const { id, listId } = await waitingFor("cart.abandoned");
+    await updateAutomation(account.orgId, id, { exitEventName: "order.placed" });
+    await addMembers(account.orgId, listId, [{ address: "pat@example.com" }], "import");
+
+    await emitEvent(account.orgId, { name: "cart.abandoned", address: "pat@example.com" });
+    assert.equal((await runsFor(id))[0]?.status, "active");
+
+    const receipt = await emitEvent(account.orgId, {
+      name: "order.placed",
+      address: "pat@example.com",
+    });
+
+    // The most expensive thing this kind of tool does is keep writing to
+    // somebody who has already paid.
+    assert.equal(receipt.stopped.length, 1);
+    const [run] = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    assert.equal(run?.status, "stopped");
+    assert.match(run?.stoppedReason ?? "", /order.placed/);
+  });
+
+  it("leaves alone somebody who was never in it", async () => {
+    const { updateAutomation } = await import("@/server/automations");
+    const { emitEvent } = await import("@/server/custom-events");
+    const { id } = await waitingFor("cart.abandoned");
+    await updateAutomation(account.orgId, id, { exitEventName: "order.placed" });
+
+    const receipt = await emitEvent(account.orgId, {
+      name: "order.placed",
+      address: "stranger@example.com",
+    });
+    assert.equal(receipt.stopped.length, 0);
+  });
+});
+
 describe("declaring one", () => {
   it("adopts a name that already arrived rather than duplicating it", async () => {
     const { createEvent, emitEvent, eventsView } = await import("@/server/custom-events");

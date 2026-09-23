@@ -5,13 +5,14 @@ import {
   automation,
   automationNode,
   automationRun,
+  automationSend,
   listMember,
   segment,
   workspace,
 } from "@/db/schema";
 import { merge, withFooter } from "@/lib/campaign-body";
 import { newId } from "@/lib/utils";
-import { and, eq, lte, sql } from "drizzle-orm";
+import { and, desc, eq, lte, sql } from "drizzle-orm";
 import { subscribe, unsubscribeUrl } from "./campaigns";
 import { segmentCondition } from "./segments";
 import { deliverMessage } from "./send";
@@ -133,6 +134,7 @@ async function enrol(): Promise<number> {
 /** Whether a condition node's answer is yes for this person. */
 async function answer(
   node: AutomationNode,
+  automationId: string,
   member: { id: string; address: string; fields: Record<string, string>; tags: string[] },
 ): Promise<boolean> {
   const test = node.config.test ?? "opened";
@@ -186,20 +188,33 @@ async function answer(
 
   if (test === "opened" || test === "clicked") {
     /*
-     * "The last email" means the most recent one this app sent them through
-     * any campaign or automation, which is the only thing SES tells us about.
-     * Asked of the recipient rows rather than remembered on the run, so a
-     * condition placed after two emails reads the second one.
+     * "The last email" means the last one *this flow* sent them.
+     *
+     * It used to mean any campaign they had ever been sent, which read the
+     * campaign tables — and an automation writes nothing there, so the
+     * question every drip hangs on ("they did not open it, so nudge them")
+     * answered no for everybody who had only ever had automation mail. The
+     * branch looked like it worked and never did.
+     *
+     * Asked of the sends rather than remembered on the run, so a condition
+     * placed after two emails reads the second one.
      */
-    const column = test === "opened" ? "opened_at" : "clicked_at";
-    const [row] = await db.execute<{ hit: boolean }>(
-      sql`select exists (
-        select 1 from broadcast_recipient
-        where broadcast_recipient.list_member_id = ${member.id}
-          and broadcast_recipient.${sql.raw(column)} is not null
-      ) as hit`,
-    );
-    return Boolean(row?.hit);
+    const [last] = await db
+      .select({ openedAt: automationSend.openedAt, clickedAt: automationSend.clickedAt })
+      .from(automationSend)
+      .where(
+        and(
+          eq(automationSend.automationId, automationId),
+          eq(automationSend.listMemberId, member.id),
+        ),
+      )
+      .orderBy(desc(automationSend.sentAt))
+      .limit(1);
+
+    // Nothing sent yet is not "they ignored it": a condition placed before
+    // the first email takes the no branch, which is the honest answer.
+    if (!last) return false;
+    return test === "opened" ? last.openedAt !== null : last.clickedAt !== null;
   }
 
   const key = node.config.field ?? "";
@@ -233,6 +248,7 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       automationName: automation.name,
       mailboxId: automation.mailboxId,
       listId: automation.listId,
+      exitSegmentId: automation.exitSegmentId,
     })
     .from(automationRun)
     .innerJoin(automation, eq(automation.id, automationRun.automationId))
@@ -270,6 +286,35 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
         .set({ status: "stopped", stoppedReason: "Left the list" })
         .where(eq(automationRun.id, job.runId));
       continue;
+    }
+
+    /*
+     * Out early, if what the flow was for has already happened.
+     *
+     * Checked before every step rather than only at the start, because the
+     * point of it is the thing that happens while somebody is part-way
+     * through: a cart-recovery flow must stop the moment they pay, not carry
+     * on nagging them until the last email.
+     */
+    if (job.exitSegmentId) {
+      const goal = await db.query.segment.findFirst({
+        where: eq(segment.id, job.exitSegmentId),
+      });
+      if (goal) {
+        const [reached] = await db
+          .select({ id: listMember.id })
+          .from(listMember)
+          .where(and(eq(listMember.id, member.id), segmentCondition(goal)))
+          .limit(1);
+
+        if (reached) {
+          await db
+            .update(automationRun)
+            .set({ status: "stopped", stoppedReason: `Matched "${goal.name}"` })
+            .where(eq(automationRun.id, job.runId));
+          continue;
+        }
+      }
     }
 
     const [site] = await db
@@ -315,7 +360,12 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       }
 
       if (node.kind === "condition") {
-        at = (await answer(node, { id: member.id, address: member.address, fields, tags }))
+        at = (await answer(node, job.automationId, {
+          id: member.id,
+          address: member.address,
+          fields,
+          tags,
+        }))
           ? node.next
           : node.nextElse;
         continue;
@@ -405,7 +455,7 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       // An email. Anything below here sends.
       const url = unsubscribeUrl(member.id);
       try {
-        await deliverMessage({
+        const sent = await deliverMessage({
           orgId: job.orgId,
           mailboxId: job.mailboxId,
           to: [{ address: member.address, name: member.name }],
@@ -429,6 +479,22 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
             "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
           },
         });
+        /*
+         * Written down, because otherwise nothing knows this flow ever wrote
+         * to them. The condition two boxes down asks this table, and the
+         * card on the canvas counts it.
+         */
+        await db.insert(automationSend).values({
+          id: newId("ase"),
+          organizationId: job.orgId,
+          automationId: job.automationId,
+          nodeId: node.id,
+          listMemberId: member.id,
+          messageId: sent.messageId,
+          address: member.address,
+          subject: merge(node.subject ?? "", member),
+        });
+
         pass.sent += 1;
         at = node.next;
       } catch (error) {

@@ -619,3 +619,206 @@ describe("conditions that ask bigger questions", () => {
     assert.deepEqual(stranger?.tags, []);
   });
 });
+
+describe("what the flow sent, and what came back", () => {
+  /** A flow whose first box asks about its own last email. */
+  async function asking(test: "opened" | "clicked") {
+    const { addMembers } = await import("@/server/campaigns");
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { id, listId } = await anAutomation();
+
+    const question = await addNode(account.orgId, id, { kind: "condition" });
+    await updateNode(account.orgId, question, { config: { test } });
+    const yes = await addNode(account.orgId, id, { kind: "tag", after: question });
+    await updateNode(account.orgId, yes, { config: { tagAction: "add", tag: "engaged" } });
+    const no = await addNode(account.orgId, id, {
+      kind: "tag",
+      after: question,
+      branch: "nextElse",
+    });
+    await updateNode(account.orgId, no, { config: { tagAction: "add", tag: "quiet" } });
+
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await addMembers(account.orgId, listId, [{ address: "pat@example.com" }], "signup form");
+
+    const { db } = await import("@/db");
+    const { listMember } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+    const person = await db.query.listMember.findFirst({
+      where: and(eq(listMember.listId, listId), eq(listMember.address, "pat@example.com")),
+    });
+
+    return { id, listId, memberId: person?.id ?? "" };
+  }
+
+  /** An email this flow sent earlier, with whatever came back written on it. */
+  async function pretendSent(
+    automationId: string,
+    memberId: string,
+    stamps: { openedAt?: Date; clickedAt?: Date } = {},
+  ) {
+    const { db } = await import("@/db");
+    const { automationSend } = await import("@/db/schema");
+    const { newId } = await import("@/lib/utils");
+    await db.insert(automationSend).values({
+      id: newId("ase"),
+      organizationId: account.orgId,
+      automationId,
+      listMemberId: memberId,
+      address: "pat@example.com",
+      subject: "The first one",
+      ...stamps,
+    });
+  }
+
+  async function tagsOf(memberId: string) {
+    const { db } = await import("@/db");
+    const { listMember } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+    const row = await db.query.listMember.findFirst({ where: eq(listMember.id, memberId) });
+    return row?.tags ?? [];
+  }
+
+  it("counts an open of its own email, which campaign rows never knew about", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, memberId } = await asking("opened");
+    await pretendSent(id, memberId, { openedAt: new Date() });
+
+    await runAutomationsOnce();
+
+    // This is the branch every drip hangs on. It used to read the campaign
+    // tables, which an automation never writes to, and answered no forever.
+    assert.deepEqual(await tagsOf(memberId), ["engaged"]);
+  });
+
+  it("takes the no branch when its email went unopened", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, memberId } = await asking("opened");
+    await pretendSent(id, memberId);
+
+    await runAutomationsOnce();
+    assert.deepEqual(await tagsOf(memberId), ["quiet"]);
+  });
+
+  it("reads the last one it sent, not the first", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, memberId } = await asking("opened");
+    await pretendSent(id, memberId, { openedAt: new Date(Date.now() - 86_400_000) });
+    await pretendSent(id, memberId);
+
+    await runAutomationsOnce();
+    assert.deepEqual(await tagsOf(memberId), ["quiet"]);
+  });
+
+  it("says no when the flow has not written to them at all", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { memberId } = await asking("clicked");
+
+    await runAutomationsOnce();
+    // Not "they ignored it" — they were never sent anything — but no is the
+    // honest answer to "did they click it".
+    assert.deepEqual(await tagsOf(memberId), ["quiet"]);
+  });
+
+  it("counts each box separately", async () => {
+    const { addNode } = await import("@/server/automations");
+    const { stepTallies } = await import("@/server/automations");
+    const { db } = await import("@/db");
+    const { automationSend } = await import("@/db/schema");
+    const { newId } = await import("@/lib/utils");
+    const { addMembers } = await import("@/server/campaigns");
+    const { listMember } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    const { id, listId } = await anAutomation();
+    const first = await addNode(account.orgId, id, { kind: "email" });
+    const second = await addNode(account.orgId, id, { kind: "email", after: first });
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "a@example.com" }, { address: "b@example.com" }],
+      "import",
+    );
+    const people = await db.select().from(listMember).where(eq(listMember.listId, listId));
+
+    for (const person of people) {
+      await db.insert(automationSend).values({
+        id: newId("ase"),
+        organizationId: account.orgId,
+        automationId: id,
+        nodeId: first,
+        listMemberId: person.id,
+        address: person.address,
+        openedAt: person.address === "a@example.com" ? new Date() : null,
+      });
+    }
+    await db.insert(automationSend).values({
+      id: newId("ase"),
+      organizationId: account.orgId,
+      automationId: id,
+      nodeId: second,
+      listMemberId: people[0]?.id ?? "",
+      address: "a@example.com",
+      openedAt: new Date(),
+      clickedAt: new Date(),
+    });
+
+    const tallies = await stepTallies(account.orgId, id);
+    assert.deepEqual(tallies[first], { sent: 2, opened: 1, clicked: 0 });
+    assert.deepEqual(tallies[second], { sent: 1, opened: 1, clicked: 1 });
+  });
+});
+
+describe("letting somebody out early", () => {
+  it("stops the run the moment they match the goal", async () => {
+    const { addMembers } = await import("@/server/campaigns");
+    const { createSegment } = await import("@/server/segments");
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { automationRun, listMember } = await import("@/db/schema");
+    const { and, eq } = await import("drizzle-orm");
+
+    const { id, listId } = await anAutomation();
+    const wait = await addNode(account.orgId, id, { kind: "wait" });
+    await updateNode(account.orgId, wait, { delayMinutes: 60 });
+    const after = await addNode(account.orgId, id, { kind: "tag", after: wait });
+    await updateNode(account.orgId, after, { config: { tagAction: "add", tag: "nagged" } });
+
+    const exitSegmentId = await createSegment(account.orgId, {
+      listId,
+      name: "Bought something",
+      rules: [{ field: "tags", op: "has", value: "customer" }],
+    });
+    await updateAutomation(account.orgId, id, { exitSegmentId });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    await addMembers(account.orgId, listId, [{ address: "pat@example.com" }], "signup form");
+    await runAutomationsOnce();
+
+    // They buy while sitting in the wait.
+    const person = await db.query.listMember.findFirst({
+      where: and(eq(listMember.listId, listId), eq(listMember.address, "pat@example.com")),
+    });
+    await db
+      .update(listMember)
+      .set({ tags: ["customer"] })
+      .where(eq(listMember.id, person?.id ?? ""));
+    await db
+      .update(automationRun)
+      .set({ nextAt: new Date(Date.now() - 1000) })
+      .where(eq(automationRun.automationId, id));
+
+    await runAutomationsOnce();
+
+    const [run] = await db.select().from(automationRun).where(eq(automationRun.automationId, id));
+    assert.equal(run?.status, "stopped");
+    assert.match(run?.stoppedReason ?? "", /Bought something/);
+
+    // And the box after the wait never ran for them.
+    const settled = await db.query.listMember.findFirst({
+      where: eq(listMember.id, person?.id ?? ""),
+    });
+    assert.deepEqual(settled?.tags, ["customer"]);
+  });
+});

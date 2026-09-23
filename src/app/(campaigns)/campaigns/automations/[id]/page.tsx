@@ -1,6 +1,6 @@
 import { AutomationDetail } from "@/components/mail/automation-detail";
 import { env } from "@/lib/env";
-import { automationsView, findAutomation } from "@/server/automations";
+import { automationsView, findAutomation, stepTallies } from "@/server/automations";
 import { listsView, sendableMailboxes } from "@/server/campaigns";
 import { eventsView } from "@/server/custom-events";
 import { requireCapability } from "@/server/permissions";
@@ -17,13 +17,14 @@ export default async function AutomationPage({ params }: { params: Promise<{ id:
   const row = await findAutomation(access.orgId, id);
   if (!row) notFound();
 
-  const [lists, mailboxes, all, templates, events, segments] = await Promise.all([
+  const [lists, mailboxes, all, templates, events, segments, tallies] = await Promise.all([
     listsView(access.orgId),
     sendableMailboxes(access.orgId),
     automationsView(access.orgId),
     listTemplates(access.orgId),
     eventsView(access.orgId),
     segmentsView(access.orgId),
+    stepTallies(access.orgId, id),
   ]);
 
   return (
@@ -60,6 +61,7 @@ export default async function AutomationPage({ params }: { params: Promise<{ id:
       }))}
       mailboxes={mailboxes}
       templates={templates.map((entry) => ({ id: entry.id, name: entry.name }))}
+      tallies={tallies}
       appUrl={env.appUrl}
       running={all.find((entry) => entry.id === id)?.running ?? 0}
     />
