@@ -1,6 +1,6 @@
 "use client";
 
-import { IconButton, Separator } from "@/components/kit";
+import { ColorInput, IconButton, Separator } from "@/components/kit";
 import { cn } from "@/lib/utils";
 import {
   Baseline,
@@ -25,6 +25,27 @@ interface Props {
 /** Small contenteditable editor: enough formatting for real mail, no heavy dependency. */
 export function RichEditor({ value, onChange, placeholder, className }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+
+  /*
+   * What was selected before the picker took the focus.
+   *
+   * Opening a popover moves the caret out of the editor and the selection is
+   * gone by the time a colour is chosen, so colouring would apply to nothing.
+   * The range is kept on the way in and put back on the way out.
+   */
+  const range = useRef<Range | null>(null);
+
+  function remember() {
+    const selection = window.getSelection();
+    range.current = selection && selection.rangeCount > 0 ? selection.getRangeAt(0) : null;
+  }
+
+  function restore() {
+    if (!range.current) return;
+    const selection = window.getSelection();
+    selection?.removeAllRanges();
+    selection?.addRange(range.current);
+  }
 
   useEffect(() => {
     const node = ref.current;
@@ -76,17 +97,27 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
         </Tool>
 
         {/* Colours what is selected rather than the whole block, which is the
-            only way to make one word — or one link — a different colour. */}
-        <label className="ml-0.5 flex size-7 cursor-pointer items-center justify-center rounded-md hover:bg-accent">
-          <span className="sr-only">Colour of the selected text</span>
-          <Baseline className="size-4" />
-          <input
-            type="color"
-            className="sr-only"
-            onMouseDown={(event) => event.stopPropagation()}
-            onChange={(event) => exec("foreColor", event.target.value)}
-          />
-        </label>
+            only way to make one word — or one link — a different colour. The
+            selection has to survive the picker opening, so it is put back
+            before the colour is applied. */}
+        <ColorInput
+          value={undefined}
+          fallback="#000000"
+          onChange={(colour) => {
+            restore();
+            exec("foreColor", colour);
+          }}
+          trigger={
+            <button
+              type="button"
+              aria-label="Colour of the selected text"
+              onMouseDown={remember}
+              className="ml-0.5 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+            >
+              <Baseline className="size-4" />
+            </button>
+          }
+        />
       </div>
 
       <div

@@ -2,6 +2,7 @@
 
 import {
   Button,
+  ColorInput,
   ConfirmDialog,
   Dialog,
   DialogContent,
@@ -1583,23 +1584,7 @@ function Swatch({
   onChange: (value: string) => void;
   fallback?: string;
 }) {
-  return (
-    <div className="flex h-8 items-center gap-2 rounded-lg border border-border bg-card pl-1.5">
-      <input
-        type="color"
-        value={value ?? fallback}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label="Colour"
-        className="size-5 shrink-0 cursor-pointer rounded border-0 bg-transparent p-0"
-      />
-      <input
-        value={value ?? ""}
-        placeholder={fallback}
-        onChange={(event) => onChange(event.target.value)}
-        className="min-w-0 flex-1 border-0 bg-transparent pr-2 font-mono text-[12px] outline-none"
-      />
-    </div>
-  );
+  return <ColorInput value={value} onChange={onChange} fallback={fallback} align="end" />;
 }
 
 function AlignPicker({ value, onChange }: { value: Align; onChange: (value: Align) => void }) {

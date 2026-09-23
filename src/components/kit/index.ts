@@ -16,6 +16,7 @@ export {
 export { Checkbox } from "./checkbox";
 export { ConfirmDialog } from "./confirm";
 export { ColorPicker, PALETTE } from "./color-picker";
+export { ColorInput, SWATCHES } from "./color-input";
 export {
   Dialog,
   DialogClose,
