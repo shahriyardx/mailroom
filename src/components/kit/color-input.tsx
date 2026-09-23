@@ -37,6 +37,7 @@ export const SWATCHES = [
 export function ColorInput({
   value,
   onChange,
+  onCommit,
   fallback = "#000000",
   className,
   trigger,
@@ -45,6 +46,12 @@ export function ColorInput({
 }: {
   value: string | undefined;
   onChange: (value: string) => void;
+  /**
+   * Called when a choice is finished rather than while it is being made: a
+   * drag ends, a swatch is pressed, a hex is typed and left. For the callers
+   * that must not act on every pixel of a drag.
+   */
+  onCommit?: (value: string) => void;
   /** Shown when nothing is set: the colour this would be anyway. */
   fallback?: string;
   className?: string;
@@ -90,7 +97,7 @@ export function ColorInput({
         onOpenAutoFocus={(event) => keepFocus && event.preventDefault()}
         onCloseAutoFocus={(event) => keepFocus && event.preventDefault()}
       >
-        <Picker value={current} onChange={onChange} />
+        <Picker value={current} onChange={onChange} onCommit={onCommit} />
       </PopoverContent>
     </Popover>
   );
@@ -105,7 +112,15 @@ function Chip({ colour }: { colour: string | null }) {
   );
 }
 
-function Picker({ value, onChange }: { value: string; onChange: (value: string) => void }) {
+function Picker({
+  value,
+  onChange,
+  onCommit,
+}: {
+  value: string;
+  onChange: (value: string) => void;
+  onCommit?: (value: string) => void;
+}) {
   const [hue, saturation, lightness] = toHsv(value);
   const [text, setText] = useState(value);
   const [typing, setTyping] = useState(false);
@@ -114,9 +129,16 @@ function Picker({ value, onChange }: { value: string; onChange: (value: string) 
   // follows the colour, so dragging the square updates what it says.
   const shown = typing ? text : value;
 
+  const latest = useRef(value);
+
   function set(next: string) {
     setTyping(false);
+    latest.current = next;
     onChange(next);
+  }
+
+  function commit() {
+    onCommit?.(latest.current);
   }
 
   return (
@@ -131,6 +153,7 @@ function Picker({ value, onChange }: { value: string; onChange: (value: string) 
         x={saturation}
         y={1 - lightness}
         onMove={(x, y) => set(fromHsv(hue, x, 1 - y))}
+        onDone={commit}
       >
         <span
           className="-translate-x-1/2 -translate-y-1/2 pointer-events-none absolute size-3.5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
@@ -151,6 +174,7 @@ function Picker({ value, onChange }: { value: string; onChange: (value: string) 
         x={hue / 360}
         y={0.5}
         onMove={(x) => set(fromHsv(x * 360, saturation, lightness))}
+        onDone={commit}
       >
         <span
           className="-translate-x-1/2 -translate-y-1/2 pointer-events-none absolute top-1/2 size-3.5 rounded-full border-2 border-white shadow-[0_0_0_1px_rgba(0,0,0,0.35)]"
@@ -168,7 +192,10 @@ function Picker({ value, onChange }: { value: string; onChange: (value: string) 
             const parsed = normalise(event.target.value);
             if (parsed) onChange(parsed);
           }}
-          onBlur={() => setTyping(false)}
+          onBlur={() => {
+            setTyping(false);
+            commit();
+          }}
           spellCheck={false}
           aria-label="Hex colour"
           className="h-7 min-w-0 flex-1 rounded-md border border-border bg-transparent px-2 font-mono text-[12px] outline-none focus:border-ring"
@@ -181,7 +208,10 @@ function Picker({ value, onChange }: { value: string; onChange: (value: string) 
             key={swatch}
             type="button"
             aria-label={swatch}
-            onClick={() => set(swatch)}
+            onClick={() => {
+              set(swatch);
+              onCommit?.(swatch);
+            }}
             className={cn(
               "size-[22px] rounded-md border transition-transform hover:scale-110",
               value.toLowerCase() === swatch ? "border-ring" : "border-border/60",
@@ -208,6 +238,7 @@ function Field({
   x,
   y,
   onMove,
+  onDone,
   children,
 }: {
   className?: string;
@@ -215,6 +246,7 @@ function Field({
   x: number;
   y: number;
   onMove: (x: number, y: number) => void;
+  onDone?: () => void;
   children: React.ReactNode;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -256,7 +288,9 @@ function Field({
       onPointerUp={(event) => {
         dragging.current = false;
         event.currentTarget.releasePointerCapture(event.pointerId);
+        onDone?.();
       }}
+      onKeyUp={() => onDone?.()}
       className={cn(
         "relative cursor-crosshair touch-none outline-none focus:ring-2 focus:ring-ring",
         className,

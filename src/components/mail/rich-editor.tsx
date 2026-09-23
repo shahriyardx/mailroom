@@ -13,7 +13,7 @@ import {
   Strikethrough,
   Underline,
 } from "lucide-react";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 interface Props {
   value: string;
@@ -34,6 +34,9 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
    * The range is kept on the way in and put back on the way out.
    */
   const range = useRef<Range | null>(null);
+
+  /** What the picker is showing. The document is only told on a commit. */
+  const [colour, setColour] = useState("#000000");
 
   function remember() {
     const selection = window.getSelection();
@@ -101,12 +104,16 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
             selection has to survive the picker opening, so it is put back
             before the colour is applied. */}
         <ColorInput
-          value={undefined}
-          fallback="#000000"
+          value={colour}
+          onChange={setColour}
           keepFocus
-          onChange={(colour) => {
+          // Applied when the choice is finished rather than on every pixel of
+          // a drag: each application rewrites the selection, and doing that a
+          // hundred times on the way across the square nests a hundred spans
+          // and loses what was selected on the first one.
+          onCommit={(next) => {
             restore();
-            exec("foreColor", colour);
+            exec("foreColor", next);
           }}
           trigger={
             <button
