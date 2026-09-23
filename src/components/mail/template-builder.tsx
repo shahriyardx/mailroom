@@ -4133,11 +4133,16 @@ function BroadcastDetails({
             </Button>
 
             <Note>
-              {followUp
-                ? "This goes only to the people who were sent the original and never opened it."
-                : size === null
-                  ? "Nothing goes out until you press Send."
-                  : `Nothing goes out until you press Send. ${size} ${size === 1 ? "person" : "people"} would get it.`}
+              {/* Said, rather than left as a button that does nothing. A
+                  campaign can be written before anybody has decided who it is
+                  for; it just cannot go out that way. */}
+              {!details.listId
+                ? "Pick a list above before this can be sent. Everything else saves as a draft."
+                : followUp
+                  ? "This goes only to the people who were sent the original and never opened it."
+                  : size === null
+                    ? "Nothing goes out until you press Send."
+                    : `Nothing goes out until you press Send. ${size} ${size === 1 ? "person" : "people"} would get it.`}
               {testing &&
                 " The audience is split in half: one side gets Subject, the other Subject B."}
             </Note>

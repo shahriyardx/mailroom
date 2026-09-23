@@ -1447,9 +1447,15 @@ export const broadcast = pgTable(
     organizationId: text("organization_id")
       .notNull()
       .references(() => organization.id, { onDelete: "cascade" }),
-    listId: text("list_id")
-      .notNull()
-      .references(() => mailingList.id, { onDelete: "cascade" }),
+    /**
+     * Who it goes to. Null while it is still being written.
+     *
+     * A campaign is a draft long before anybody has decided which list it is
+     * for — the writing is the work, and demanding the audience up front
+     * meant a list had to exist before a single word could be typed. It is
+     * required to send, and refused there instead.
+     */
+    listId: text("list_id").references(() => mailingList.id, { onDelete: "cascade" }),
     /** Which address it comes from; also what decides the sending domain. */
     mailboxId: text("mailbox_id")
       .notNull()

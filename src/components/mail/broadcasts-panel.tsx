@@ -47,6 +47,9 @@ import { toast } from "sonner";
 
 const STATUSES = ["all", "draft", "scheduled", "sending", "sent", "cancelled"] as const;
 
+/** The "no list yet" option. A sentinel, because a Select cannot hold "". */
+const LATER = "__later";
+
 export function BroadcastsPanel({
   broadcasts,
   lists,
@@ -68,12 +71,21 @@ export function BroadcastsPanel({
   const [status, setStatus] = useState<(typeof STATUSES)[number]>("all");
   const [listFilter, setListFilter] = useState("all");
 
-  const [listId, setListId] = useState(lists[0]?.id ?? "");
+  /** Empty is allowed: the list can be chosen in the builder, or at send. */
+  const [listId, setListId] = useState(LATER);
   const [mailboxId, setMailboxId] = useState(mailboxes[0]?.id ?? "");
   const [subject, setSubject] = useState("");
   const [templateId, setTemplateId] = useState("none");
 
-  const ready = lists.length > 0 && mailboxes.length > 0;
+  /*
+   * A campaign needs an address to come from and nothing else.
+   *
+   * It used to need a list too, which meant somebody with an idea and no
+   * audience yet could not write anything down. Writing is the work; who it
+   * goes to is a decision that keeps until the moment before sending, and
+   * that is where it is asked for instead.
+   */
+  const ready = mailboxes.length > 0;
   const chosen = lists.find((entry) => entry.id === listId);
 
   const shown = useMemo(() => {
@@ -84,7 +96,7 @@ export function BroadcastsPanel({
         (listFilter === "all" || entry.listId === listFilter) &&
         (!needle ||
           entry.subject.toLowerCase().includes(needle) ||
-          entry.listName.toLowerCase().includes(needle)),
+          entry.listName?.toLowerCase().includes(needle)),
     );
   }, [broadcasts, query, status, listFilter]);
 
@@ -180,10 +192,8 @@ export function BroadcastsPanel({
             title="No campaigns yet"
             hint={
               ready
-                ? "Reach everybody on a list at once. Write one and it is saved as a draft until you send it."
-                : lists.length === 0
-                  ? "Make a list first — a campaign has to have somewhere to go."
-                  : "Make a mailbox first — a campaign has to come from an address."
+                ? "Reach everybody on a list at once. Write one and it is saved as a draft until you send it — you can decide who it goes to later."
+                : "Make an address first — a campaign has to come from somewhere."
             }
           >
             {ready ? create : null}
@@ -215,7 +225,7 @@ export function BroadcastsPanel({
                   </Badge>
                 </div>
                 <div className="mt-0.5 text-[12px] text-muted-foreground">
-                  {entry.listName}
+                  {entry.listName ?? "No list yet"}
                   {entry.total > 0
                     ? ` · ${entry.sent} of ${entry.total} sent${
                         entry.failed > 0 ? `, ${entry.failed} failed` : ""
@@ -295,7 +305,7 @@ export function BroadcastsPanel({
               if (!subject.trim()) return;
               startTransition(async () => {
                 const result = await createBroadcastAction({
-                  listId,
+                  listId: listId === LATER ? null : listId,
                   mailboxId,
                   subject,
                   templateId: templateId === "none" ? null : templateId,
@@ -321,6 +331,7 @@ export function BroadcastsPanel({
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value={LATER}>Decide later</SelectItem>
                     {lists.map((entry) => (
                       <SelectItem key={entry.id} value={entry.id}>
                         {entry.name} ({entry.subscribed})

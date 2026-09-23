@@ -1640,7 +1640,8 @@ export async function removeListMemberAction(memberId: string) {
 }
 
 export async function createBroadcastAction(input: {
-  listId: string;
+  /** Null while it is only being written. Required to send, not to draft. */
+  listId?: string | null;
   mailboxId: string;
   subject: string;
   html?: string;

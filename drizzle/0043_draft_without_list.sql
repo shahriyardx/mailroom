@@ -1,0 +1,1 @@
+ALTER TABLE "broadcast" ALTER COLUMN "list_id" DROP NOT NULL;

@@ -1077,3 +1077,66 @@ describe("choosing what you get", () => {
     assert.equal(after.find((entry) => entry.address === "bob@example.com")?.status, "subscribed");
   });
 });
+
+describe("a campaign before it has an audience", () => {
+  it("is created as a draft with no list at all", async () => {
+    const { createBroadcast, findBroadcast } = await import("@/server/campaigns");
+    const id = await createBroadcast(account.orgId, {
+      mailboxId: account.mailboxId,
+      subject: "Something I thought of",
+    });
+
+    const row = await findBroadcast(account.orgId, id);
+    assert.equal(row?.listId, null);
+    assert.equal(row?.status, "draft");
+  });
+
+  it("counts its audience as nobody rather than failing", async () => {
+    // The builder asks this while somebody is still writing, so it has to
+    // answer rather than throw.
+    const { audienceSize, createBroadcast } = await import("@/server/campaigns");
+    const id = await createBroadcast(account.orgId, {
+      mailboxId: account.mailboxId,
+      subject: "Something I thought of",
+    });
+    assert.equal(await audienceSize(account.orgId, id), 0);
+  });
+
+  it("refuses to send until a list is chosen", async () => {
+    const { createBroadcast, startBroadcast } = await import("@/server/campaigns");
+    const id = await createBroadcast(account.orgId, {
+      mailboxId: account.mailboxId,
+      subject: "Something I thought of",
+    });
+    await assert.rejects(() => startBroadcast(account.orgId, id), /Choose a list/);
+  });
+
+  it("sends once one is chosen", async () => {
+    const { addMembers, createBroadcast, startBroadcast, updateBroadcast } = await import(
+      "@/server/campaigns"
+    );
+    const listId = await aList();
+    await addMembers(account.orgId, listId, [{ address: "ada@example.com" }], "import");
+
+    const id = await createBroadcast(account.orgId, {
+      mailboxId: account.mailboxId,
+      subject: "Something I thought of",
+    });
+    await updateBroadcast(account.orgId, id, { listId });
+
+    assert.equal((await startBroadcast(account.orgId, id)).recipients, 1);
+  });
+
+  it("still lists a campaign that has no list", async () => {
+    // It used to be an inner join, so a listless draft simply vanished.
+    const { broadcastsView, createBroadcast } = await import("@/server/campaigns");
+    const id = await createBroadcast(account.orgId, {
+      mailboxId: account.mailboxId,
+      subject: "Something I thought of",
+    });
+
+    const rows = await broadcastsView(account.orgId);
+    assert.ok(rows.some((row) => row.id === id));
+    assert.equal(rows.find((row) => row.id === id)?.listName, null);
+  });
+});

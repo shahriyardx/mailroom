@@ -876,7 +876,8 @@ export async function exportMembers(
 export async function createBroadcast(
   orgId: string,
   input: {
-    listId: string;
+    /** Left out while the campaign is only being written. */
+    listId?: string | null;
     mailboxId: string;
     subject: string;
     html?: string;
@@ -891,16 +892,18 @@ export async function createBroadcast(
   if (!subject) throw new Error("Give the broadcast a subject");
 
   const [list, box] = await Promise.all([
-    db.query.mailingList.findFirst({
-      where: and(eq(mailingList.id, input.listId), eq(mailingList.organizationId, orgId)),
-      columns: { id: true },
-    }),
+    input.listId
+      ? db.query.mailingList.findFirst({
+          where: and(eq(mailingList.id, input.listId), eq(mailingList.organizationId, orgId)),
+          columns: { id: true },
+        })
+      : null,
     db.query.mailbox.findFirst({
       where: and(eq(mailbox.id, input.mailboxId), eq(mailbox.organizationId, orgId)),
       columns: { id: true },
     }),
   ]);
-  if (!list) throw new Error("No such list");
+  if (input.listId && !list) throw new Error("No such list");
   if (!box) throw new Error("No such mailbox");
 
   /*
@@ -927,7 +930,7 @@ export async function createBroadcast(
   await db.insert(broadcast).values({
     id,
     organizationId: orgId,
-    listId: input.listId,
+    listId: input.listId ?? null,
     mailboxId: input.mailboxId,
     segmentId: input.segmentId ?? null,
     subject: subject || from.subject || "",
@@ -1047,6 +1050,8 @@ export async function startBroadcast(orgId: string, broadcastId: string, when?: 
   });
   if (!row) throw new Error("No such broadcast");
   if (row.status !== "draft") throw new Error("That broadcast has already been started");
+  // The one place a list stops being optional.
+  if (!row.listId) throw new Error("Choose a list for this campaign before sending it");
 
   const audience = await audienceFor(orgId, row);
   if (audience.length === 0) {
@@ -1111,7 +1116,7 @@ export function variantFor(broadcastId: string, memberId: string): "a" | "b" {
  */
 async function audienceFor(
   orgId: string,
-  row: { listId: string; segmentId: string | null; resendOfId: string | null },
+  row: { listId: string | null; segmentId: string | null; resendOfId: string | null },
 ) {
   if (row.resendOfId) {
     return db
@@ -1127,6 +1132,10 @@ async function audienceFor(
         ),
       );
   }
+
+  // A draft nobody has aimed yet goes to nobody, which is not an error here:
+  // the builder asks this while somebody is still writing.
+  if (!row.listId) return [];
 
   const chosen = row.segmentId ? await findSegment(orgId, row.segmentId) : null;
 
@@ -1159,13 +1168,18 @@ export async function audienceSize(
    * ago is worse than no number, so the caller says what it is looking at
    * rather than the server assuming nothing has changed.
    */
-  aim?: { listId?: string; segmentId?: string | null },
+  aim?: { listId?: string | null; segmentId?: string | null },
 ) {
   const row = await findBroadcast(orgId, broadcastId);
   if (!row) return 0;
 
+  // Nobody, until it is pointed at somebody. Said as a number rather than as
+  // an error: the builder asks this while a draft is still being written.
+  const listId = aim?.listId || row.listId;
+  if (!listId) return 0;
+
   const people = await audienceFor(orgId, {
-    listId: aim?.listId || row.listId,
+    listId,
     segmentId: aim?.segmentId === undefined ? row.segmentId : aim.segmentId,
     resendOfId: row.resendOfId,
   });
@@ -1255,8 +1269,9 @@ export async function cancelBroadcast(orgId: string, broadcastId: string) {
 export interface BroadcastRow {
   id: string;
   subject: string;
-  listId: string;
-  listName: string;
+  /** Null while it is a draft nobody has aimed yet. */
+  listId: string | null;
+  listName: string | null;
   status: "draft" | "scheduled" | "sending" | "sent" | "cancelled";
   scheduledAt: Date | null;
   createdAt: Date;
@@ -1278,7 +1293,7 @@ export async function broadcastsView(orgId: string): Promise<BroadcastRow[]> {
       createdAt: broadcast.createdAt,
     })
     .from(broadcast)
-    .innerJoin(mailingList, eq(mailingList.id, broadcast.listId))
+    .leftJoin(mailingList, eq(mailingList.id, broadcast.listId))
     .where(eq(broadcast.organizationId, orgId))
     .orderBy(desc(broadcast.createdAt));
 
@@ -1336,7 +1351,7 @@ export interface BroadcastReport {
   subject: string;
   subjectB: string | null;
   status: "draft" | "scheduled" | "sending" | "sent" | "cancelled";
-  listName: string;
+  listName: string | null;
   segmentName: string | null;
   resendOfId: string | null;
   from: string;
@@ -1399,7 +1414,7 @@ export async function broadcastReport(orgId: string, id: string): Promise<Broadc
       scheduledAt: broadcast.scheduledAt,
     })
     .from(broadcast)
-    .innerJoin(mailingList, eq(mailingList.id, broadcast.listId))
+    .leftJoin(mailingList, eq(mailingList.id, broadcast.listId))
     .innerJoin(mailbox, eq(mailbox.id, broadcast.mailboxId))
     .where(and(eq(broadcast.id, id), eq(broadcast.organizationId, orgId)))
     .limit(1);

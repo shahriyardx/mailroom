@@ -106,7 +106,7 @@ export function CampaignReport({
         title={report.subject}
         description={
           <>
-            to {report.listName}
+            to {report.listName ?? "a list since deleted"}
             {report.segmentName && ` · ${report.segmentName}`}
             {report.resendOfId && " · follow-up to people who never opened the original"} · from{" "}
             {report.from}
