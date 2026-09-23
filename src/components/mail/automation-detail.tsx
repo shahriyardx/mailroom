@@ -88,7 +88,10 @@ export function AutomationDetail({
 
       {/* A bar rather than a panel: the canvas below wants every pixel, and
           what sits here is the handful of facts that are not on it. */}
-      <header className="flex h-14 shrink-0 flex-wrap items-center gap-3 border-border border-b px-4">
+      {/* A toolbar that shrinks rather than wraps. Wrapping inside a fixed
+          height put the second row on top of the canvas at 1024px, which is
+          an ordinary laptop rather than an edge case. */}
+      <header className="flex h-14 shrink-0 items-center gap-3 border-border border-b px-4">
         <Button variant="ghost" size="sm" asChild>
           <Link href="/campaigns/automations">
             <ArrowLeft />
@@ -104,22 +107,24 @@ export function AutomationDetail({
           onBlur={(event) =>
             event.target.value.trim() !== automation.name && change({ name: event.target.value })
           }
-          className="h-8 w-52 border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:border-border focus:bg-card"
+          className="h-8 w-40 min-w-0 shrink border-transparent bg-transparent px-2 font-medium text-[14px] shadow-none hover:bg-muted focus:border-border focus:bg-card lg:w-52"
         />
 
         {/* Beside the name rather than adrift in the middle of the bar: it is
             a fact about this automation, not a heading of its own. */}
-        <span className="truncate text-[12.5px] text-muted-foreground">
+        {/* The first thing to go when the bar is tight: it is context, and
+            the list is named on the trigger card anyway. */}
+        <span className="hidden min-w-0 truncate text-[12.5px] text-muted-foreground lg:inline">
           {emails} {emails === 1 ? "email" : "emails"} · to {listName}
           {live && ` · ${running} part-way through`}
         </span>
 
-        <div className="ml-auto flex items-center gap-2">
+        <div className="ml-auto flex shrink-0 items-center gap-2">
           <Select
             value={automation.mailboxId}
             onValueChange={(value) => change({ mailboxId: value })}
           >
-            <SelectTrigger className="h-8 w-[200px] text-[12.5px]">
+            <SelectTrigger className="h-8 w-[160px] shrink-0 text-[12.5px] lg:w-[200px]">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

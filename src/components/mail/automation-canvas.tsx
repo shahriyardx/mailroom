@@ -65,6 +65,8 @@ interface Kind {
   label: string;
   /** The eyebrow on the card, where the long form would wrap. */
   short: string;
+  /** Ends the journey, so nothing can follow it. */
+  ends?: boolean;
   hint: string;
   icon: LucideIcon;
   group: "Messages" | "Flow" | "People";
@@ -111,6 +113,7 @@ const KINDS: Kind[] = [
   },
   {
     key: "unsubscribe",
+    ends: true,
     short: "Unsubscribe",
     label: "Take them off the list",
     hint: "Ends their journey here",
@@ -147,6 +150,8 @@ export function AutomationCanvas({
   const [adding, setAdding] = useState<{
     after: string | null;
     branch: "next" | "nextElse";
+    /** True at the end of a chain, where a box that ends the journey can go. */
+    terminal: boolean;
     at: { x: number; y: number };
   } | null>(null);
   const [removing, setRemoving] = useState<FlowNode | null>(null);
@@ -323,11 +328,26 @@ export function AutomationCanvas({
                       key={`${edge.from}-${edge.branch}`}
                       d={edge.path}
                       fill="none"
-                      strokeWidth={1.5}
+                      strokeWidth={edge.to ? 1.75 : 1.5}
                       className={cn(
-                        edge.to ? "stroke-border" : "stroke-border/50",
-                        !edge.to && "[stroke-dasharray:4_4]",
+                        "stroke-muted-foreground/40",
+                        // A branch with nothing on it is drawn as an
+                        // invitation rather than as a connection that failed.
+                        !edge.to && "stroke-muted-foreground/25 [stroke-dasharray:3_5]",
                       )}
+                    />
+                  ))}
+
+                  {/* A dot where each line leaves its box. No arrowheads: the
+                      flow reads downwards, so direction is not in question,
+                      and a head on every edge is clutter at this density. */}
+                  {plan.nodes.map((spot) => (
+                    <circle
+                      key={`dot-${spot.id}`}
+                      cx={spot.x + NODE_WIDTH / 2}
+                      cy={spot.y + NODE_HEIGHT}
+                      r={2.5}
+                      className="fill-muted-foreground/40"
                     />
                   ))}
                 </g>
@@ -362,21 +382,37 @@ export function AutomationCanvas({
                     <button
                       type="button"
                       aria-label="Add a box here"
+                      title="Add a box here"
                       disabled={busy}
                       onClick={() =>
                         setAdding({
                           after: edge.from,
                           branch: edge.branch,
+                          // A box that ends the journey can only go where
+                          // nothing follows.
+                          terminal: edge.to === null,
                           at: { x: edge.x + PAD, y: edge.y + PAD },
                         })
                       }
-                      className="grid size-5 place-items-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground"
+                      className="grid size-[22px] place-items-center rounded-full border border-border bg-card text-muted-foreground transition-colors hover:border-primary hover:bg-primary hover:text-primary-foreground focus-visible:border-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30"
                     >
-                      <Plus className="size-3" />
+                      <Plus className="size-3.5" />
                     </button>
                   </span>
                 );
               })}
+
+              {/* Under the button it names, and inside the drawing so it is
+                  carried by the same centring: a hint somebody has to go
+                  looking for has not hinted anything. */}
+              {!entryNodeId && plan.edges[0] && (
+                <p
+                  className="-translate-x-1/2 pointer-events-none absolute w-48 text-center text-[12.5px] text-muted-foreground"
+                  style={{ left: plan.edges[0].x + PAD, top: plan.edges[0].y + PAD + 20 }}
+                >
+                  Start here
+                </p>
+              )}
 
               {plan.nodes.map((spot) => {
                 if (spot.id === TRIGGER_ID) {
@@ -446,7 +482,18 @@ export function AutomationCanvas({
               {(["Messages", "Flow", "People"] as const).map((group) => (
                 <div key={group} className="mb-1 last:mb-0">
                   <p className="eyebrow px-2 py-1">{group}</p>
-                  {KINDS.filter((kind) => kind.group === group).map((kind) => (
+                  {KINDS.filter(
+                    (kind) =>
+                      kind.group === group &&
+                      /*
+                       * A box that ends the journey is only offered where
+                       * nothing follows. Inserted in front of other boxes it
+                       * would inherit them, and since nothing after it can
+                       * ever be reached they would simply vanish from the
+                       * canvas — which looks exactly like losing work.
+                       */
+                      (!kind.ends || adding.terminal),
+                  ).map((kind) => (
                     <button
                       key={kind.key}
                       type="button"
@@ -508,12 +555,6 @@ export function AutomationCanvas({
           <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-ok/40 bg-ok/10 px-3 py-1.5 text-[12px] text-ok">
             <span className="size-1.5 rounded-full bg-ok" />
             Running — changes reach people already part-way through
-          </div>
-        )}
-
-        {!entryNodeId && (
-          <div className="pointer-events-none absolute inset-x-0 bottom-20 text-center text-[12.5px] text-muted-foreground">
-            Press the <Plus className="inline size-3" /> under the trigger to start.
           </div>
         )}
       </div>

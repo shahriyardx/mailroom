@@ -393,13 +393,18 @@ function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }
 
   return (
     <Surface className="mb-3">
+      {/* Named, because two switches with no heading over them are two
+          switches nobody knows the subject of. */}
+      <div className="border-border border-b px-4 pt-3 pb-2">
+        <span className="eyebrow">How people join</span>
+      </div>
+
       <Row className="items-start">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">Make people confirm by email</div>
+          <div className="font-medium text-[13px]">Make people confirm by email</div>
           <div className="mt-0.5 text-[12px] text-muted-foreground">
-            They land as "not confirmed" and hear nothing until they click a link. It halves a list
-            and it is the only thing that stops a stranger signing somebody else up — which is where
-            spam complaints come from.
+            They land as "not confirmed" until they click a link. It stops a stranger signing
+            somebody else up, which is where spam complaints come from.
           </div>
         </div>
         <Switch
