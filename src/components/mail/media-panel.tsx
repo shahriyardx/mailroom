@@ -10,6 +10,7 @@ import {
   DialogHeader,
   DialogTitle,
   IconButton,
+  Input,
   Panel,
   Tooltip,
   TooltipContent,
@@ -17,7 +18,7 @@ import {
 } from "@/components/kit";
 import { cn, formatBytes } from "@/lib/utils";
 import { deleteMediaAction } from "@/server/actions";
-import { Check, Copy, ImageIcon, RotateCw, Trash2, Upload, X } from "lucide-react";
+import { Check, Copy, ImageIcon, RotateCw, Search, Trash2, Upload, X } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -316,9 +317,11 @@ export function MediaPanel({ media }: { media: MediaItem[] }) {
 function DropZone({
   onFiles,
   children,
+  className,
 }: {
   onFiles: (files: FileList | File[]) => void;
   children: React.ReactNode;
+  className?: string;
 }) {
   const [over, setOver] = useState(false);
 
@@ -339,7 +342,8 @@ function DropZone({
       }}
       className={cn(
         "rounded-xl transition-colors",
-        over && "outline-2 outline-primary outline-dashed outline-offset-4",
+        over && "outline-2 outline-primary outline-dashed -outline-offset-4",
+        className,
       )}
     >
       {children}
@@ -500,9 +504,15 @@ function Thumbnail({ item }: { item: MediaItem }) {
 /* -------------------------------------------------------------------------- */
 
 /**
- * The library as a dialog, for the places that need an address rather than a
- * page: the image block in the builder. It uploads too, because having to
- * leave, upload and come back is how a picker becomes a detour.
+ * The library as a room of its own, for the places that need an address
+ * rather than a page: the image block in the builder.
+ *
+ * Big, because choosing a picture is looking at pictures — a grid of stamps
+ * in a small box is a list of filenames with decoration. Clicking one selects
+ * it and shows it properly beside the grid; the choice is made by a button or
+ * by clicking the same picture twice, so nothing is inserted by a misfired
+ * click. It uploads too, because having to leave, upload and come back is how
+ * a picker becomes a detour.
  */
 export function MediaPicker({
   open,
@@ -514,25 +524,25 @@ export function MediaPicker({
   onPick: (item: MediaItem) => void;
 }) {
   const [media, setMedia] = useState<MediaItem[] | null>(null);
+  const [query, setQuery] = useState("");
+  const [chosen, setChosen] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const input = useRef<HTMLInputElement>(null);
-  const alone = useRef(false);
+  const grid = useRef<HTMLDivElement>(null);
 
   const { pending, add, retry, dismiss, busy } = useUploads(
-    useCallback(
-      (item: MediaItem) => {
-        setMedia((current) => [item, ...(current ?? [])]);
-        // One file, dropped in on its own, was chosen by being dropped.
-        if (alone.current) {
-          onPick(item);
-          onOpenChange(false);
-        }
-      },
-      [onPick, onOpenChange],
-    ),
+    useCallback((item: MediaItem) => {
+      setMedia((current) => [item, ...(current ?? [])]);
+      // Whatever was just sent is what somebody came here to use.
+      setChosen(item.id);
+    }, []),
   );
 
   useEffect(() => {
     if (!open) return;
+    setQuery("");
+    setChosen(null);
+
     let alive = true;
     void fetch("/api/media")
       .then((response) => response.json())
@@ -545,22 +555,93 @@ export function MediaPicker({
     };
   }, [open]);
 
-  function take(files: FileList | File[]) {
-    alone.current = files.length === 1;
-    add(files);
-  }
+  useEffect(() => {
+    if (!copied) return;
+    const timer = window.setTimeout(() => setCopied(false), 1500);
+    return () => window.clearTimeout(timer);
+  }, [copied]);
 
   const pictures = (media ?? []).filter((item) => item.contentType.startsWith("image/"));
+  const wanted = query.trim().toLowerCase();
+  const shown = wanted
+    ? pictures.filter((item) => item.filename.toLowerCase().includes(wanted))
+    : pictures;
+  const selected = pictures.find((item) => item.id === chosen) ?? null;
+  const bytes = pictures.reduce((sum, item) => sum + item.sizeBytes, 0);
+
+  function choose(item: MediaItem) {
+    onPick(item);
+    onOpenChange(false);
+  }
+
+  /*
+   * Arrow keys walk the grid.
+   *
+   * How many across is read off the laid-out grid rather than guessed from
+   * the breakpoint, because the two disagree the moment anybody changes the
+   * class list and a wrong guess makes the down arrow jump three rows.
+   */
+  function walk(by: number) {
+    const columns =
+      grid.current && window.getComputedStyle(grid.current).gridTemplateColumns.split(" ").length;
+    const step = Math.abs(by) === 2 ? (columns || 4) * Math.sign(by) : by;
+    const at = shown.findIndex((item) => item.id === chosen);
+    const next = shown[Math.min(shown.length - 1, Math.max(0, (at < 0 ? 0 : at) + step))];
+    if (next) setChosen(next.id);
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[640px]">
-        <DialogHeader>
-          <DialogTitle>Choose a picture</DialogTitle>
-          <DialogDescription>
-            From the media library. Anything uploaded here is kept there too.
-          </DialogDescription>
-        </DialogHeader>
+      <DialogContent
+        className="h-[86vh] max-w-[1080px] gap-0 overflow-hidden p-0"
+        onKeyDown={(event) => {
+          if (event.target instanceof HTMLInputElement) return;
+          const moves: Record<string, number> = {
+            ArrowRight: 1,
+            ArrowLeft: -1,
+            ArrowDown: 2,
+            ArrowUp: -2,
+          };
+          const by = moves[event.key];
+          if (by !== undefined) {
+            event.preventDefault();
+            walk(by);
+            return;
+          }
+          if (event.key === "Enter" && selected) {
+            event.preventDefault();
+            choose(selected);
+          }
+        }}
+      >
+        {/* -- the bar -------------------------------------------------- */}
+        <div className="flex shrink-0 items-center gap-3 border-border border-b px-5 py-3.5">
+          <div className="min-w-0">
+            <DialogTitle>Media library</DialogTitle>
+            <DialogDescription className="text-[12px]">
+              Anything uploaded here is kept in the library too.
+            </DialogDescription>
+          </div>
+
+          <div className="relative ml-auto w-56">
+            <Search className="-translate-y-1/2 pointer-events-none absolute top-1/2 left-2.5 size-3.5 text-muted-foreground" />
+            <Input
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search by name"
+              aria-label="Search the library"
+              className="h-8 pl-8 text-[12.5px]"
+            />
+          </div>
+
+          <Button variant="outline" size="sm" pill onClick={() => input.current?.click()}>
+            <Upload />
+            Upload
+          </Button>
+
+          {/* Room for the close button the dialog draws in the corner. */}
+          <span className="w-5 shrink-0" />
+        </div>
 
         <input
           ref={input}
@@ -569,27 +650,41 @@ export function MediaPicker({
           multiple
           hidden
           onChange={(event) => {
-            if (event.target.files?.length) take(event.target.files);
+            if (event.target.files?.length) add(event.target.files);
             event.target.value = "";
           }}
         />
 
-        <DropZone onFiles={take}>
-          <div className="max-h-[52vh] min-h-[180px] overflow-y-auto px-0.5">
+        {/* -- the grid, and what is selected --------------------------- */}
+        <div className="flex min-h-0 flex-1">
+          <DropZone onFiles={add} className="min-w-0 flex-1 overflow-y-auto p-4">
             {media === null ? (
-              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
-                {[0, 1, 2, 3].map((slot) => (
-                  <div key={slot} className="h-[136px] animate-pulse rounded-lg bg-muted" />
+              <div className="grid grid-cols-3 gap-3 lg:grid-cols-4">
+                {[0, 1, 2, 3, 4, 5, 6, 7].map((slot) => (
+                  <div key={slot} className="h-[160px] animate-pulse rounded-xl bg-muted" />
                 ))}
               </div>
-            ) : pictures.length === 0 && pending.length === 0 ? (
-              <BlankSlate
-                icon={<ImageIcon />}
-                title="Nothing here yet"
-                hint="Drop a picture in, or press Upload below."
-              />
+            ) : shown.length === 0 && pending.length === 0 ? (
+              <div className="flex h-full min-h-[280px] flex-col items-center justify-center gap-3 rounded-xl border border-border border-dashed px-6 text-center">
+                <span className="grid size-11 place-items-center rounded-full bg-muted text-muted-foreground">
+                  <ImageIcon className="size-5" />
+                </span>
+                <p className="font-medium text-[13.5px]">
+                  {wanted ? "Nothing matches that" : "No pictures yet"}
+                </p>
+                <p className="max-w-[300px] text-[12px] text-muted-foreground">
+                  {wanted
+                    ? "Try a shorter word, or upload a new one."
+                    : "Drop one anywhere in this window, or press Upload. PNG, JPEG, GIF and WebP, up to 10 MB each."}
+                </p>
+                <Button variant="outline" size="sm" pill onClick={() => input.current?.click()}>
+                  <Upload />
+                  Upload a picture
+                </Button>
+              </div>
             ) : (
-              <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4">
+              <div ref={grid} className="grid grid-cols-3 gap-3 lg:grid-cols-4">
+                {/* Going up, so a file being sent is where the newest lands. */}
                 {pending.map((entry) => (
                   <PendingCard
                     key={entry.key}
@@ -598,39 +693,125 @@ export function MediaPicker({
                     onDismiss={() => dismiss(entry.key)}
                   />
                 ))}
-                {pictures.map((item) => (
+                {shown.map((item) => (
                   <button
                     key={item.id}
                     type="button"
-                    onClick={() => {
-                      onPick(item);
-                      onOpenChange(false);
-                    }}
-                    className="overflow-hidden rounded-lg border border-border text-left transition-colors hover:border-primary"
+                    onClick={() => setChosen(item.id)}
+                    onDoubleClick={() => choose(item)}
+                    aria-pressed={chosen === item.id}
+                    className={cn(
+                      "overflow-hidden rounded-xl border text-left transition-colors",
+                      chosen === item.id
+                        ? "border-primary ring-2 ring-primary/25"
+                        : "border-border hover:border-primary/50",
+                    )}
                   >
                     <Thumbnail item={item} />
-                    <span className="block truncate px-2 py-1.5 text-[11.5px]">
+                    <span
+                      className="block truncate px-2.5 py-1.5 text-[11.5px]"
+                      title={item.filename}
+                    >
                       {item.filename}
                     </span>
                   </button>
                 ))}
               </div>
             )}
-          </div>
-        </DropZone>
+          </DropZone>
 
-        <div className="flex items-center justify-end gap-2">
-          {busy && (
-            <span className="mr-auto text-[12px] text-muted-foreground">
-              Uploading {pending.filter((entry) => !entry.error).length}…
-            </span>
-          )}
-          <Button variant="outline" size="sm" pill onClick={() => input.current?.click()}>
-            <Upload />
-            Upload
+          {/* The picture at a size you can judge, and the few facts about it
+              that decide whether it is the right one. */}
+          <aside className="hidden w-[288px] shrink-0 flex-col border-border border-l bg-muted/20 md:flex">
+            {selected ? (
+              <div className="flex min-h-0 flex-1 flex-col">
+                <div className="flex h-[240px] shrink-0 items-center justify-center bg-[repeating-conic-gradient(rgba(127,127,127,0.12)_0_25%,transparent_0_50%)] bg-[length:16px_16px] p-3">
+                  {/* Ours, served by us, at a size next/image cannot know. */}
+                  <img
+                    src={selected.url}
+                    alt={selected.filename}
+                    className="max-h-full max-w-full object-contain"
+                  />
+                </div>
+
+                <div className="min-h-0 flex-1 space-y-3 overflow-y-auto p-4">
+                  <p className="break-all font-medium text-[13px]">{selected.filename}</p>
+
+                  <dl className="space-y-1 text-[12px]">
+                    <Fact label="Type">
+                      {selected.contentType.split("/")[1]?.toUpperCase() ?? "IMAGE"}
+                    </Fact>
+                    <Fact label="Size">{formatBytes(selected.sizeBytes)}</Fact>
+                  </dl>
+
+                  <div>
+                    <p className="eyebrow mb-1">Address</p>
+                    <div className="flex items-center gap-1">
+                      <code className="min-w-0 flex-1 truncate rounded-lg bg-muted px-2 py-1.5 font-mono text-[11px]">
+                        {selected.url}
+                      </code>
+                      <IconButton
+                        size="sm"
+                        label="Copy the address"
+                        onClick={() => {
+                          void navigator.clipboard.writeText(selected.url);
+                          setCopied(true);
+                        }}
+                      >
+                        {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
+                      </IconButton>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : (
+              <p className="m-auto max-w-[190px] px-6 text-center text-[12px] text-muted-foreground">
+                Click a picture to see it here. Click it twice to use it.
+              </p>
+            )}
+          </aside>
+        </div>
+
+        {/* -- the decision --------------------------------------------- */}
+        <div className="flex shrink-0 items-center gap-2 border-border border-t px-5 py-3">
+          <span className="text-[12px] text-muted-foreground">
+            {busy
+              ? `Uploading ${pending.filter((entry) => !entry.error).length}…`
+              : media === null
+                ? "Loading…"
+                : `${pictures.length} ${pictures.length === 1 ? "picture" : "pictures"} · ${formatBytes(bytes)}`}
+          </span>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            pill
+            className="ml-auto"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            variant="solid"
+            size="sm"
+            pill
+            disabled={!selected}
+            onClick={() => selected && choose(selected)}
+          >
+            Use this picture
           </Button>
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/** One line of the details pane. */
+function Fact({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <dt className="text-muted-foreground">{label}</dt>
+      <dd className="truncate text-foreground">{children}</dd>
+    </div>
   );
 }
