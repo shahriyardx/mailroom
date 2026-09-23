@@ -3,6 +3,7 @@ import "server-only";
 import { db } from "@/db";
 import { type Template, template } from "@/db/schema";
 import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
+import { env } from "@/lib/env";
 import { SLUG_PATTERN, TemplateError, renderTemplateParts, slugify } from "@/lib/template";
 import { newId } from "@/lib/utils";
 import { and, asc, eq, ne } from "drizzle-orm";
@@ -69,7 +70,7 @@ export interface TemplateInput {
  */
 function compiled(input: Partial<TemplateInput>) {
   if (!input.design) return { html: input.html, text: input.text };
-  return { html: renderDesign(input.design), text: designToText(input.design) };
+  return { html: renderDesign(input.design, env.appUrl), text: designToText(input.design) };
 }
 
 export class TemplateConflict extends Error {

@@ -39,12 +39,17 @@ import {
   type EmailTheme,
   FONTS,
   HEADING_DEFAULTS,
+  NETWORKS,
+  type Network,
   type Padding,
   type Where,
   designToText,
   emptyDesign,
   findBlock,
   insertBlock,
+  networkIcon,
+  networkLabel,
+  networkOf,
   newBlock,
   nudgeBlock,
   patchBlock,
@@ -1532,17 +1537,23 @@ function BlockView({
 
     case "social":
       return (
-        <div style={{ ...box, textAlign: block.align }}>
-          <div style={typeOf(block, theme, { size: 13, weight: 500 })}>
-            {block.links.map((link) => (
-              <span
-                key={link.label}
-                style={{ margin: "0 8px", color: block.style?.color ?? theme.link }}
-              >
-                {link.label}
-              </span>
-            ))}
-          </div>
+        <div style={{ ...box, textAlign: block.align, fontSize: 0, lineHeight: 0 }}>
+          {block.links.map((link, index) => (
+            // The same files the email will ask for, at a relative address,
+            // which the page this is drawn in supplies.
+            <img
+              key={`${block.id}-${index}`}
+              src={networkIcon(link.network, block.tone ?? "dark")}
+              alt={networkLabel(link.network)}
+              title={networkLabel(link.network)}
+              style={{
+                display: "inline-block",
+                margin: "0 6px",
+                width: block.size ?? 24,
+                height: block.size ?? 24,
+              }}
+            />
+          ))}
         </div>
       );
 
@@ -2194,27 +2205,44 @@ function Inspector({
           <>
             {block.links.map((link, index) => (
               <div key={`${block.id}-${index}`} className="flex items-center gap-1.5">
-                <Input
-                  value={link.label}
-                  onChange={(event) =>
+                <Select
+                  value={link.network}
+                  onValueChange={(network) =>
                     onPatch({
                       links: block.links.map((entry, at) =>
-                        at === index ? { ...entry, label: event.target.value } : entry,
+                        at === index ? { ...entry, network: network as Network } : entry,
                       ),
                     })
                   }
-                  placeholder="Label"
-                  className="h-8 w-[88px] text-[12.5px]"
-                />
+                >
+                  <SelectTrigger className="h-8 w-[112px] text-[12.5px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {NETWORKS.map((entry) => (
+                      <SelectItem key={entry.key} value={entry.key}>
+                        {entry.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
                 <Input
                   value={link.href}
-                  onChange={(event) =>
+                  onChange={(event) => {
+                    const href = event.target.value;
                     onPatch({
                       links: block.links.map((entry, at) =>
-                        at === index ? { ...entry, href: event.target.value } : entry,
+                        at === index
+                          ? {
+                              // A pasted address usually says which network it
+                              // is, so it does not have to be chosen twice.
+                              network: networkOf(href) ?? entry.network,
+                              href,
+                            }
+                          : entry,
                       ),
-                    })
-                  }
+                    });
+                  }}
                   placeholder="https://"
                   className="h-8 min-w-0 flex-1 font-mono text-[12px]"
                 />
@@ -2234,14 +2262,37 @@ function Inspector({
               variant="outline"
               size="sm"
               pill
-              onClick={() => onPatch({ links: [...block.links, { label: "", href: "" }] })}
+              onClick={() =>
+                onPatch({ links: [...block.links, { network: "website" as Network, href: "" }] })
+              }
             >
               <Plus />
               Add link
             </Button>
+            <Row label="Icons">
+              <Select
+                value={block.tone ?? "dark"}
+                onValueChange={(tone) => onPatch({ tone: tone as "dark" | "light" })}
+              >
+                <SelectTrigger className="h-8 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="dark">Dark</SelectItem>
+                  <SelectItem value="light">Light</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row label="Size">
+              <NumberField value={block.size} onChange={(size) => onPatch({ size: size ?? 24 })} />
+            </Row>
             <Row label="Align">
               <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
             </Row>
+            <Note>
+              A picture cannot be recoloured by the email holding it, so there are two sets: dark
+              for a light email, light for a dark one.
+            </Note>
           </>
         )}
 

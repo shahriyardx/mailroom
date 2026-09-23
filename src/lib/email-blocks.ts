@@ -152,10 +152,61 @@ export interface TableBlock extends Common {
   headerBackground: string;
 }
 
+/**
+ * The networks a footer can point at.
+ *
+ * A fixed list rather than free text, because each one carries an icon and an
+ * icon has to have been drawn. "Website" and "Email" are here for the two
+ * links every footer has that are not a network at all.
+ */
+export const NETWORKS = [
+  { key: "x", label: "X" },
+  { key: "facebook", label: "Facebook" },
+  { key: "instagram", label: "Instagram" },
+  { key: "linkedin", label: "LinkedIn" },
+  { key: "youtube", label: "YouTube" },
+  { key: "github", label: "GitHub" },
+  { key: "twitch", label: "Twitch" },
+  { key: "slack", label: "Slack" },
+  { key: "dribbble", label: "Dribbble" },
+  { key: "figma", label: "Figma" },
+  { key: "rss", label: "RSS" },
+  { key: "website", label: "Website" },
+  { key: "email", label: "Email" },
+] as const;
+
+export type Network = (typeof NETWORKS)[number]["key"];
+
+export function networkLabel(network: Network) {
+  return NETWORKS.find((entry) => entry.key === network)?.label ?? "Link";
+}
+
+/** Where an icon lives. Absolute in a real send; relative on screen. */
+export function networkIcon(network: Network, tone: "dark" | "light", origin = "") {
+  return `${origin}/social/${network}-${tone}.png`;
+}
+
+/** What a pasted address is, when it says so itself. */
+export function networkOf(href: string): Network | null {
+  const value = href.toLowerCase();
+  if (value.startsWith("mailto:")) return "email";
+  for (const { key } of NETWORKS) {
+    if (key === "website" || key === "email") continue;
+    if (value.includes(`${key}.com`)) return key;
+  }
+  if (value.includes("twitter.com") || value.includes("x.com")) return "x";
+  if (value.includes("youtu.be")) return "youtube";
+  return null;
+}
+
 export interface SocialBlock extends Common {
   type: "social";
-  links: { label: string; href: string }[];
+  links: { network: Network; href: string }[];
   align: Align;
+  /** Dark icons on a light email, light icons on a dark one. */
+  tone: "dark" | "light";
+  /** Pixels across. */
+  size: number;
 }
 
 export interface FooterBlock extends Common {
@@ -206,6 +257,12 @@ export interface EmailTheme {
    * so a rounded template is one that arrives looking like two templates.
    */
   radius: number;
+  /**
+   * Where this instance answers. Set while rendering rather than saved: the
+   * address can change, and the pictures in an email have to be fetched from
+   * wherever it answers today.
+   */
+  origin?: string;
 }
 
 export interface EmailDesign {
@@ -337,9 +394,11 @@ export function newBlock(kind: BlockKind, id: string): Block {
         id,
         type: "social",
         align: "center",
+        tone: "dark",
+        size: 24,
         links: [
-          { label: "Website", href: "https://example.com" },
-          { label: "X", href: "https://x.com" },
+          { network: "x", href: "https://x.com/" },
+          { network: "instagram", href: "https://instagram.com/" },
         ],
         style,
       };
@@ -413,6 +472,23 @@ function isBlock(value: unknown): value is Block {
  */
 function readBlock(value: unknown, depth = 0): Block | null {
   if (!isBlock(value)) return null;
+
+  // Social links were labels with addresses before they were networks with
+  // icons. The address usually says which network it is; the ones that do not
+  // become a plain website link, which is what they were being used as.
+  if (value.type === "social") {
+    return {
+      ...value,
+      tone: value.tone ?? "dark",
+      size: value.size ?? 24,
+      links: (value.links ?? []).map((link) => {
+        const legacy = link as unknown as { label?: string; network?: Network; href: string };
+        if (legacy.network) return { network: legacy.network, href: legacy.href };
+        return { network: networkOf(legacy.href) ?? "website", href: legacy.href };
+      }),
+    };
+  }
+
   if (value.type !== "columns") return value;
   if (depth > 0) return null;
 
@@ -609,8 +685,13 @@ export const HEADING_DEFAULTS: Record<1 | 2 | 3, { size: number; weight: number 
   3: { size: 17, weight: 600 },
 };
 
-export function renderDesign(design: EmailDesign): string {
-  const theme = design.theme;
+/**
+ * @param origin Where this instance answers, so the pictures it serves have
+ *   an address a mail client can reach. Left out on screen, where the page it
+ *   is drawn in supplies one.
+ */
+export function renderDesign(design: EmailDesign, origin = ""): string {
+  const theme = { ...design.theme, origin };
   const body = design.blocks.map((block) => renderBlock(block, theme)).join("\n");
 
   // Columns stack on a phone. Gmail and Apple Mail honour this; the ones that
@@ -847,16 +928,21 @@ ${play}
     }
 
     case "social": {
+      // Pictures, not letters. An icon cannot be an SVG — Gmail strips them —
+      // or a data: URI, which no client fetches, so each one is a real file
+      // this instance serves, addressed absolutely because the reader is
+      // somewhere else entirely.
+      const size = clamp(block.size ?? 24, 12, 64);
       const links = block.links
-        .filter((link) => link.label)
-        .map(
-          (link) =>
-            `<a href="${attr(link.href)}" style="display:inline-block;margin:0 8px;color:${attr(block.style?.color ?? theme.link)};text-decoration:none;">${escapeHtml(link.label)}</a>`,
-        )
+        .filter((link) => link.href)
+        .map((link) => {
+          const label = networkLabel(link.network);
+          return `<a href="${attr(link.href)}" style="display:inline-block;margin:0 6px;text-decoration:none;"><img src="${attr(networkIcon(link.network, block.tone ?? "dark", theme.origin ?? ""))}" alt="${attr(label)}" title="${attr(label)}" width="${size}" height="${size}" style="display:inline-block;width:${size}px;height:${size}px;border:0;outline:none;"></a>`;
+        })
         .join("");
       return cell(
         block,
-        `<div style="${typography(block, theme, { size: 13, weight: 500 })};text-align:${block.align};">${links}</div>`,
+        `<div style="text-align:${block.align};font-size:0;line-height:0;">${links}</div>`,
       );
     }
 
@@ -918,7 +1004,9 @@ export function designToText(design: EmailDesign): string {
         parts.push(block.rows.map((row) => row.join(" | ")).join("\n"));
         break;
       case "social":
-        parts.push(block.links.map((link) => `${link.label}: ${link.href}`).join("\n"));
+        parts.push(
+          block.links.map((link) => `${networkLabel(link.network)}: ${link.href}`).join("\n"),
+        );
         break;
       case "footer":
         parts.push(

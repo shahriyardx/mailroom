@@ -6,6 +6,7 @@ import {
   emptyDesign,
   findBlock,
   inline,
+  networkOf,
   newBlock,
   patchBlock,
   readDesign,
@@ -318,5 +319,59 @@ describe("moving a block about", () => {
     const blocks = [newBlock("columns", "c2"), columns];
     const after = relocateBlock(blocks, "c2", { parentId: "c1", column: 1 }, 0);
     assert.deepEqual(after, blocks, "nothing moved");
+  });
+});
+
+describe("social links carry icons", () => {
+  it("sends a picture per network, addressed where a reader can reach it", () => {
+    const block = {
+      ...newBlock("social", "s1"),
+      links: [{ network: "x", href: "https://x.com/me" }],
+    };
+    const html = renderDesign(design(block as never), "https://mail.example.com");
+
+    // Not an SVG, which Gmail strips, and not a data: URI, which nothing
+    // fetches — a real file at a real address.
+    assert.match(html, /src="https:\/\/mail\.example\.com\/social\/x-dark\.png"/);
+    assert.match(html, /alt="X"/);
+    assert.ok(!html.includes("<svg"));
+  });
+
+  it("offers the other tone, because a picture cannot be recoloured", () => {
+    const block = {
+      ...newBlock("social", "s1"),
+      tone: "light",
+      links: [{ network: "github", href: "https://github.com/x" }],
+    };
+    assert.match(renderDesign(design(block as never)), /\/social\/github-light\.png/);
+  });
+
+  it("works out the network from the address that was pasted", () => {
+    assert.equal(networkOf("https://www.linkedin.com/in/someone"), "linkedin");
+    assert.equal(networkOf("https://x.com/someone"), "x");
+    assert.equal(networkOf("https://youtu.be/abc"), "youtube");
+    assert.equal(networkOf("mailto:hello@example.com"), "email");
+    assert.equal(networkOf("https://example.com"), null);
+  });
+
+  it("reads the older block, where a link was a label", () => {
+    const read = readDesign({
+      version: 1,
+      blocks: [
+        {
+          id: "s1",
+          type: "social",
+          align: "center",
+          links: [
+            { label: "X", href: "https://x.com/me" },
+            { label: "Our blog", href: "https://example.com" },
+          ],
+        },
+      ],
+    });
+
+    const links = (read?.blocks[0] as { links: { network: string }[] }).links;
+    assert.equal(links[0]?.network, "x", "the address said which one it was");
+    assert.equal(links[1]?.network, "website", "and the one that did not is a link to a site");
   });
 });

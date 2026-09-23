@@ -464,7 +464,7 @@ export async function updateBroadcast(
   // The same rule as a template: a design decides the body, compiled here so
   // the canvas and what goes out cannot disagree.
   const body = input.design
-    ? { html: renderDesign(input.design), text: designToText(input.design) }
+    ? { html: renderDesign(input.design, env.appUrl), text: designToText(input.design) }
     : { html: input.html, text: input.text };
 
   await db
