@@ -439,3 +439,105 @@ describe("leaving a block off one size of screen", () => {
     assert.match(renderDesign(wide), /max-width:900px/);
   });
 });
+
+describe("the blocks added for real newsletters", () => {
+  /** One block on its own, rendered the way a send would render it. */
+  function only(kind: Parameters<typeof newBlock>[0], changes: Record<string, unknown> = {}) {
+    const design: EmailDesign = {
+      ...emptyDesign(),
+      blocks: [{ ...newBlock(kind, "b1"), ...changes } as never],
+    };
+    return { html: renderDesign(design), text: designToText(design) };
+  }
+
+  it("draws a list as a table rather than a ul", () => {
+    // Outlook's list indent is its own invention and cannot be overridden, so
+    // a correctly built <ul> arrives with a margin nobody asked for.
+    const { html, text } = only("list", { items: ["One", "Two"], ordered: false, marker: "•" });
+    assert.ok(!html.includes("<ul"));
+    assert.ok(html.includes("<table"));
+    assert.ok(html.includes("One"));
+    assert.ok(text.includes("- One"));
+  });
+
+  it("numbers an ordered list in both the HTML and the text", () => {
+    const { html, text } = only("list", { items: ["First", "Second"], ordered: true });
+    assert.ok(html.includes("1."));
+    assert.ok(html.includes("2."));
+    assert.ok(text.includes("1. First"));
+  });
+
+  it("gives a callout its fill as an attribute as well as a style", () => {
+    // Outlook throws away a background in a style attribute, so bgcolor has
+    // to be there too or the box arrives white on white.
+    const { html } = only("callout", { html: "Mind this" });
+    assert.ok(html.includes("bgcolor="));
+    assert.ok(html.includes("Mind this"));
+  });
+
+  it("lays numbers out in cells that add up to one row", () => {
+    const { html, text } = only("stat", {
+      items: [
+        { value: "12", label: "Sent" },
+        { value: "48%", label: "Opened" },
+      ],
+    });
+    // Two numbers share the row evenly, and the row is one <tr>.
+    assert.equal(html.match(/width="50%"/g)?.length, 2);
+    assert.ok(html.includes("Sent"));
+    assert.ok(html.includes("48%"));
+    assert.ok(text.includes("48% Opened"));
+  });
+
+  it("puts a separator between menu links and not around them", () => {
+    const { html } = only("menu", {
+      links: [
+        { label: "Home", href: "https://a.test" },
+        { label: "Blog", href: "https://b.test" },
+      ],
+      separator: "|",
+    });
+    assert.equal(html.match(/\|/g)?.length, 1);
+  });
+
+  it("leaves a gallery out entirely when no picture has been chosen", () => {
+    // An empty grid of alt text is worse than nothing: it is a row of broken
+    // image icons in somebody's inbox.
+    const { html } = only("gallery");
+    assert.ok(!html.includes("<img"));
+  });
+
+  it("sizes gallery pictures to the room they have", () => {
+    const { html } = only("gallery", {
+      perRow: 2,
+      gap: 12,
+      images: [
+        { src: "https://a.test/1.png", alt: "One", href: "" },
+        { src: "https://a.test/2.png", alt: "Two", href: "" },
+      ],
+    });
+    // 600 wide, 32 of gutter each side, 12 of gap, halved.
+    assert.ok(html.includes('width="262"'));
+  });
+
+  it("escapes what somebody typed into any of them", () => {
+    const { html } = only("stat", {
+      items: [{ value: "<script>", label: "Nope" }],
+    });
+    assert.ok(!html.includes("<script>"));
+    assert.ok(html.includes("&lt;script&gt;"));
+  });
+
+  it("reads every new block back out of a stored design", () => {
+    // A block dropped on the way back in is a block that vanishes from
+    // somebody's template when they next open it.
+    const design: EmailDesign = {
+      ...emptyDesign(),
+      blocks: (["list", "callout", "stat", "menu", "gallery"] as const).map((kind) =>
+        newBlock(kind, `b-${kind}`),
+      ),
+    };
+    const read = readDesign(JSON.parse(JSON.stringify(design)));
+    assert.equal(read?.blocks.length, 5);
+  });
+});

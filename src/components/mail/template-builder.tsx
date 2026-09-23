@@ -80,6 +80,7 @@ import {
   AlignLeft,
   AlignRight,
   ArrowLeft,
+  BarChart3,
   Blocks,
   Check,
   ChevronDown,
@@ -93,7 +94,11 @@ import {
   GripVertical,
   Heading as HeadingIcon,
   Image as ImageIcon,
+  Info,
+  LayoutGrid,
   Link2,
+  List as ListIcon,
+  Menu,
   Minus,
   Monitor,
   Moon,
@@ -142,9 +147,12 @@ const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: t
       items: [
         { kind: "heading", label: "Heading", icon: HeadingIcon },
         { kind: "text", label: "Text", icon: Type },
+        { kind: "list", label: "List", icon: ListIcon },
+        { kind: "callout", label: "Callout", icon: Info },
         { kind: "quote", label: "Quote", icon: QuoteIcon },
         { kind: "code", label: "Code", icon: Code2 },
         { kind: "image", label: "Image", icon: ImageIcon },
+        { kind: "gallery", label: "Gallery", icon: LayoutGrid },
         { kind: "youtube", label: "YouTube", icon: Youtube },
       ],
     },
@@ -152,6 +160,8 @@ const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: t
       group: "Layout",
       items: [
         { kind: "button", label: "Button", icon: MousePointerClick },
+        { kind: "menu", label: "Menu bar", icon: Menu },
+        { kind: "stat", label: "Numbers", icon: BarChart3 },
         { kind: "columns", label: "Columns", icon: Columns2 },
         { kind: "table", label: "Table", icon: Table2 },
         { kind: "divider", label: "Divider", icon: Minus },
@@ -167,6 +177,347 @@ const PALETTE: { group: string; items: { kind: BlockKind; label: string; icon: t
       ],
     },
   ];
+
+/**
+ * Ready-made arrangements, made of the blocks that already exist.
+ *
+ * The palette is a box of parts, and a box of parts is not a template. The
+ * difference between a builder people finish something in and one they give
+ * up on is whether "picture on the left, words on the right, button under
+ * them" is one press or four blocks and a padding argument.
+ *
+ * Every one of these is built from `newBlock`, so nothing here has its own
+ * renderer to keep in step — a section is an opinion about which blocks go
+ * together, not a new kind of thing.
+ */
+interface SectionPreset {
+  key: string;
+  label: string;
+  /** A rough drawing of the result. Boxes on a grid, no pictures to load. */
+  sketch: React.ReactNode;
+  build: (fresh: (kind: BlockKind) => Block) => Block[];
+}
+
+/** One grey bar in a sketch. */
+function Bar({ w = "100%", h = 5, dark = false }: { w?: string; h?: number; dark?: boolean }) {
+  return (
+    <span
+      className={cn(
+        "block rounded-[2px]",
+        dark ? "bg-muted-foreground/70" : "bg-muted-foreground/25",
+      )}
+      style={{ width: w, height: h }}
+    />
+  );
+}
+
+/** The grey square that stands in for a picture. */
+function Pic({ h = 30 }: { h?: number }) {
+  return (
+    <span
+      className="block rounded-[3px] bg-muted-foreground/20"
+      style={{ height: h, width: "100%" }}
+    />
+  );
+}
+
+/** Words, then a button: the half of a section that is not the picture. */
+function Words({ button = true }: { button?: boolean }) {
+  return (
+    <span className="flex flex-1 flex-col gap-1">
+      <Bar w="70%" h={5} />
+      <Bar w="100%" h={3} />
+      <Bar w="85%" h={3} />
+      {button && <Bar w="40%" h={7} dark />}
+    </span>
+  );
+}
+
+/** Fill in a block's fields without losing what `newBlock` decided. */
+function made<T extends Block>(block: Block, changes: Partial<T>): Block {
+  return { ...block, ...changes } as Block;
+}
+
+const SECTIONS: SectionPreset[] = [
+  {
+    key: "hero",
+    label: "Hero",
+    sketch: (
+      <span className="flex flex-col gap-1">
+        <Pic h={26} />
+        <Bar w="60%" h={6} />
+        <Bar w="90%" h={3} />
+        <Bar w="35%" h={7} dark />
+      </span>
+    ),
+    build: (fresh) => [
+      made(fresh("image"), { align: "center", width: 100 }),
+      made(fresh("heading"), { text: "A headline worth the picture", level: 1, align: "center" }),
+      made(fresh("text"), { html: "One sentence saying what this is about.", align: "center" }),
+      made(fresh("button"), { text: "Read it", align: "center" }),
+    ],
+  },
+  {
+    key: "image-left",
+    label: "Picture left",
+    sketch: (
+      <span className="flex items-start gap-1.5">
+        <span className="w-[38%]">
+          <Pic h={34} />
+        </span>
+        <Words />
+      </span>
+    ),
+    build: (fresh) => [
+      made<ColumnsBlock>(fresh("columns"), {
+        gap: 20,
+        columns: [
+          { blocks: [made(fresh("image"), { align: "left", width: 100 })] },
+          {
+            blocks: [
+              made(fresh("heading"), { text: "What this is", level: 3, align: "left" }),
+              made(fresh("text"), { html: "A couple of lines about it.", align: "left" }),
+              made(fresh("button"), { text: "Have a look", align: "left" }),
+            ],
+          },
+        ],
+      }),
+    ],
+  },
+  {
+    key: "image-right",
+    label: "Picture right",
+    sketch: (
+      <span className="flex items-start gap-1.5">
+        <Words />
+        <span className="w-[38%]">
+          <Pic h={34} />
+        </span>
+      </span>
+    ),
+    build: (fresh) => [
+      made<ColumnsBlock>(fresh("columns"), {
+        gap: 20,
+        columns: [
+          {
+            blocks: [
+              made(fresh("heading"), { text: "What this is", level: 3, align: "left" }),
+              made(fresh("text"), { html: "A couple of lines about it.", align: "left" }),
+              made(fresh("button"), { text: "Have a look", align: "left" }),
+            ],
+          },
+          { blocks: [made(fresh("image"), { align: "right", width: 100 })] },
+        ],
+      }),
+    ],
+  },
+  {
+    key: "image-over",
+    label: "Picture over",
+    sketch: (
+      <span className="flex flex-col gap-1">
+        <Pic h={24} />
+        <Bar w="55%" h={5} />
+        <Bar w="100%" h={3} />
+        <Bar w="35%" h={7} dark />
+      </span>
+    ),
+    build: (fresh) => [
+      made(fresh("image"), { align: "center", width: 100 }),
+      made(fresh("heading"), { text: "What this is", level: 3, align: "left" }),
+      made(fresh("text"), { html: "A couple of lines about it.", align: "left" }),
+      made(fresh("button"), { text: "Have a look", align: "left" }),
+    ],
+  },
+  {
+    key: "two-up",
+    label: "Two up",
+    sketch: (
+      <span className="flex gap-1.5">
+        {[0, 1].map((at) => (
+          <span key={at} className="flex flex-1 flex-col gap-1">
+            <Pic h={20} />
+            <Bar w="80%" h={4} />
+            <Bar w="100%" h={3} />
+            <Bar w="55%" h={6} dark />
+          </span>
+        ))}
+      </span>
+    ),
+    build: (fresh) => [
+      made<ColumnsBlock>(fresh("columns"), {
+        gap: 20,
+        columns: [0, 1].map(() => ({
+          blocks: [
+            made(fresh("image"), { align: "center", width: 100 }),
+            made(fresh("heading"), { text: "One of them", level: 3, align: "left" }),
+            made(fresh("text"), { html: "A line about it.", align: "left" }),
+            made(fresh("button"), { text: "Open", align: "left" }),
+          ],
+        })),
+      }),
+    ],
+  },
+  {
+    key: "three-up",
+    label: "Three features",
+    sketch: (
+      <span className="flex gap-1.5">
+        {[0, 1, 2].map((at) => (
+          <span key={at} className="flex flex-1 flex-col gap-1">
+            <Pic h={16} />
+            <Bar w="90%" h={4} />
+            <Bar w="100%" h={3} />
+          </span>
+        ))}
+      </span>
+    ),
+    build: (fresh) => [
+      made<ColumnsBlock>(fresh("columns"), {
+        gap: 16,
+        columns: [0, 1, 2].map(() => ({
+          blocks: [
+            made(fresh("image"), { align: "center", width: 100 }),
+            made(fresh("heading"), { text: "A feature", level: 3, align: "center" }),
+            made(fresh("text"), { html: "What it does.", align: "center" }),
+          ],
+        })),
+      }),
+    ],
+  },
+  {
+    key: "numbers",
+    label: "Numbers",
+    sketch: (
+      <span className="flex gap-2">
+        {[0, 1, 2].map((at) => (
+          <span key={at} className="flex flex-1 flex-col items-center gap-1">
+            <Bar w="60%" h={10} dark />
+            <Bar w="80%" h={3} />
+          </span>
+        ))}
+      </span>
+    ),
+    build: (fresh) => [
+      made(fresh("heading"), { text: "The month in numbers", level: 3, align: "center" }),
+      fresh("stat"),
+    ],
+  },
+  {
+    key: "list",
+    label: "Headline and list",
+    sketch: (
+      <span className="flex flex-col gap-1.5">
+        <Bar w="65%" h={6} />
+        {[0, 1, 2].map((at) => (
+          <span key={at} className="flex items-center gap-1.5">
+            <span className="size-1 rounded-full bg-muted-foreground/60" />
+            <Bar w="85%" h={3} />
+          </span>
+        ))}
+      </span>
+    ),
+    build: (fresh) => [
+      made(fresh("heading"), { text: "What changed", level: 3, align: "left" }),
+      fresh("list"),
+    ],
+  },
+  {
+    key: "callout",
+    label: "Notice",
+    sketch: (
+      <span className="flex gap-1.5 rounded-[3px] bg-muted-foreground/10 p-1.5">
+        <span className="w-[3px] shrink-0 rounded-full bg-muted-foreground/60" />
+        <span className="flex flex-1 flex-col gap-1">
+          <Bar w="80%" h={3} />
+          <Bar w="60%" h={3} />
+        </span>
+      </span>
+    ),
+    build: (fresh) => [fresh("callout")],
+  },
+  {
+    key: "cta",
+    label: "Call to action",
+    sketch: (
+      <span className="flex flex-col items-center gap-1.5">
+        <Bar w="60%" h={6} />
+        <Bar w="85%" h={3} />
+        <Bar w="40%" h={8} dark />
+      </span>
+    ),
+    build: (fresh) => [
+      made(fresh("heading"), { text: "Ready when you are", level: 2, align: "center" }),
+      made(fresh("text"), { html: "One line saying why now.", align: "center" }),
+      made(fresh("button"), { text: "Get started", align: "center" }),
+    ],
+  },
+  {
+    key: "gallery",
+    label: "Gallery",
+    sketch: (
+      <span className="flex gap-1.5">
+        {[0, 1, 2].map((at) => (
+          <span key={at} className="flex-1">
+            <Pic h={26} />
+          </span>
+        ))}
+      </span>
+    ),
+    build: (fresh) => [
+      made(fresh("gallery"), {
+        perRow: 3,
+        images: [
+          { src: "", alt: "", href: "" },
+          { src: "", alt: "", href: "" },
+          { src: "", alt: "", href: "" },
+        ],
+      }),
+    ],
+  },
+  {
+    key: "sign-off",
+    label: "Sign-off",
+    sketch: (
+      <span className="flex flex-col items-center gap-1.5">
+        <Bar w="70%" h={3} />
+        <span className="flex gap-1">
+          {[0, 1, 2].map((at) => (
+            <span key={at} className="size-2 rounded-full bg-muted-foreground/40" />
+          ))}
+        </span>
+        <Bar w="50%" h={3} />
+      </span>
+    ),
+    build: (fresh) => [fresh("divider"), fresh("social"), fresh("footer")],
+  },
+];
+
+/** One of the two halves of the palette. */
+function PalettePick({
+  active,
+  onClick,
+  label,
+}: {
+  active: boolean;
+  onClick: () => void;
+  label: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={cn(
+        "flex-1 rounded-md px-2 py-1 text-[12px] transition-colors",
+        active
+          ? "bg-accent font-medium text-foreground"
+          : "text-muted-foreground hover:bg-accent/50",
+      )}
+    >
+      {label}
+    </button>
+  );
+}
 
 /** What a palette drag carries. A custom type, so nothing else is mistaken for one. */
 const NEW_BLOCK = "application/x-mailroom-block";
@@ -185,6 +536,11 @@ const LABELS: Record<BlockKind, string> = {
   table: "Table",
   social: "Social links",
   footer: "Unsubscribe footer",
+  list: "List",
+  callout: "Callout",
+  stat: "Numbers",
+  menu: "Menu bar",
+  gallery: "Gallery",
   html: "Raw HTML",
 };
 
@@ -433,6 +789,8 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
 
   const [selected, setSelected] = useState<string | null>(null);
   const [tab, setTab] = useState<"block" | "page" | "details">("details");
+  /** Which half of the left-hand palette is showing. */
+  const [shelf, setShelf] = useState<"blocks" | "sections">("blocks");
   const [previewing, setPreviewing] = useState(false);
   /* What the preview is pretending to be: a window or a phone, in a client
      that leaves the colours alone or one that forces its own dark mode. */
@@ -516,6 +874,23 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
       blocks: insertBlock(current.blocks, fresh, where, at ?? Number.MAX_SAFE_INTEGER),
     }));
     setSelected(fresh.id);
+    setTab("block");
+  }
+
+  /**
+   * A whole arrangement at once.
+   *
+   * Appended rather than dropped where the cursor is: a section is several
+   * blocks and one of them is usually a two-column table, and working out
+   * where that goes inside another one is a question nobody asked. The
+   * blocks are ordinary blocks once they land, so they move like any other.
+   */
+  function addSection(preset: SectionPreset) {
+    const blocks = preset.build((kind) => newBlock(kind, newId("blk")));
+    if (blocks.length === 0) return;
+
+    setDesign((current) => ({ ...current, blocks: [...current.blocks, ...blocks] }));
+    setSelected(blocks[0]!.id);
     setTab("block");
   }
 
@@ -749,32 +1124,68 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
       {/* -- palette, canvas, inspector ------------------------------------ */}
       <div className="flex min-h-0 flex-1">
         {pane === "design" && !previewing && (
-          <aside className="w-[188px] shrink-0 overflow-y-auto border-border border-r bg-card py-3">
-            {PALETTE.map((section) => (
-              <div key={section.group} className="mb-3 px-2">
-                <p className="eyebrow mb-1 px-2">{section.group}</p>
-                {section.items.map((item) => (
-                  <button
-                    key={item.kind}
-                    type="button"
-                    draggable
-                    // Dragged onto the canvas to land where it is dropped, or
-                    // clicked to go on the end. Both, because a palette that
-                    // only drags is unusable with a keyboard and one that
-                    // only clicks makes you move every block you add.
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData(NEW_BLOCK, item.kind);
-                      event.dataTransfer.effectAllowed = "copy";
-                    }}
-                    onClick={() => add(item.kind)}
-                    className="flex w-full cursor-grab items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground transition-colors hover:bg-accent active:cursor-grabbing"
-                  >
-                    <item.icon className="size-4 text-muted-foreground" />
-                    {item.label}
-                  </button>
-                ))}
-              </div>
-            ))}
+          <aside className="flex w-[188px] shrink-0 flex-col border-border border-r bg-card">
+            {/* Parts on one side, whole arrangements on the other. A palette
+                of fourteen buttons is a box of parts, and most people are
+                looking for a section rather than a block. */}
+            <div className="flex shrink-0 gap-1 border-border border-b p-2">
+              <PalettePick
+                active={shelf === "blocks"}
+                onClick={() => setShelf("blocks")}
+                label="Blocks"
+              />
+              <PalettePick
+                active={shelf === "sections"}
+                onClick={() => setShelf("sections")}
+                label="Sections"
+              />
+            </div>
+
+            <div className="min-h-0 flex-1 overflow-y-auto py-3">
+              {shelf === "sections" ? (
+                <div className="space-y-1.5 px-2">
+                  {SECTIONS.map((preset) => (
+                    <button
+                      key={preset.key}
+                      type="button"
+                      onClick={() => addSection(preset)}
+                      className="w-full rounded-lg border border-border p-2 text-left transition-colors hover:border-primary/50 hover:bg-accent"
+                    >
+                      <span className="block rounded-[4px] bg-muted/60 p-2">{preset.sketch}</span>
+                      <span className="mt-1.5 block text-[11.5px] text-muted-foreground">
+                        {preset.label}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                PALETTE.map((section) => (
+                  <div key={section.group} className="mb-3 px-2">
+                    <p className="eyebrow mb-1 px-2">{section.group}</p>
+                    {section.items.map((item) => (
+                      <button
+                        key={item.kind}
+                        type="button"
+                        draggable
+                        // Dragged onto the canvas to land where it is dropped, or
+                        // clicked to go on the end. Both, because a palette that
+                        // only drags is unusable with a keyboard and one that
+                        // only clicks makes you move every block you add.
+                        onDragStart={(event) => {
+                          event.dataTransfer.setData(NEW_BLOCK, item.kind);
+                          event.dataTransfer.effectAllowed = "copy";
+                        }}
+                        onClick={() => add(item.kind)}
+                        className="flex w-full cursor-grab items-center gap-2.5 rounded-lg px-2 py-1.5 text-[13px] text-foreground transition-colors hover:bg-accent active:cursor-grabbing"
+                      >
+                        <item.icon className="size-4 text-muted-foreground" />
+                        {item.label}
+                      </button>
+                    ))}
+                  </div>
+                ))
+              )}
+            </div>
           </aside>
         )}
 
@@ -1903,6 +2314,162 @@ function BlockView({
         </div>
       );
 
+    case "list":
+      return (
+        <div style={box} onClick={stop} onKeyDown={stop}>
+          <table style={{ width: "100%", borderCollapse: "collapse" }}>
+            <tbody>
+              {block.items.map((item, index) => (
+                <tr key={`${block.id}-${index}`}>
+                  <td
+                    valign="top"
+                    style={{
+                      width: 24,
+                      paddingBottom: index === block.items.length - 1 ? 0 : block.gap,
+                      ...typeOf(block, theme, { size: 15, weight: 400 }),
+                    }}
+                  >
+                    {block.ordered ? `${index + 1}.` : block.marker || "\u2022"}
+                  </td>
+                  <td
+                    valign="top"
+                    style={{
+                      paddingBottom: index === block.items.length - 1 ? 0 : block.gap,
+                      ...typeOf(block, theme, { size: 15, weight: 400 }),
+                    }}
+                  >
+                    {/* The same editor the text block uses, so an item is
+                        typed where it will appear rather than in a field on
+                        the right. */}
+                    <RichEditor
+                      value={item}
+                      onChange={(html) =>
+                        onPatch({
+                          items: block.items.map((entry, at) => (at === index ? html : entry)),
+                        })
+                      }
+                      placeholder="Another thing…"
+                      className="-mx-2"
+                    />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      );
+
+    case "callout":
+      return (
+        <div style={box} onClick={stop} onKeyDown={stop}>
+          <div
+            style={{
+              background: block.style?.background ?? "#f4f4f5",
+              borderLeft: block.accent ? `4px solid ${block.accent}` : undefined,
+              borderRadius: block.style?.border?.radius ?? 8,
+              padding: "14px 16px",
+              display: "flex",
+              gap: 10,
+              textAlign: block.align,
+            }}
+          >
+            {block.icon ? <span style={{ fontSize: 16 }}>{block.icon}</span> : null}
+            <div style={{ flex: 1, ...typeOf(block, theme, { size: 15, weight: 400 }) }}>
+              <RichEditor
+                value={block.html}
+                onChange={(html) => onPatch({ html })}
+                placeholder="What is worth knowing…"
+                className="-mx-2"
+              />
+            </div>
+          </div>
+        </div>
+      );
+
+    case "stat":
+      return (
+        <div style={box}>
+          <div style={{ display: "flex", width: "100%" }}>
+            {block.items.map((item, index) => (
+              <div
+                key={`${block.id}-${index}`}
+                style={{ flex: 1, padding: "0 6px", textAlign: block.align }}
+              >
+                <div
+                  style={{
+                    ...typeOf(block, theme, { size: block.valueSize, weight: 700 }),
+                    color: block.valueColor,
+                    lineHeight: 1.15,
+                  }}
+                >
+                  {item.value}
+                </div>
+                <div
+                  style={{
+                    fontFamily: theme.font,
+                    fontSize: 13,
+                    color: block.style?.color ?? "#71717a",
+                    paddingTop: 4,
+                  }}
+                >
+                  {item.label}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+
+    case "menu":
+      return (
+        <div style={{ ...box, textAlign: block.align }}>
+          <span style={typeOf(block, theme, { size: 13, weight: 500 })}>
+            {block.links.map((link, index) => (
+              <span key={`${block.id}-${index}`}>
+                {index > 0 && (
+                  <span style={{ padding: "0 8px", color: "#a1a1aa" }}>
+                    {block.separator || "\u00b7"}
+                  </span>
+                )}
+                <span style={{ color: block.style?.color ?? theme.link }}>{link.label}</span>
+              </span>
+            ))}
+          </span>
+        </div>
+      );
+
+    case "gallery": {
+      const shown = block.images.filter((image) => image.src);
+      const perRow = Math.min(4, Math.max(2, Math.round(block.perRow)));
+      return (
+        <div style={box}>
+          {shown.length === 0 ? (
+            <div className={PLACEHOLDER} style={PLACEHOLDER_STYLE}>
+              <LayoutGrid className="size-4" />
+              Add pictures on the right
+            </div>
+          ) : (
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: `repeat(${perRow}, 1fr)`,
+                gap: block.gap,
+              }}
+            >
+              {shown.map((image, index) => (
+                <img
+                  key={`${block.id}-${index}`}
+                  src={image.src}
+                  alt={image.alt}
+                  style={{ width: "100%", display: "block", borderRadius: block.radius }}
+                />
+              ))}
+            </div>
+          )}
+        </div>
+      );
+    }
+
     case "html":
       return (
         <div style={box}>
@@ -2862,6 +3429,326 @@ function Inspector({
               Campaigns fill <code className="font-mono">{"{{ unsubscribe_url }}"}</code> in for
               each recipient.
             </Note>
+          </>
+        )}
+
+        {block.type === "list" && (
+          <>
+            <Row label="Numbered">
+              <input
+                type="checkbox"
+                checked={block.ordered}
+                onChange={(event) => onPatch({ ordered: event.target.checked })}
+                className="size-4 accent-primary"
+              />
+            </Row>
+            {!block.ordered && (
+              <Row label="Marker">
+                <Select value={block.marker} onValueChange={(marker) => onPatch({ marker })}>
+                  <SelectTrigger className="h-8 text-[12.5px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="\u2022">• Dot</SelectItem>
+                    <SelectItem value="\u2013">– Dash</SelectItem>
+                    <SelectItem value="\u2713">✓ Tick</SelectItem>
+                    <SelectItem value="\u2192">→ Arrow</SelectItem>
+                    <SelectItem value="\u25aa">▪ Square</SelectItem>
+                  </SelectContent>
+                </Select>
+              </Row>
+            )}
+            <Row label="Gap">
+              <NumberField value={block.gap} onChange={(gap) => onPatch({ gap: gap ?? 8 })} />
+            </Row>
+
+            {block.items.map((item, index) => (
+              <div key={`${block.id}-i${index}`} className="flex items-center gap-1.5">
+                <Input
+                  value={item}
+                  onChange={(event) =>
+                    onPatch({
+                      items: block.items.map((entry, at) =>
+                        at === index ? event.target.value : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 text-[12.5px]"
+                />
+                <IconButton
+                  variant="danger"
+                  label="Remove this item"
+                  onClick={() => onPatch({ items: block.items.filter((_, at) => at !== index) })}
+                >
+                  <Trash2 />
+                </IconButton>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => onPatch({ items: [...block.items, "Another thing"] })}
+            >
+              <Plus />
+              Add an item
+            </Button>
+          </>
+        )}
+
+        {block.type === "callout" && (
+          <>
+            <Row label="Stripe">
+              <Swatch
+                value={block.accent}
+                fallback="none"
+                onChange={(accent) => onPatch({ accent })}
+              />
+            </Row>
+            <Row label="Icon">
+              <Input
+                value={block.icon}
+                onChange={(event) => onPatch({ icon: event.target.value.slice(0, 4) })}
+                placeholder="none"
+                className="h-8 text-[12.5px]"
+              />
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+            {/* An emoji rather than a picture: an icon that is an image is an
+                icon most readers never see, because images are blocked. */}
+            <Note>
+              Type an emoji for the icon, or leave it empty. The fill is under Background.
+            </Note>
+          </>
+        )}
+
+        {block.type === "stat" && (
+          <>
+            <Row label="Number size">
+              <NumberField
+                value={block.valueSize}
+                onChange={(valueSize) => onPatch({ valueSize: valueSize ?? 30 })}
+              />
+            </Row>
+            <Row label="Number colour">
+              <Swatch value={block.valueColor} onChange={(valueColor) => onPatch({ valueColor })} />
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+
+            {block.items.map((item, index) => (
+              <div key={`${block.id}-s${index}`} className="flex items-center gap-1.5">
+                <Input
+                  value={item.value}
+                  placeholder="1,204"
+                  onChange={(event) =>
+                    onPatch({
+                      items: block.items.map((entry, at) =>
+                        at === index ? { ...entry, value: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 w-20 text-[12.5px]"
+                />
+                <Input
+                  value={item.label}
+                  placeholder="Subscribers"
+                  onChange={(event) =>
+                    onPatch({
+                      items: block.items.map((entry, at) =>
+                        at === index ? { ...entry, label: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 text-[12.5px]"
+                />
+                <IconButton
+                  variant="danger"
+                  label="Remove this number"
+                  onClick={() => onPatch({ items: block.items.filter((_, at) => at !== index) })}
+                >
+                  <Trash2 />
+                </IconButton>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              disabled={block.items.length >= 4}
+              onClick={() => onPatch({ items: [...block.items, { value: "0", label: "Thing" }] })}
+            >
+              <Plus />
+              Add a number
+            </Button>
+            {/* Four across a 600px card is 150px each, which is about two
+                words. More than that and the labels wrap into each other. */}
+            {block.items.length >= 4 && <Note>Four is as many as fit across an email.</Note>}
+          </>
+        )}
+
+        {block.type === "menu" && (
+          <>
+            <Row label="Between">
+              <Select value={block.separator} onValueChange={(separator) => onPatch({ separator })}>
+                <SelectTrigger className="h-8 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="\u00b7">· Dot</SelectItem>
+                  <SelectItem value="|">| Pipe</SelectItem>
+                  <SelectItem value="/">/ Slash</SelectItem>
+                  <SelectItem value="\u2014">— Dash</SelectItem>
+                  <SelectItem value=" ">Nothing</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row label="Align">
+              <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
+            </Row>
+
+            {block.links.map((link, index) => (
+              <div key={`${block.id}-m${index}`} className="flex items-center gap-1.5">
+                <Input
+                  value={link.label}
+                  placeholder="Home"
+                  onChange={(event) =>
+                    onPatch({
+                      links: block.links.map((entry, at) =>
+                        at === index ? { ...entry, label: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 w-24 text-[12.5px]"
+                />
+                <Input
+                  value={link.href}
+                  placeholder="https://"
+                  onChange={(event) =>
+                    onPatch({
+                      links: block.links.map((entry, at) =>
+                        at === index ? { ...entry, href: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 text-[12.5px]"
+                />
+                <IconButton
+                  variant="danger"
+                  label="Remove this link"
+                  onClick={() => onPatch({ links: block.links.filter((_, at) => at !== index) })}
+                >
+                  <Trash2 />
+                </IconButton>
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() =>
+                onPatch({ links: [...block.links, { label: "Link", href: "https://" }] })
+              }
+            >
+              <Plus />
+              Add a link
+            </Button>
+          </>
+        )}
+
+        {block.type === "gallery" && (
+          <>
+            <Row label="Across">
+              <Select
+                value={String(block.perRow)}
+                onValueChange={(value) => onPatch({ perRow: Number(value) })}
+              >
+                <SelectTrigger className="h-8 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="2">Two</SelectItem>
+                  <SelectItem value="3">Three</SelectItem>
+                  <SelectItem value="4">Four</SelectItem>
+                </SelectContent>
+              </Select>
+            </Row>
+            <Row label="Gap">
+              <NumberField value={block.gap} onChange={(gap) => onPatch({ gap: gap ?? 12 })} />
+            </Row>
+            <Row label="Corners">
+              <NumberField
+                value={block.radius}
+                onChange={(radius) => onPatch({ radius: radius ?? 0 })}
+              />
+            </Row>
+
+            {block.images.map((image, index) => (
+              <div
+                key={`${block.id}-g${index}`}
+                className="space-y-1.5 rounded-lg border border-border p-2"
+              >
+                <div className="flex items-center gap-1.5">
+                  <Input
+                    value={image.src}
+                    placeholder="Picture address"
+                    onChange={(event) =>
+                      onPatch({
+                        images: block.images.map((entry, at) =>
+                          at === index ? { ...entry, src: event.target.value } : entry,
+                        ),
+                      })
+                    }
+                    className="h-8 text-[12.5px]"
+                  />
+                  <IconButton
+                    variant="danger"
+                    label="Remove this picture"
+                    onClick={() =>
+                      onPatch({ images: block.images.filter((_, at) => at !== index) })
+                    }
+                  >
+                    <Trash2 />
+                  </IconButton>
+                </div>
+                <Input
+                  value={image.alt}
+                  placeholder="What it shows, for a blocked image"
+                  onChange={(event) =>
+                    onPatch({
+                      images: block.images.map((entry, at) =>
+                        at === index ? { ...entry, alt: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 text-[12.5px]"
+                />
+                <Input
+                  value={image.href}
+                  placeholder="Where it goes (optional)"
+                  onChange={(event) =>
+                    onPatch({
+                      images: block.images.map((entry, at) =>
+                        at === index ? { ...entry, href: event.target.value } : entry,
+                      ),
+                    })
+                  }
+                  className="h-8 text-[12.5px]"
+                />
+              </div>
+            ))}
+            <Button
+              variant="outline"
+              size="sm"
+              className="w-full"
+              onClick={() => onPatch({ images: [...block.images, { src: "", alt: "", href: "" }] })}
+            >
+              <Plus />
+              Add a picture
+            </Button>
           </>
         )}
 

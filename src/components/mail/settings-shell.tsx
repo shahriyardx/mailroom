@@ -196,11 +196,17 @@ export function SettingsShell({
     />
   );
 
+  // The template builder reached from settings gets the same whole window it
+  // gets from the campaigns side. It is the same screen.
+  const immersive = isFullBleed(pathname);
+
   return (
     <div className="flex h-dvh overflow-hidden bg-card">
-      <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
-        {nav}
-      </aside>
+      {!immersive && (
+        <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+          {nav}
+        </aside>
+      )}
 
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetContent side="left" className="flex flex-col bg-sidebar p-0" showClose={false}>
@@ -210,21 +216,25 @@ export function SettingsShell({
       </Sheet>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-5">
-          <IconButton
-            size="md"
-            label="Open navigation"
-            className="-ml-1.5 md:hidden"
-            onClick={() => setNavOpen(true)}
-          >
-            <Menu />
-          </IconButton>
-          <h1 className="min-w-0 truncate font-display text-[18px] font-semibold tracking-[-0.02em]">
-            {current?.label ?? "Settings"}
-          </h1>
-        </header>
+        {/* The builder draws its own header, with the name of the thing
+            being built in it. Two headers is one too many. */}
+        {!immersive && (
+          <header className="flex h-14 shrink-0 items-center gap-2 border-b border-border px-4 sm:px-5">
+            <IconButton
+              size="md"
+              label="Open navigation"
+              className="-ml-1.5 md:hidden"
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu />
+            </IconButton>
+            <h1 className="min-w-0 truncate font-display text-[18px] font-semibold tracking-[-0.02em]">
+              {current?.label ?? "Settings"}
+            </h1>
+          </header>
+        )}
 
-        {isFullBleed(pathname) ? (
+        {immersive ? (
           <div className="flex min-h-0 flex-1 flex-col">{children}</div>
         ) : (
           <div className="min-h-0 flex-1 overflow-y-auto">

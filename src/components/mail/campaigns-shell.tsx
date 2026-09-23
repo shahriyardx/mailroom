@@ -155,11 +155,22 @@ export function CampaignsShell({
     </div>
   );
 
+  /*
+   * A builder and a flow canvas take the whole window.
+   *
+   * Both are places somebody works for half an hour at a time, and both are
+   * wider than they are tall — so fifteen rems of navigation beside them is
+   * fifteen rems the canvas does not get. Each carries its own arrow back.
+   */
+  const immersive = isFullBleed(pathname);
+
   return (
     <div className="flex h-dvh overflow-hidden bg-card">
-      <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
-        {nav}
-      </aside>
+      {!immersive && (
+        <aside className="hidden w-[15rem] shrink-0 flex-col border-r border-border bg-sidebar md:flex">
+          {nav}
+        </aside>
+      )}
 
       <Sheet open={navOpen} onOpenChange={setNavOpen}>
         <SheetContent side="left" className="flex flex-col bg-sidebar p-0" showClose={false}>
@@ -171,21 +182,23 @@ export function CampaignsShell({
       <div className="flex min-w-0 flex-1 flex-col">
         {/* Only a way back to the navigation. The page owns its own title,
             the way an application screen does rather than a settings one. */}
-        <header className="flex h-12 shrink-0 items-center px-4 md:hidden">
-          <IconButton
-            size="md"
-            label="Open navigation"
-            className="-ml-1.5"
-            onClick={() => setNavOpen(true)}
-          >
-            <Menu />
-          </IconButton>
-        </header>
+        {!immersive && (
+          <header className="flex h-12 shrink-0 items-center px-4 md:hidden">
+            <IconButton
+              size="md"
+              label="Open navigation"
+              className="-ml-1.5"
+              onClick={() => setNavOpen(true)}
+            >
+              <Menu />
+            </IconButton>
+          </header>
+        )}
 
         {/* Panels rendered under here are application panels, including the
             shared screens this view borrows from settings. */}
         <SectionProvider kind="app">
-          {isFullBleed(pathname) ? (
+          {immersive ? (
             <main className="flex min-h-0 flex-1 flex-col">{children}</main>
           ) : (
             <main className="min-h-0 flex-1 overflow-y-auto">

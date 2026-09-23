@@ -7,6 +7,12 @@
  * one puts a canvas in a letterbox and leaves the room it needed empty on
  * either side.
  *
+ * These screens also lose the navigation down the side. A builder and a flow
+ * canvas are places somebody works for half an hour at a stretch, and giving
+ * a canvas the whole window is the difference between drawing on a desk and
+ * drawing on a tray. Every one of them carries its own arrow back, which is
+ * what makes hiding the sidebar an offer rather than a trap.
+ *
  * Kept here rather than in either shell because both of them render the same
  * builder, and a rule that lives in one place cannot be true in only one half
  * of the app.

@@ -227,6 +227,85 @@ export interface FooterBlock extends Common {
   align: Align;
 }
 
+/**
+ * A bulleted or numbered list.
+ *
+ * Its own block rather than something to type into a text block, because the
+ * indent, the marker and the space between items are three things that have
+ * to survive Outlook, and asking somebody to get them right by hand in a rich
+ * editor is asking them to find out in an inbox that they did not.
+ */
+export interface ListBlock extends Common {
+  type: "list";
+  items: string[];
+  ordered: boolean;
+  /** The marker for an unordered list. A dot, a dash, a tick, an arrow. */
+  marker: string;
+  /** Pixels between one item and the next. */
+  gap: number;
+}
+
+/**
+ * A boxed notice: a tip, a warning, the one paragraph that matters.
+ *
+ * People build these out of a one-cell table today, which means the padding
+ * and the border are retyped every time and no two of them match.
+ */
+export interface CalloutBlock extends Common {
+  type: "callout";
+  html: string;
+  /** The stripe down the side. Empty turns it off. */
+  accent: string;
+  /** An emoji, or empty for none. Not an image: it has to survive a blocker. */
+  icon: string;
+  align: Align;
+}
+
+/**
+ * One or more big numbers with a word under each.
+ *
+ * The shape every product update and every year-in-review is made of. Laid
+ * out as a row that Outlook can draw, which a flexbox cannot be.
+ */
+export interface StatBlock extends Common {
+  type: "stat";
+  items: { value: string; label: string }[];
+  align: Align;
+  /** Pixels. The number is the point, so it is large by default. */
+  valueSize: number;
+  valueColor: string;
+}
+
+/**
+ * The row of links across the top of a newsletter.
+ *
+ * Text rather than images, so it is readable before anybody agrees to load a
+ * picture — which most readers never do.
+ */
+export interface MenuBlock extends Common {
+  type: "menu";
+  links: { label: string; href: string }[];
+  align: Align;
+  /** What sits between two links. A bullet, a pipe, a space. */
+  separator: string;
+}
+
+/**
+ * Two, three or four pictures in a row.
+ *
+ * Built as a table so it survives Outlook, and each picture is sized in the
+ * markup rather than by CSS, because a width in a style attribute is the
+ * first thing Word throws away.
+ */
+export interface GalleryBlock extends Common {
+  type: "gallery";
+  images: { src: string; alt: string; href: string }[];
+  /** 2, 3 or 4. More than four and nothing is legible on a phone. */
+  perRow: number;
+  gap: number;
+  radius: number;
+}
+
 export interface HtmlBlock extends Common {
   type: "html";
   /** Passed through untouched. The escape hatch, and it is labelled as one. */
@@ -247,6 +326,11 @@ export type Block =
   | TableBlock
   | SocialBlock
   | FooterBlock
+  | ListBlock
+  | CalloutBlock
+  | StatBlock
+  | MenuBlock
+  | GalleryBlock
   | HtmlBlock;
 
 export type BlockKind = Block["type"];
@@ -430,6 +514,66 @@ export function newBlock(kind: BlockKind, id: string): Block {
         align: "center",
         style: { ...style, fontSize: 12, color: "#71717a" },
       };
+    case "list":
+      return {
+        id,
+        type: "list",
+        items: ["The first thing", "The second thing", "The third thing"],
+        ordered: false,
+        marker: "\u2022",
+        gap: 8,
+        style,
+      };
+    case "callout":
+      return {
+        id,
+        type: "callout",
+        html: "Worth knowing before you read the rest.",
+        accent: DEFAULT_THEME.link,
+        icon: "",
+        align: "left",
+        style: { ...style, background: "#f4f4f5" },
+      };
+    case "stat":
+      return {
+        id,
+        type: "stat",
+        items: [
+          { value: "1,204", label: "Subscribers" },
+          { value: "48%", label: "Opened" },
+          { value: "12", label: "Campaigns" },
+        ],
+        align: "center",
+        valueSize: 30,
+        valueColor: DEFAULT_THEME.text,
+        style,
+      };
+    case "menu":
+      return {
+        id,
+        type: "menu",
+        links: [
+          { label: "Home", href: "https://example.com" },
+          { label: "Blog", href: "https://example.com/blog" },
+          { label: "Contact", href: "https://example.com/contact" },
+        ],
+        align: "center",
+        separator: "\u00b7",
+        style: { ...style, fontSize: 13 },
+      };
+    case "gallery":
+      return {
+        id,
+        type: "gallery",
+        images: [
+          { src: "", alt: "", href: "" },
+          { src: "", alt: "", href: "" },
+        ],
+        perRow: 2,
+        gap: 12,
+        radius: 8,
+        style,
+      };
     case "html":
       return { id, type: "html", html: "<!-- your HTML here -->", style };
   }
@@ -473,6 +617,11 @@ const KINDS: BlockKind[] = [
   "table",
   "social",
   "footer",
+  "list",
+  "callout",
+  "stat",
+  "menu",
+  "gallery",
   "html",
 ];
 
@@ -891,6 +1040,114 @@ function renderBlock(block: Block, theme: EmailTheme): string {
       );
     }
 
+    case "list": {
+      /*
+       * A table with a cell per marker, not a <ul>.
+       *
+       * Outlook's list indentation is its own invention and cannot be
+       * overridden, so a bulleted list built the correct way arrives with a
+       * margin nobody asked for. A marker in its own narrow cell arrives the
+       * same everywhere.
+       */
+      const rows = block.items
+        .map((item, index) => {
+          const marker = block.ordered ? `${index + 1}.` : block.marker || "\u2022";
+          const space = index === block.items.length - 1 ? 0 : clamp(block.gap, 0, 40);
+          return `<tr><td valign="top" width="24" style="width:24px;padding:0 0 ${space}px;${typography(block, theme, { size: 15, weight: 400 })};">${escapeHtml(marker)}</td><td valign="top" style="padding:0 0 ${space}px;${typography(block, theme, { size: 15, weight: 400 })};">${inline(item, theme.link)}</td></tr>`;
+        })
+        .join("");
+      return cell(
+        block,
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${rows || "<tr><td></td></tr>"}</table>`,
+      );
+    }
+
+    case "callout": {
+      const stripe = block.accent ? `border-left:4px solid ${attr(block.accent)};` : "";
+      const tint = block.style?.background ?? "#f4f4f5";
+      const icon = block.icon
+        ? `<td valign="top" width="26" style="width:26px;font-size:16px;line-height:1.4;">${escapeHtml(block.icon)}</td>`
+        : "";
+      return cell(
+        block,
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${attr(tint)}" style="background:${attr(tint)};${stripe}border-radius:${clamp(block.style?.border?.radius ?? 8, 0, 24)}px;">
+<tr><td style="padding:14px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${icon}<td style="${typography(block, theme, { size: 15, weight: 400 })};text-align:${block.align};">${inline(block.html, theme.link)}</td></tr></table></td></tr>
+</table>`,
+      );
+    }
+
+    case "stat": {
+      const count = Math.max(1, block.items.length);
+      const share = Math.floor(100 / count);
+      const cells = block.items
+        .map(
+          (item) =>
+            `<td width="${share}%" valign="top" align="${block.align}" style="width:${share}%;padding:0 6px;">
+<div style="${typography(block, theme, { size: clamp(block.valueSize, 12, 72), weight: 700 })};color:${attr(block.valueColor)};line-height:1.15;">${escapeHtml(item.value)}</div>
+<div style="font-family:${attr(theme.font)};font-size:13px;color:${attr(block.style?.color ?? "#71717a")};padding-top:4px;">${escapeHtml(item.label)}</div>
+</td>`,
+        )
+        .join("");
+      return cell(
+        block,
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${cells || "<td></td>"}</tr></table>`,
+      );
+    }
+
+    case "menu": {
+      const gap = escapeHtml(block.separator || "\u00b7");
+      const links = block.links
+        .map(
+          (link) =>
+            `<a href="${attr(link.href)}" style="color:${attr(block.style?.color ?? theme.link)};text-decoration:none;white-space:nowrap;">${escapeHtml(link.label)}</a>`,
+        )
+        .join(`<span style="padding:0 8px;color:#a1a1aa;">${gap}</span>`);
+      return cell(
+        block,
+        `<div style="${typography(block, theme, { size: 13, weight: 500 })};text-align:${block.align};">${links}</div>`,
+      );
+    }
+
+    case "gallery": {
+      const shown = block.images.filter((image) => image.src);
+      if (shown.length === 0) return "";
+
+      const perRow = clamp(Math.round(block.perRow), 2, 4);
+      const padding = block.style?.padding ?? defaultPadding("gallery");
+      const room = theme.width - padding[1] - padding[3];
+      const gap = clamp(block.gap, 0, 40);
+      const each = Math.floor((room - gap * (perRow - 1)) / perRow);
+      const radius = block.radius > 0 ? `border-radius:${clamp(block.radius, 0, 40)}px;` : "";
+
+      // A row of cells per row of pictures: one long row that wraps is a
+      // thing CSS does and tables do not.
+      const rows: string[] = [];
+      for (let at = 0; at < shown.length; at += perRow) {
+        const slice = shown.slice(at, at + perRow);
+        const cells = slice
+          .map((image, index) => {
+            const right = index === perRow - 1 ? 0 : gap;
+            const picture = `<img src="${attr(image.src)}" alt="${attr(image.alt)}" width="${each}" style="display:block;width:${each}px;max-width:100%;height:auto;${radius}border:0;">`;
+            const wrapped = image.href
+              ? `<a href="${attr(image.href)}" style="text-decoration:none;">${picture}</a>`
+              : picture;
+            return `<td valign="top" width="${each}" style="width:${each}px;padding:0 ${right}px ${gap}px 0;">${wrapped}</td>`;
+          })
+          .join("");
+        // Pad the last row so three pictures across two columns do not stretch.
+        const filler =
+          slice.length < perRow
+            ? `<td width="${each * (perRow - slice.length)}" style="width:${each * (perRow - slice.length)}px;"></td>`
+            : "";
+        rows.push(`<tr>${cells}${filler}</tr>`);
+      }
+
+      return cell(
+        block,
+        `<table role="presentation" cellpadding="0" cellspacing="0" border="0">${rows.join("")}</table>`,
+      );
+    }
+
     case "quote":
       return cell(
         block,
@@ -1075,6 +1332,32 @@ export function designToText(design: EmailDesign): string {
         break;
       case "html":
         parts.push(stripTags(block.html));
+        break;
+      case "list":
+        parts.push(
+          block.items
+            .map((item, index) =>
+              block.ordered ? `${index + 1}. ${stripTags(item)}` : `- ${stripTags(item)}`,
+            )
+            .join("\n"),
+        );
+        break;
+      case "callout":
+        parts.push(stripTags(block.html));
+        break;
+      case "stat":
+        parts.push(block.items.map((item) => `${item.value} ${item.label}`).join("\n"));
+        break;
+      case "menu":
+        parts.push(block.links.map((link) => `${link.label}: ${link.href}`).join("\n"));
+        break;
+      case "gallery":
+        parts.push(
+          block.images
+            .filter((image) => image.alt)
+            .map((image) => `[${image.alt}]`)
+            .join(" "),
+        );
         break;
       case "divider":
         parts.push("—".repeat(24));

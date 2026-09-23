@@ -9,8 +9,14 @@ the colours stay here, where somebody can change them without a deploy.
 
 ## The builder
 
-A template opens on a page of its own: a palette on the left, the email in the
-middle, and everything about the selected block on the right.
+A template opens on a page of its own, with the app's navigation out of the
+way: a palette on the left, the email in the middle, and everything about the
+selected block on the right. The arrow at the top left is the way back.
+
+The palette has two halves. **Blocks** are the parts. **Sections** are ready-
+made arrangements — a hero, a picture beside some words, three features across,
+a row of numbers — dropped in one press. A section is made of ordinary blocks,
+so everything in it can be moved, restyled or deleted afterwards.
 
 Click a block in the palette to put it at the end, or drag it to land it
 between two others. Drag a block already on the canvas to move it. Headings,
@@ -21,17 +27,28 @@ panel.
 | --- | --- |
 | Heading | Three sizes: title, heading, subheading. |
 | Text | Paragraphs, with bold, italic, links and lists. |
+| List | Bulleted or numbered, drawn so Outlook cannot re-indent it. |
+| Callout | A boxed notice, with a stripe and an optional emoji. |
 | Quote | An indented line with a coloured bar. |
 | Code | A monospaced block. |
 | Image | From the media library, or any address. |
+| Gallery | Two, three or four pictures across. |
 | YouTube | The video's thumbnail, linked to it. |
 | Button | A real one that Outlook draws properly. |
+| Menu bar | A row of text links across the top. |
+| Numbers | Big figures with a word under each. |
 | Columns | Two to four, side by side, stacking on a phone. |
 | Table | Bordered, with an optional heading row. |
 | Divider, Spacer | Room and lines. |
 | Social links | A row of links. |
 | Unsubscribe | The footer a broadcast needs. |
 | Raw HTML | For whatever none of the above covers. |
+
+::: tip Why there is no chart, barcode or video block
+Every one of those needs either JavaScript or a live picture, and an email
+client gives you neither — so they arrive as a flat image, which most readers
+never agree to load. A number written as text is read by everybody.
+:::
 
 Every block carries its own colour, size, line height, letter spacing, weight,
 padding, background and border, under **Typography**, **Spacing** and
