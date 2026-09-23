@@ -11,7 +11,17 @@ import { useState } from "react";
  * `curl` call wrapped across four lines is selected wrongly by hand more
  * often than it is selected rightly.
  */
-export function DocCode({ code, label }: { code: string; label?: string }) {
+export function DocCode({
+  code,
+  label,
+  children,
+}: {
+  /** The plain text, which is what the copy button hands over. */
+  code: string;
+  label?: string;
+  /** The same text, coloured on the server. */
+  children?: React.ReactNode;
+}) {
   const [copied, setCopied] = useState(false);
 
   return (
@@ -37,7 +47,7 @@ export function DocCode({ code, label }: { code: string; label?: string }) {
         {copied ? <Check className="size-3.5" /> : <Copy className="size-3.5" />}
       </button>
       <pre className="overflow-x-auto px-3.5 py-3 font-mono text-[12.5px] leading-relaxed">
-        <code>{code}</code>
+        <code>{children ?? code}</code>
       </pre>
     </div>
   );

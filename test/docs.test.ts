@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { renderToStaticMarkup } from "react-dom/server";
 
 import { DOC_PAGES, docHref, pageForSlug, siteLink } from "@/lib/docs-nav";
+import { highlight } from "@/lib/highlight";
 import { renderDoc, summarise } from "@/lib/markdown";
 import { docSource, neighbours } from "@/server/docs";
 
@@ -102,6 +103,59 @@ test("each page knows the one before and after it", () => {
 
   const last = neighbours(DOC_PAGES[DOC_PAGES.length - 1]);
   assert.equal(last.next, null);
+});
+
+/** The markup with its tags taken off, to compare against what went in. */
+function text(markup: string) {
+  return markup
+    .replace(/<[^>]*>/g, "")
+    .replace(/&quot;/g, '"')
+    .replace(/&#x27;/g, "'")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">");
+}
+
+test("colouring a sample changes how it looks, never what it says", () => {
+  const samples: [string, string][] = [
+    ["ts", 'const sent = await mail.emails.send({ to: "a@example.net" }); // one'],
+    ["json", '{ "id": "msg_1", "count": 12, "ok": true }'],
+    ["sh", 'curl -X POST https://example.com \\\n  -H "Authorization: Bearer mk_live_x"'],
+    ["html", '<iframe src="/subscribe/lst_1" title="Subscribe"></iframe>'],
+    ["txt", "1. Open chrome://extensions"],
+  ];
+
+  for (const [language, code] of samples) {
+    const markup = renderToStaticMarkup(highlight(code, language) as React.ReactElement);
+    assert.equal(text(markup), code, `${language} lost or gained characters`);
+  }
+});
+
+test("a keyword, a string and a comment each get their own colour", () => {
+  const markup = renderToStaticMarkup(
+    highlight('const name = "Ada"; // who', "ts") as React.ReactElement,
+  );
+  assert.ok(markup.includes(">const</span>"), "no keyword");
+  assert.ok(markup.includes(">&quot;Ada&quot;</span>"), "no string");
+  assert.ok(markup.includes(">// who</span>"), "no comment");
+
+  // A plain-text sample is left alone: nothing in it means anything.
+  const plain = renderToStaticMarkup(highlight("just words", "txt") as React.ReactElement);
+  assert.equal(plain, "just words");
+});
+
+test("a key in JSON is told apart from a value", () => {
+  const markup = renderToStaticMarkup(
+    highlight('{ "id": "msg_1" }', "json") as React.ReactElement,
+  );
+  // Two strings, coloured differently: the name of the field and its value.
+  assert.ok(markup.includes("text-info"), "the key is not marked as a key");
+  assert.ok(markup.includes("text-ok"), "the value is not marked as a string");
+});
+
+test("the samples on a page come out coloured", async () => {
+  const { html } = await render("sdk/sending");
+  assert.ok(html.includes("text-primary"), "no keyword colour in a rendered page");
 });
 
 test("a summary is a sentence, not a heading or a table row", async () => {

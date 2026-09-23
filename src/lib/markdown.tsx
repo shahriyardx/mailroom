@@ -1,4 +1,5 @@
 import { DocCode } from "@/components/mail/doc-code";
+import { highlight } from "@/lib/highlight";
 import { ArrowUpRight } from "lucide-react";
 import Link from "next/link";
 import type { ReactNode } from "react";
@@ -106,6 +107,7 @@ function blocks(lines: string[], ctx: Ctx): ReactNode[] {
     if (line.startsWith("```")) {
       const info = line.slice(3).trim();
       const label = /\[([^\]]+)\]/.exec(info)?.[1];
+      const language = info.split(/[\s[]/)[0];
       const code: string[] = [];
       i++;
       while (i < lines.length && !lines[i].startsWith("```")) {
@@ -113,7 +115,12 @@ function blocks(lines: string[], ctx: Ctx): ReactNode[] {
         i++;
       }
       i++;
-      out.push(<DocCode key={`code-${out.length}`} code={code.join("\n")} label={label} />);
+      const text = code.join("\n");
+      out.push(
+        <DocCode key={`code-${out.length}`} code={text} label={label}>
+          {highlight(text, language)}
+        </DocCode>,
+      );
       continue;
     }
 
