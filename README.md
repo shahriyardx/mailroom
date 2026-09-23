@@ -66,9 +66,11 @@ Full walkthrough: [self-hosting guide](https://mailroom-docs.shahriyar.dev/guide
 | A **Cloudflare R2** bucket | Attachments and raw messages | Free tier |
 | Somewhere to run it | Coolify, Fly, a VPS | Your call |
 
-## 1. Create a GitHub OAuth app
+## 1. Create a GitHub OAuth app — optional
 
-GitHub is the only way to sign in.
+The first person to open the sign-in page claims the instance, with an email
+and a password or with GitHub. **Skip this step** if a password is all you
+want: leave both variables below empty and the GitHub button will not work.
 
 **github.com → Settings → Developer settings → OAuth Apps → New**
 
@@ -85,7 +87,7 @@ BETTER_AUTH_SECRET=          # openssl rand -base64 32
 BETTER_AUTH_URL=https://mail.yourdomain.com
 APP_URL=https://mail.yourdomain.com
 
-GITHUB_CLIENT_ID=
+GITHUB_CLIENT_ID=            # both optional: leave empty for password sign-in only
 GITHUB_CLIENT_SECRET=
 
 AWS_REGION=us-east-1

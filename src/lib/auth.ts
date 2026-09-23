@@ -58,10 +58,14 @@ export const auth = betterAuth({
   }),
 
   /**
-   * The owner signs in with GitHub. People who are invited set a password
-   * instead, because a company's staff should not each need a GitHub account
-   * to read their own mail. Sign-up is closed either way: an account only
-   * comes into being through an invitation link.
+   * A password is enough to claim an empty instance, and enough to accept an
+   * invitation afterwards.
+   *
+   * GitHub used to be the only way in for the owner, which is a strange thing
+   * to require of somebody self-hosting their own mail on their own hardware
+   * — and impossible on a machine that cannot reach github.com. The rule
+   * underneath never mentioned GitHub: the first account wins, and after that
+   * an account only comes into being through an invitation link.
    */
   emailAndPassword: {
     enabled: true,

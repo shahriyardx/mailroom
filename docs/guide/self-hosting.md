@@ -50,9 +50,15 @@ curl -O https://raw.githubusercontent.com/shahriyardx/mailroom/main/compose.yaml
 docker compose up -d
 ```
 
-## 1. A GitHub OAuth app
+## 1. A GitHub OAuth app — optional
 
-GitHub is the only way to sign in.
+The first person to open the sign-in page claims the instance, either with an
+email and a password or with GitHub. **Skip this step** if a password is all
+you want: the two variables below can be left empty and the GitHub button
+simply will not work.
+
+Set it up if you would rather not keep another password, or if the people you
+invite already have GitHub accounts.
 
 **github.com → Settings → Developer settings → OAuth Apps → New**
 
@@ -69,7 +75,7 @@ BETTER_AUTH_SECRET=          # openssl rand -base64 32
 BETTER_AUTH_URL=https://mail.yourdomain.com
 APP_URL=https://mail.yourdomain.com
 
-GITHUB_CLIENT_ID=
+GITHUB_CLIENT_ID=            # both optional: leave empty to sign in by password only
 GITHUB_CLIENT_SECRET=
 
 AWS_REGION=us-east-1
