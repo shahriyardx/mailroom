@@ -1,21 +1,28 @@
 import "server-only";
 import { db } from "@/db";
-import { automation, automationRun, automationStep, listMember, workspace } from "@/db/schema";
+import {
+  type AutomationNode,
+  automation,
+  automationNode,
+  automationRun,
+  listMember,
+  workspace,
+} from "@/db/schema";
 import { merge, withFooter } from "@/lib/campaign-body";
 import { newId } from "@/lib/utils";
-import { and, asc, eq, lte, sql } from "drizzle-orm";
+import { and, eq, lte, sql } from "drizzle-orm";
 import { unsubscribeUrl } from "./campaigns";
 import { deliverMessage } from "./send";
 
 /**
  * The clock behind automations.
  *
- * Two jobs, both cheap. Enrol whoever has newly joined a list an automation
- * watches, and send whatever step is now due.
+ * Two jobs. Enrol whoever has newly joined a list an automation watches, and
+ * walk whoever is due to the next thing that happens to them.
  *
- * There is no timer per person. A run is a row with a date on it, so a series
- * with a fortnight between steps costs exactly one index lookup a tick — the
- * same as one with no gap at all.
+ * There is no timer per person. A run is a row with a node and a date on it,
+ * so a flow with a fortnight's wait in the middle costs exactly one index
+ * lookup a tick — the same as one with no wait at all.
  */
 
 const globalForAutomations = globalThis as unknown as {
@@ -24,8 +31,18 @@ const globalForAutomations = globalThis as unknown as {
 };
 
 const TICK_MS = 30_000;
-/** Per pass, per job. The same reasoning as the broadcast runner: SES rates. */
+/** Runs advanced per pass. The same reasoning as the campaign runner: SES rates. */
 const BATCH = 25;
+
+/**
+ * Nodes one run may pass through in a single tick.
+ *
+ * Conditions and field writes take no time, so a run walks through them
+ * immediately rather than waiting thirty seconds per box. The cap is what
+ * stops a flow that somehow points back at itself from spinning forever —
+ * the editor cannot build one, but a half-applied edit in principle could.
+ */
+const HOPS = 20;
 
 export interface AutomationPass {
   enrolled: number;
@@ -49,24 +66,16 @@ async function enrol(): Promise<number> {
   let made = 0;
 
   for (const job of live) {
-    const [first] = await db
-      .select({ delayMinutes: automationStep.delayMinutes })
-      .from(automationStep)
-      .where(eq(automationStep.automationId, job.id))
-      .orderBy(asc(automationStep.position))
-      .limit(1);
-    if (!first) continue;
+    if (!job.entryNodeId) continue;
 
     const fresh = await db
-      .select({ id: listMember.id, consentAt: listMember.consentAt })
+      .select({ id: listMember.id })
       .from(listMember)
       .where(
         and(
           eq(listMember.listId, job.listId),
           eq(listMember.status, "subscribed"),
           /*
-           * Only people who joined after the automation was switched on.
-           *
            * The date goes in as text and is cast, not handed over as a Date:
            * inside a raw fragment there is no column to tell the driver what
            * type it should be, and postgres-js refuses it outright.
@@ -91,8 +100,8 @@ async function enrol(): Promise<number> {
           organizationId: job.organizationId,
           automationId: job.id,
           listMemberId: person.id,
-          step: 0,
-          nextAt: new Date(Date.now() + first.delayMinutes * 60_000),
+          nodeId: job.entryNodeId,
+          nextAt: new Date(),
         })),
       )
       .onConflictDoNothing();
@@ -103,6 +112,49 @@ async function enrol(): Promise<number> {
   return made;
 }
 
+/** Whether a condition node's answer is yes for this person. */
+async function answer(
+  node: AutomationNode,
+  member: { id: string; fields: Record<string, string> },
+): Promise<boolean> {
+  const test = node.config.test ?? "opened";
+
+  if (test === "opened" || test === "clicked") {
+    /*
+     * "The last email" means the most recent one this app sent them through
+     * any campaign or automation, which is the only thing SES tells us about.
+     * Asked of the recipient rows rather than remembered on the run, so a
+     * condition placed after two emails reads the second one.
+     */
+    const column = test === "opened" ? "opened_at" : "clicked_at";
+    const [row] = await db.execute<{ hit: boolean }>(
+      sql`select exists (
+        select 1 from broadcast_recipient
+        where broadcast_recipient.list_member_id = ${member.id}
+          and broadcast_recipient.${sql.raw(column)} is not null
+      ) as hit`,
+    );
+    return Boolean(row?.hit);
+  }
+
+  const key = node.config.field ?? "";
+  const held = member.fields[key];
+  const want = (node.config.value ?? "").toLowerCase();
+
+  switch (node.config.op ?? "is") {
+    case "set":
+      return Boolean(held);
+    case "not_set":
+      return !held;
+    case "is_not":
+      return (held ?? "").toLowerCase() !== want;
+    case "contains":
+      return (held ?? "").toLowerCase().includes(want);
+    default:
+      return (held ?? "").toLowerCase() === want;
+  }
+}
+
 export async function runAutomationsOnce(): Promise<AutomationPass> {
   const pass: AutomationPass = { enrolled: await enrol(), sent: 0, failed: 0 };
 
@@ -111,9 +163,10 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       runId: automationRun.id,
       automationId: automationRun.automationId,
       memberId: automationRun.listMemberId,
-      step: automationRun.step,
+      nodeId: automationRun.nodeId,
       orgId: automationRun.organizationId,
       mailboxId: automation.mailboxId,
+      listId: automation.listId,
     })
     .from(automationRun)
     .innerJoin(automation, eq(automation.id, automationRun.automationId))
@@ -128,27 +181,13 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
     .limit(BATCH);
 
   for (const job of due) {
-    const [step, next, member] = await Promise.all([
-      db.query.automationStep.findFirst({
-        where: and(
-          eq(automationStep.automationId, job.automationId),
-          eq(automationStep.position, job.step),
-        ),
-      }),
-      db.query.automationStep.findFirst({
-        where: and(
-          eq(automationStep.automationId, job.automationId),
-          eq(automationStep.position, job.step + 1),
-        ),
-      }),
-      db.query.listMember.findFirst({
-        where: eq(listMember.id, job.memberId),
-        columns: { id: true, address: true, name: true, status: true },
-      }),
-    ]);
+    const member = await db.query.listMember.findFirst({
+      where: eq(listMember.id, job.memberId),
+      columns: { id: true, address: true, name: true, status: true, fields: true },
+    });
 
     /*
-     * Somebody who left mid-series is out of it, not skipped to the next one.
+     * Somebody who left mid-flow is out of it, not skipped to the next box.
      * The run is kept rather than deleted so the record of how far they got
      * survives, and so re-subscribing does not silently restart them.
      */
@@ -160,71 +199,124 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
       continue;
     }
 
-    if (!step) {
-      await db.update(automationRun).set({ status: "done" }).where(eq(automationRun.id, job.runId));
-      continue;
-    }
-
     const [site] = await db
       .select({ postalAddress: workspace.postalAddress })
       .from(workspace)
       .where(eq(workspace.organizationId, job.orgId))
       .limit(1);
 
-    const url = unsubscribeUrl(member.id);
+    let at: string | null = job.nodeId;
+    let waitUntil: Date | null = null;
+    let fields = member.fields;
 
-    try {
-      await deliverMessage({
-        orgId: job.orgId,
-        mailboxId: job.mailboxId,
-        to: [{ address: member.address, name: member.name }],
-        subject: merge(step.subject, member),
-        html: step.html
-          ? withFooter(
-              merge(step.html, member),
-              { unsubscribeUrl: url, postalAddress: site?.postalAddress ?? null },
-              true,
-            )
-          : null,
-        text: step.text
-          ? withFooter(
-              merge(step.text, member),
-              { unsubscribeUrl: url, postalAddress: site?.postalAddress ?? null },
-              false,
-            )
-          : null,
-        headers: {
-          "List-Unsubscribe": `<${url}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
+    for (let hop = 0; hop < HOPS && at && !waitUntil; hop += 1) {
+      const node: AutomationNode | undefined = await db.query.automationNode.findFirst({
+        where: and(eq(automationNode.id, at), eq(automationNode.automationId, job.automationId)),
       });
+      if (!node) {
+        at = null;
+        break;
+      }
 
+      if (node.kind === "wait") {
+        // Nothing happens here; it is the pause itself.
+        at = node.next;
+        waitUntil = new Date(Date.now() + node.delayMinutes * 60_000);
+        break;
+      }
+
+      if (node.kind === "condition") {
+        at = (await answer(node, { id: member.id, fields })) ? node.next : node.nextElse;
+        continue;
+      }
+
+      if (node.kind === "field") {
+        const key = node.config.field?.trim();
+        if (key) {
+          fields = { ...fields, [key]: node.config.value ?? "" };
+          await db.update(listMember).set({ fields }).where(eq(listMember.id, member.id));
+        }
+        at = node.next;
+        continue;
+      }
+
+      if (node.kind === "unsubscribe") {
+        await db
+          .update(listMember)
+          .set({ status: "unsubscribed", unsubscribedAt: new Date() })
+          .where(eq(listMember.id, member.id));
+        at = null;
+        break;
+      }
+
+      // An email. Anything below here sends.
+      const url = unsubscribeUrl(member.id);
+      try {
+        await deliverMessage({
+          orgId: job.orgId,
+          mailboxId: job.mailboxId,
+          to: [{ address: member.address, name: member.name }],
+          subject: merge(node.subject ?? "", member),
+          html: node.html
+            ? withFooter(
+                merge(node.html, member),
+                { unsubscribeUrl: url, postalAddress: site?.postalAddress ?? null },
+                true,
+              )
+            : null,
+          text: node.text
+            ? withFooter(
+                merge(node.text, member),
+                { unsubscribeUrl: url, postalAddress: site?.postalAddress ?? null },
+                false,
+              )
+            : null,
+          headers: {
+            "List-Unsubscribe": `<${url}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          },
+        });
+        pass.sent += 1;
+        at = node.next;
+      } catch (error) {
+        /*
+         * Tried again in an hour rather than dropped.
+         *
+         * Almost everything that fails here is temporary — SES throttling, a
+         * domain mid-verification — and abandoning the second email of a
+         * welcome series over a blip is worse than being an hour late.
+         */
+        await db
+          .update(automationRun)
+          .set({
+            nextAt: new Date(Date.now() + 3_600_000),
+            stoppedReason: error instanceof Error ? error.message : "Could not be sent",
+          })
+          .where(eq(automationRun.id, job.runId));
+        pass.failed += 1;
+        at = null;
+        waitUntil = new Date(Date.now() + 3_600_000);
+        break;
+      }
+    }
+
+    // Only write the run once, whatever route it took through the flow.
+    if (waitUntil && at) {
       await db
         .update(automationRun)
-        .set({
-          step: job.step + 1,
-          lastSentAt: new Date(),
-          status: next ? "active" : "done",
-          nextAt: next ? new Date(Date.now() + next.delayMinutes * 60_000) : new Date(),
-        })
+        .set({ nodeId: at, nextAt: waitUntil, lastSentAt: new Date() })
         .where(eq(automationRun.id, job.runId));
-      pass.sent += 1;
-    } catch (error) {
-      /*
-       * Tried again in an hour rather than dropped.
-       *
-       * Almost everything that fails here is temporary — SES throttling, a
-       * domain mid-verification — and giving up on the second email of a
-       * welcome series because of a blip is worse than being an hour late.
-       */
+    } else if (!at) {
       await db
         .update(automationRun)
-        .set({
-          nextAt: new Date(Date.now() + 3_600_000),
-          stoppedReason: error instanceof Error ? error.message : "Could not be sent",
-        })
+        .set({ status: "done", nodeId: null, lastSentAt: new Date() })
         .where(eq(automationRun.id, job.runId));
-      pass.failed += 1;
+    } else {
+      // Ran out of hops. Picked up again next tick rather than abandoned.
+      await db
+        .update(automationRun)
+        .set({ nodeId: at, nextAt: new Date(Date.now() + TICK_MS) })
+        .where(eq(automationRun.id, job.runId));
     }
   }
 

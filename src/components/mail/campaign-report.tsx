@@ -148,7 +148,9 @@ export function CampaignReport({
           />
         </Stats>
 
-        <div className="mt-5 grid gap-5 sm:grid-cols-4">
+        {/* The same grid as above, so the eight numbers line up in columns
+            rather than being two rows that nearly agree. */}
+        <Stats className="mt-5">
           <Stat
             label="Bounced"
             value={report.bounced}
@@ -163,7 +165,7 @@ export function CampaignReport({
           />
           <Stat label="Failed" value={report.failed} />
           <Stat label="Skipped" value={report.skipped} sub="left the list mid-send" />
-        </div>
+        </Stats>
 
         {report.pending > 0 && (
           <Note className="mt-4">

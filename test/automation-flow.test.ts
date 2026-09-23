@@ -1,0 +1,156 @@
+import assert from "node:assert/strict";
+import { describe, it } from "node:test";
+import {
+  type FlowNode,
+  NODE_WIDTH,
+  TRIGGER_ID,
+  humanDelay,
+  layout,
+  summarise,
+} from "@/lib/automation-flow";
+
+/**
+ * Where the boxes go.
+ *
+ * Nothing about a canvas is stored, so this is the only thing standing
+ * between a flow and a picture nobody can read. The three that matter: a
+ * parent sits between its children, no two boxes overlap, and a graph that
+ * somehow points back at itself does not hang the tab.
+ */
+
+function node(id: string, over: Partial<FlowNode> = {}): FlowNode {
+  return {
+    id,
+    kind: "email",
+    subject: id,
+    delayMinutes: 0,
+    config: {},
+    next: null,
+    nextElse: null,
+    ...over,
+  };
+}
+
+function at(plan: ReturnType<typeof layout>, id: string) {
+  return plan.nodes.find((spot) => spot.id === id);
+}
+
+describe("laying a flow out", () => {
+  it("draws a trigger even when there is nothing under it", () => {
+    const plan = layout([], null);
+    assert.ok(at(plan, TRIGGER_ID));
+    // And an arrow going nowhere, because the "+" that starts the flow has to
+    // hang off something.
+    assert.equal(plan.edges.length, 1);
+    assert.equal(plan.edges[0]?.to, null);
+  });
+
+  it("stacks a straight run in one column", () => {
+    const plan = layout([node("a", { next: "b" }), node("b", { next: "c" }), node("c")], "a");
+
+    const xs = new Set(plan.nodes.map((spot) => spot.x));
+    assert.equal(xs.size, 1);
+
+    const ys = plan.nodes.map((spot) => spot.y).sort((left, right) => left - right);
+    assert.deepEqual(ys, [...new Set(ys)]);
+  });
+
+  it("puts a condition between its two answers", () => {
+    const plan = layout(
+      [node("q", { kind: "condition", next: "yes", nextElse: "no" }), node("yes"), node("no")],
+      "q",
+    );
+
+    const question = at(plan, "q");
+    const yes = at(plan, "yes");
+    const no = at(plan, "no");
+    assert.ok(question && yes && no);
+
+    // Centred over the pair, not sitting above one of them.
+    assert.equal(question.x, (yes.x + no.x) / 2);
+    assert.ok(yes.x < no.x);
+    assert.ok(no.x - yes.x >= NODE_WIDTH);
+  });
+
+  it("leaves room for a branch that is still empty", () => {
+    // A branch you can only find once it is used is a branch nobody finds, so
+    // the "no" side gets an arrow and a "+" before anything is on it.
+    const plan = layout([node("q", { kind: "condition", next: "yes" }), node("yes")], "q");
+    const dangling = plan.edges.filter((edge) => edge.to === null);
+    assert.equal(dangling.length, 2);
+    assert.ok(dangling.some((edge) => edge.branch === "nextElse"));
+  });
+
+  it("never overlaps two boxes", () => {
+    const plan = layout(
+      [
+        node("q", { kind: "condition", next: "y1", nextElse: "n1" }),
+        node("y1", { kind: "condition", next: "y2", nextElse: "n2" }),
+        node("y2"),
+        node("n2"),
+        node("n1"),
+      ],
+      "q",
+    );
+
+    for (const one of plan.nodes) {
+      for (const other of plan.nodes) {
+        if (one === other) continue;
+        const sameRow = one.y === other.y;
+        if (!sameRow) continue;
+        assert.ok(
+          Math.abs(one.x - other.x) >= NODE_WIDTH,
+          `${one.id} and ${other.id} overlap on row ${one.y}`,
+        );
+      }
+    }
+  });
+
+  it("does not hang on a flow that points back at itself", () => {
+    // The editor cannot build one. A half-applied edit under an open page in
+    // principle could, and walking it forever would freeze the tab.
+    const plan = layout([node("a", { next: "b" }), node("b", { next: "a" })], "a");
+    assert.equal(plan.nodes.length, 3);
+  });
+});
+
+describe("what a box says about itself", () => {
+  it("names the email by its subject", () => {
+    assert.equal(summarise(node("a", { subject: "Welcome aboard" })).title, "Welcome aboard");
+  });
+
+  it("says when an email has nothing in it, and nothing when it has", () => {
+    // The second line is only there when it adds something: a card reading
+    // "WAIT / 1 day / 1 day" has spent three lines saying one thing.
+    assert.equal(summarise(node("a", { subject: "  ", empty: true })).note, "Nothing written yet");
+    assert.equal(summarise(node("a", { subject: "Hello" })).note, undefined);
+  });
+
+  it("reads a condition out in words", () => {
+    assert.equal(
+      summarise(node("a", { kind: "condition", config: { test: "clicked" } })).title,
+      "Clicked the last email?",
+    );
+    assert.equal(
+      summarise(
+        node("a", {
+          kind: "condition",
+          config: { test: "field", field: "plan", op: "is_not", value: "free" },
+        }),
+      ).title,
+      "plan is not free",
+    );
+  });
+
+  it("says a wait of nothing is a wait of nothing", () => {
+    const said = summarise(node("a", { kind: "wait", delayMinutes: 0 }));
+    assert.equal(said.title, "No pause");
+    assert.equal(said.note, "Straight on to the next box");
+  });
+
+  it("uses the unit somebody would have said it in", () => {
+    assert.equal(humanDelay(30), "30 min");
+    assert.equal(humanDelay(120), "2 hours");
+    assert.equal(humanDelay(4320), "3 days");
+  });
+});

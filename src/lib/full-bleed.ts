@@ -16,6 +16,8 @@ const FULL_BLEED = [
   /^\/(?:settings|campaigns)\/templates\/[^/]+$/,
   // One broadcast, in the same builder.
   /^\/campaigns\/broadcasts\/[^/]+$/,
+  // An automation: the canvas, and the builder for one email on it.
+  /^\/campaigns\/automations\/[^/]+(?:\/steps\/[^/]+)?$/,
 ];
 
 export function isFullBleed(pathname: string) {

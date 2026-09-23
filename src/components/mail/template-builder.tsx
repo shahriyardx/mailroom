@@ -28,7 +28,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "@/components/kit";
-import type { AutomationStep, Broadcast, Template } from "@/db/schema";
+import type { AutomationNode, Broadcast, Template } from "@/db/schema";
 import {
   type Align,
   type Block,
@@ -72,7 +72,7 @@ import {
   sendableMailboxesAction,
   startBroadcastAction,
   updateBroadcastAction,
-  updateStepAction,
+  updateNodeAction,
   updateTemplateAction,
 } from "@/server/actions";
 import {
@@ -227,8 +227,8 @@ export interface CampaignContext {
 export type BuilderTarget =
   | { kind: "template"; template: Template | null }
   | { kind: "broadcast"; broadcast: Broadcast; campaign: CampaignContext }
-  /** One email out of an automation's series. */
-  | { kind: "step"; step: AutomationStep; automationName: string; position: number };
+  /** One email out of an automation's flow. */
+  | { kind: "step"; step: AutomationNode; automationName: string };
 
 export function TemplateBuilder({
   template,
@@ -241,23 +241,22 @@ export function TemplateBuilder({
 }
 
 /**
- * One step of an automation, in the same builder.
+ * One email out of an automation, in the same builder.
  *
- * A step is a template with a delay in front of it. Giving it a worse editor
- * than a one-off campaign would be a strange thing to decide on purpose.
+ * An automation's email is a template with a flow around it. Giving it a
+ * worse editor than a one-off campaign would be a strange thing to decide on
+ * purpose.
  */
 export function StepBuilder({
   step,
   automationName,
-  position,
   basePath,
 }: {
-  step: AutomationStep;
+  step: AutomationNode;
   automationName: string;
-  position: number;
   basePath: string;
 }) {
-  return <Builder target={{ kind: "step", step, automationName, position }} basePath={basePath} />;
+  return <Builder target={{ kind: "step", step, automationName }} basePath={basePath} />;
 }
 
 export function BroadcastBuilder({
@@ -549,7 +548,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
 
     if (target.kind === "step") {
       submit(async () => {
-        const result = await updateStepAction(target.step.id, {
+        const result = await updateNodeAction(target.step.id, {
           subject: details.subject,
           ...body,
         });
@@ -684,9 +683,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
         )}
 
         {target.kind === "step" && (
-          <span className="truncate text-[12.5px] text-muted-foreground">
-            email {target.position + 1}
-          </span>
+          <span className="truncate text-[12.5px] text-muted-foreground">in a flow</span>
         )}
 
         <div className="ml-auto flex items-center gap-2">
@@ -926,7 +923,6 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
               {tab === "details" &&
                 (target.kind === "step" ? (
                   <StepDetails
-                    step={target.step}
                     subject={details.subject}
                     onSubject={(subject) => setDetails((current) => ({ ...current, subject }))}
                     variables={variables}
@@ -2921,33 +2917,19 @@ function PageStyle({
 /**
  * What one automation email has instead of a name and a slug.
  *
- * The delay is the only thing here a campaign has no equivalent of, and it is
- * the whole point of the series: "three days after the last one" is what makes
- * this a sequence rather than five separate sends.
+ * Less than a campaign has, deliberately. Who it goes to and when are drawn
+ * on the canvas as boxes of their own, so repeating them here would be two
+ * places to change the same thing.
  */
 function StepDetails({
-  step,
   subject,
   onSubject,
   variables,
 }: {
-  step: AutomationStep;
   subject: string;
   onSubject: (value: string) => void;
   variables: string[];
 }) {
-  const [delay, setDelay] = useState(step.delayMinutes);
-  const [busy, submit] = useSubmit();
-
-  function saveDelay(value: number | undefined) {
-    const minutes = value ?? 0;
-    setDelay(minutes);
-    submit(async () => {
-      const result = await updateStepAction(step.id, { delayMinutes: minutes });
-      if (!result.ok) toast.error(result.error);
-    });
-  }
-
   return (
     <div>
       <Section title="Email">
@@ -2958,28 +2940,9 @@ function StepDetails({
             className="h-8 text-[12.5px]"
           />
         </Row>
-
-        {/* Counted from the email before it, or from the moment somebody joins
-            for the first one. Zero on the first is a welcome email. */}
-        <Row label="Wait">
-          <span className="flex items-center gap-2">
-            <NumberField
-              value={delay}
-              onChange={saveDelay}
-              min={0}
-              max={525_600}
-              label="Minutes to wait"
-            />
-            <span className="text-[12px] text-muted-foreground">min</span>
-          </span>
-        </Row>
-
         <Note>
-          {delay === 0
-            ? step.position === 0
-              ? "Sent as soon as somebody joins the list."
-              : "Sent straight after the email before it."
-            : `Sent ${humanDelay(delay)} after ${step.position === 0 ? "somebody joins" : "the email before it"}.`}
+          When this goes out is decided by the wait boxes above it on the canvas, and who reaches it
+          by the conditions.
         </Note>
       </Section>
 
@@ -3004,17 +2967,6 @@ function StepDetails({
       </Section>
     </div>
   );
-}
-
-/** Minutes, in the unit somebody would have said it in. */
-export function humanDelay(minutes: number) {
-  if (minutes < 60) return `${minutes} min`;
-  if (minutes < 60 * 24) {
-    const hours = Math.round((minutes / 60) * 10) / 10;
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
-  }
-  const days = Math.round((minutes / 1440) * 10) / 10;
-  return `${days} ${days === 1 ? "day" : "days"}`;
 }
 
 /**
@@ -3265,9 +3217,14 @@ function BroadcastDetails({
 
             {!context.postalAddress && (
               <Note className="text-warn">
-                No postal address is set for this instance. Commercial email is required to carry
-                one under US CAN-SPAM, and Gmail's bulk sender rules look for it. Settings →
-                Company.
+                No postal address set.{" "}
+                <a
+                  href="/settings/overview"
+                  className="underline underline-offset-2 hover:text-foreground"
+                >
+                  Add one
+                </a>{" "}
+                — US CAN-SPAM requires it in commercial mail.
               </Note>
             )}
           </>

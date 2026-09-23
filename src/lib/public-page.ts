@@ -40,10 +40,21 @@ const STYLE = `
            font-weight: 500; color: var(--on-accent); background: var(--accent);
            border: 0; border-radius: 10px; cursor: pointer; }
   .bad { color: #dc2626; font-size: 13px; margin-top: 10px; }
+  .brand { margin: 0 0 18px; font-size: 12px; font-weight: 600; letter-spacing: .06em;
+           text-transform: uppercase; color: var(--quiet); }
 `;
 
 /** One self-contained page, ready to hand back as text/html. */
-export function publicPage(title: string, body: string) {
+export function publicPage(title: string, body: string, brand?: string | null) {
+  /*
+   * The company's name above the card, when it has one.
+   *
+   * This is the only page of the product a subscriber ever sees, and an
+   * unbranded box asking for an email address is what a phishing page looks
+   * like. A name they recognise is the difference.
+   */
+  const heading = brand?.trim() ? `<p class="brand">${safe(brand.trim())}</p>` : "";
+
   return `<!doctype html>
 <html lang="en">
 <head>
@@ -53,7 +64,7 @@ export function publicPage(title: string, body: string) {
 <title>${safe(title)}</title>
 <style>${STYLE}</style>
 </head>
-<body><main>${body}</main></body>
+<body><main>${heading}${body}</main></body>
 </html>`;
 }
 

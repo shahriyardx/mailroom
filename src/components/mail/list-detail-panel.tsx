@@ -412,10 +412,9 @@ function JoiningSettings({ list, appUrl }: { list: ListSummary; appUrl: string }
 
       <Row className="items-start">
         <div className="min-w-0 flex-1">
-          <div className="text-[13px] font-medium">Give this list a signup page</div>
+          <div className="font-medium text-[13px]">Give this list a signup page</div>
           <div className="mt-0.5 text-[12px] text-muted-foreground">
-            A page anybody can open and put their address into, with no account. Off, the address
-            below returns a 404.
+            A page anybody can open and put their address into, with no account.
           </div>
           {list.publicSignup && (
             <button

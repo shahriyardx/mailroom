@@ -1,5 +1,6 @@
 import { PUBLIC_HEADERS, publicPage, safe } from "@/lib/public-page";
 import { publicList, subscribe } from "@/server/campaigns";
+import { workspaceSettings } from "@/server/workspace";
 import { NextResponse } from "next/server";
 
 /**
@@ -39,7 +40,8 @@ export async function GET(_request: Request, { params }: Params) {
   const list = await publicList(listId);
   if (!list) return new NextResponse("Not found", { status: 404 });
 
-  return new NextResponse(publicPage(list.name, form(list)), {
+  const { brandName } = await workspaceSettings(list.organizationId);
+  return new NextResponse(publicPage(list.name, form(list), brandName), {
     status: 200,
     headers: PUBLIC_HEADERS,
   });
@@ -50,6 +52,7 @@ export async function POST(request: Request, { params }: Params) {
   const list = await publicList(listId);
   if (!list) return new NextResponse("Not found", { status: 404 });
 
+  const { brandName } = await workspaceSettings(list.organizationId);
   const body = await request.formData();
   const address = String(body.get("address") ?? "");
   const name = String(body.get("name") ?? "").trim() || null;
@@ -62,6 +65,7 @@ export async function POST(request: Request, { params }: Params) {
       publicPage(
         list.name,
         form(list, error instanceof Error ? error.message : "That did not work"),
+        brandName,
       ),
       { status: 400, headers: PUBLIC_HEADERS },
     );
@@ -88,5 +92,8 @@ export async function POST(request: Request, { params }: Params) {
            <p><strong>${safe(address)}</strong> is on ${safe(list.name)}.</p>
            <p class="quiet">Every email carries a one-click link to leave again.</p>`;
 
-  return new NextResponse(publicPage(list.name, said), { status: 200, headers: PUBLIC_HEADERS });
+  return new NextResponse(publicPage(list.name, said, brandName), {
+    status: 200,
+    headers: PUBLIC_HEADERS,
+  });
 }

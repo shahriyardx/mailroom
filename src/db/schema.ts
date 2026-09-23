@@ -1204,7 +1204,8 @@ export type Media = typeof media.$inferSelect;
 export type Segment = typeof segment.$inferSelect;
 export type BroadcastStatus = (typeof broadcastStatusEnum.enumValues)[number];
 export type Automation = typeof automation.$inferSelect;
-export type AutomationStep = typeof automationStep.$inferSelect;
+export type AutomationNode = typeof automationNode.$inferSelect;
+export type AutomationNodeKind = (typeof automationNodeKindEnum.enumValues)[number];
 export type AutomationStatus = (typeof automationStatusEnum.enumValues)[number];
 export type ListMemberStatus = (typeof listMemberStatusEnum.enumValues)[number];
 
@@ -1578,6 +1579,8 @@ export const automation = pgTable(
     /** What starts it. Only "subscribed" today; a column so it can grow. */
     trigger: text("trigger").$type<"subscribed">().notNull().default("subscribed"),
     status: automationStatusEnum("status").notNull().default("draft"),
+    /** Where the flow starts. Null on a canvas nobody has put anything on yet. */
+    entryNodeId: text("entry_node_id"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
@@ -1586,29 +1589,75 @@ export const automation = pgTable(
   ],
 );
 
-/** One email in a series, and how long after the last one it goes. */
-export const automationStep = pgTable(
-  "automation_step",
+/** What one node in a flow does. */
+export const automationNodeKindEnum = pgEnum("automation_node_kind", [
+  "email",
+  "wait",
+  "condition",
+  "field",
+  "unsubscribe",
+]);
+
+/**
+ * What a condition asks, and what an operation writes.
+ *
+ * Kept as one loose shape rather than a column per node kind: four of the
+ * five kinds use none of it, and a table with eleven mostly-null columns is
+ * a table nobody can read.
+ */
+export interface NodeConfig {
+  /** condition: what it looks at. */
+  test?: "opened" | "clicked" | "field";
+  /** condition (test "field") and field: which merge field. */
+  field?: string;
+  /** condition (test "field"): how to compare. */
+  op?: "is" | "is_not" | "contains" | "set" | "not_set";
+  /** condition: what to compare against. field: what to write. */
+  value?: string;
+}
+
+/**
+ * One box on the canvas.
+ *
+ * A graph rather than a list, because the interesting half of an automation
+ * is what happens differently to the people who did not open the first email.
+ * `next` is the ordinary way out; `nextElse` is the second way out of a
+ * condition and is null on every other kind.
+ *
+ * Branches never rejoin. That is a deliberate limit, not an oversight: a
+ * single predecessor per node is what makes the canvas a tree, and a tree is
+ * what can be laid out automatically. Nobody has to drag a box to keep the
+ * picture readable, and no node can be orphaned off the side of the screen.
+ */
+export const automationNode = pgTable(
+  "automation_node",
   {
     id: text("id").primaryKey(),
     automationId: text("automation_id")
       .notNull()
       .references(() => automation.id, { onDelete: "cascade" }),
-    /** 0 is the first. Contiguous, rewritten whenever a step is added or removed. */
-    position: integer("position").notNull(),
-    /**
-     * Minutes to wait before this step, counted from the step before it — or
-     * from the trigger, for the first one. Zero on step 0 means "as soon as
-     * they join", which is what a welcome email is.
-     */
-    delayMinutes: integer("delay_minutes").notNull().default(0),
+    kind: automationNodeKindEnum("kind").notNull(),
 
-    subject: text("subject").notNull(),
+    /* An email's own body, in the same columns everything else here uses, so
+       the builder compiles a design the same way for all three documents. */
+    subject: text("subject"),
     html: text("html"),
     text: text("text"),
     design: jsonb("design").$type<EmailDesign>(),
+
+    /** Minutes a "wait" node holds somebody for. */
+    delayMinutes: integer("delay_minutes").notNull().default(0),
+    config: jsonb("config").$type<NodeConfig>().notNull().default(sql`'{}'::jsonb`),
+
+    next: text("next").references((): AnyPgColumn => automationNode.id, { onDelete: "set null" }),
+    /** The "no" way out of a condition. Null on everything else. */
+    nextElse: text("next_else").references((): AnyPgColumn => automationNode.id, {
+      onDelete: "set null",
+    }),
+
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (t) => [uniqueIndex("automation_step_order_idx").on(t.automationId, t.position)],
+  (t) => [index("automation_node_automation_idx").on(t.automationId)],
 );
 
 /**
@@ -1635,8 +1684,14 @@ export const automationRun = pgTable(
       .notNull()
       .references(() => listMember.id, { onDelete: "cascade" }),
 
-    /** The step index this run is waiting to send. */
-    step: integer("step").notNull().default(0),
+    /**
+     * The node this run is sitting on.
+     *
+     * A pointer rather than an index, because a branch has no index: two
+     * people at the same depth in the same automation can be on completely
+     * different nodes, which is the entire point of a condition.
+     */
+    nodeId: text("node_id"),
     status: automationRunStatusEnum("status").notNull().default("active"),
     /** When that step is due. The runner's only filter. */
     nextAt: timestamp("next_at", { withTimezone: true }).notNull(),

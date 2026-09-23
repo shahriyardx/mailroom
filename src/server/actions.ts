@@ -16,6 +16,7 @@ import {
   webhook,
   webhookDelivery,
 } from "@/db/schema";
+import type { AutomationNodeKind, NodeConfig } from "@/db/schema";
 import { generateApiKey, isKeyMode } from "@/lib/api-key";
 import { WILDCARD, isScope } from "@/lib/api-scopes";
 import { readDesign } from "@/lib/email-blocks";
@@ -26,13 +27,12 @@ import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
 import {
-  addStep,
+  addNode,
   createAutomation,
-  moveStep,
   removeAutomation,
-  removeStep,
+  removeNode,
   updateAutomation,
-  updateStep,
+  updateNode,
 } from "@/server/automations";
 import {
   addMembers,
@@ -1855,37 +1855,41 @@ export async function removeAutomationAction(id: string) {
   return { ok: true as const };
 }
 
-export async function addStepAction(
+export async function addNodeAction(
   automationId: string,
-  input: { subject: string; delayMinutes?: number },
+  input: { kind: AutomationNodeKind; after?: string | null; branch?: "next" | "nextElse" },
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
   try {
-    const id = await addStep(access.orgId, automationId, input);
+    const id = await addNode(access.orgId, automationId, input);
     revalidatePath(`/campaigns/automations/${automationId}`);
     return { ok: true as const, id };
   } catch (error) {
-    return failure(error, "That email could not be added");
+    return failure(error, "That could not be added");
   }
 }
 
-export async function updateStepAction(
-  stepId: string,
+export async function updateNodeAction(
+  nodeId: string,
   input: {
     subject?: string;
     delayMinutes?: number;
+    config?: NodeConfig;
     design?: unknown;
     html?: string | null;
     text?: string | null;
+    templateId?: string | null;
   },
 ) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
   try {
-    await updateStep(access.orgId, stepId, {
+    await updateNode(access.orgId, nodeId, {
       subject: input.subject,
       delayMinutes: input.delayMinutes,
+      config: input.config,
+      templateId: input.templateId,
       // Checked rather than trusted: the client is where a design comes from.
       design:
         input.design === undefined
@@ -1898,24 +1902,14 @@ export async function updateStepAction(
     });
     return { ok: true as const };
   } catch (error) {
-    return failure(error, "That email could not be saved");
+    return failure(error, "That could not be saved");
   }
 }
 
-export async function removeStepAction(stepId: string) {
+export async function removeNodeAction(automationId: string, nodeId: string) {
   const access = await requireAccess();
   assertCan(access, "mail:send");
-  await removeStep(access.orgId, stepId);
+  await removeNode(access.orgId, nodeId);
+  revalidatePath(`/campaigns/automations/${automationId}`);
   return { ok: true as const };
-}
-
-export async function moveStepAction(stepId: string, by: -1 | 1) {
-  const access = await requireAccess();
-  assertCan(access, "mail:send");
-  try {
-    await moveStep(access.orgId, stepId, by);
-    return { ok: true as const };
-  } catch (error) {
-    return failure(error, "That could not be moved");
-  }
 }

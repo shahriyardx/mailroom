@@ -17,15 +17,10 @@ export default async function StepPage({
   const row = await findAutomation(access.orgId, id);
   if (!row) notFound();
 
-  const step = row.steps.find((entry) => entry.id === stepId);
+  const step = row.nodes.find((entry) => entry.id === stepId && entry.kind === "email");
   if (!step) notFound();
 
   return (
-    <StepBuilder
-      step={step}
-      automationName={row.name}
-      position={step.position}
-      basePath={`/campaigns/automations/${id}`}
-    />
+    <StepBuilder step={step} automationName={row.name} basePath={`/campaigns/automations/${id}`} />
   );
 }
