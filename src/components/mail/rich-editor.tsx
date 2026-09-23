@@ -38,6 +38,50 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
   /** What the picker is showing. The document is only told on a commit. */
   const [colour, setColour] = useState("#000000");
 
+  /*
+   * Which buttons are lit.
+   *
+   * Without it every tool looked the same whether or not it was already
+   * applied, so there was no way to tell bold text from plain by looking at
+   * the toolbar — and no way to know that pressing Quote again would take the
+   * quote off, which is the press people reach for.
+   */
+  const [on, setOn] = useState<Record<string, boolean>>({});
+
+  /** Reads the formatting under the caret, whenever the caret moves. */
+  function readState() {
+    const node = ref.current;
+    const selection = window.getSelection();
+    if (!node || !selection || selection.rangeCount === 0) return;
+    // Somebody else's selection is not this editor's business.
+    if (!node.contains(selection.getRangeAt(0).commonAncestorContainer)) return;
+
+    const next: Record<string, boolean> = {};
+    for (const command of TOGGLES) {
+      try {
+        next[command] = document.queryCommandState(command);
+      } catch {
+        // Not every browser answers for every command, and a toolbar that
+        // throws is worse than one that says no.
+        next[command] = false;
+      }
+    }
+    next.blockquote = enclosedBy(node, selection.anchorNode, "BLOCKQUOTE");
+    next.link = enclosedBy(node, selection.anchorNode, "A");
+    setOn(next);
+  }
+
+  /*
+   * The caret moves for reasons that are not events on this element — an
+   * arrow key, a click, another editor being focused — so the document is
+   * what has to be listened to.
+   */
+  useEffect(() => {
+    const listener = () => readState();
+    document.addEventListener("selectionchange", listener);
+    return () => document.removeEventListener("selectionchange", listener);
+  });
+
   function remember() {
     const node = ref.current;
     const selection = window.getSelection();
@@ -88,39 +132,66 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
     document.execCommand("styleWithCSS", false, "true");
     document.execCommand(command, false, argument);
     onChange(ref.current?.innerHTML ?? "");
+    readState();
+  }
+
+  /**
+   * Quote on, or quote off.
+   *
+   * `formatBlock` only ever sets a block, so pressing Quote a second time did
+   * the same thing again and there was no way back out of one except undo.
+   * Off means back to a paragraph, which is what the text was before.
+   */
+  function toggleQuote() {
+    exec("formatBlock", on.blockquote ? "p" : "blockquote");
   }
 
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
       <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1.5">
-        <Tool onClick={() => exec("bold")} label="Bold">
+        <Tool onClick={() => exec("bold")} label="Bold" active={on.bold}>
           <Bold className="size-4" />
         </Tool>
-        <Tool onClick={() => exec("italic")} label="Italic">
+        <Tool onClick={() => exec("italic")} label="Italic" active={on.italic}>
           <Italic className="size-4" />
         </Tool>
-        <Tool onClick={() => exec("underline")} label="Underline">
+        <Tool onClick={() => exec("underline")} label="Underline" active={on.underline}>
           <Underline className="size-4" />
         </Tool>
-        <Tool onClick={() => exec("strikeThrough")} label="Strikethrough">
+        <Tool onClick={() => exec("strikeThrough")} label="Strikethrough" active={on.strikeThrough}>
           <Strikethrough className="size-4" />
         </Tool>
         <Separator orientation="vertical" className="mx-1 h-4 self-center" />
-        <Tool onClick={() => exec("insertUnorderedList")} label="Bullet list">
+        <Tool
+          onClick={() => exec("insertUnorderedList")}
+          label="Bullet list"
+          active={on.insertUnorderedList}
+        >
           <List className="size-4" />
         </Tool>
-        <Tool onClick={() => exec("insertOrderedList")} label="Numbered list">
+        <Tool
+          onClick={() => exec("insertOrderedList")}
+          label="Numbered list"
+          active={on.insertOrderedList}
+        >
           <ListOrdered className="size-4" />
         </Tool>
-        <Tool onClick={() => exec("formatBlock", "blockquote")} label="Quote">
+        <Tool onClick={toggleQuote} label="Quote" active={on.blockquote}>
           <Quote className="size-4" />
         </Tool>
         <Tool
           onClick={() => {
+            // Already a link: the press people reach for is the one that
+            // takes it off again.
+            if (on.link) {
+              exec("unlink");
+              return;
+            }
             const url = window.prompt("Link URL");
             if (url) exec("createLink", url);
           }}
-          label="Insert link"
+          label={on.link ? "Remove link" : "Insert link"}
+          active={on.link}
         >
           <Link2 className="size-4" />
         </Tool>
@@ -165,7 +236,10 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
         aria-label="Message body"
         data-placeholder={placeholder}
         suppressContentEditableWarning
-        onInput={(event) => onChange(event.currentTarget.innerHTML)}
+        onInput={(event) => {
+          onChange(event.currentTarget.innerHTML);
+          readState();
+        }}
         onClickCapture={(event) => {
           // A link here is something being written, not somewhere to go.
           //
@@ -189,19 +263,50 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
   );
 }
 
+/** The commands whose on-or-off the browser will answer for directly. */
+const TOGGLES = [
+  "bold",
+  "italic",
+  "underline",
+  "strikeThrough",
+  "insertUnorderedList",
+  "insertOrderedList",
+];
+
+/**
+ * Whether the caret sits inside a tag of this name, within this editor.
+ *
+ * `queryCommandState` has no answer for a blockquote or a link, so those two
+ * are read off the tree instead. Stops at the editor, so a block wrapping the
+ * whole canvas is never mistaken for formatting in the text.
+ */
+function enclosedBy(root: Node, from: Node | null, tag: string) {
+  let at: Node | null = from;
+  while (at && at !== root) {
+    if (at.nodeType === 1 && (at as HTMLElement).tagName === tag) return true;
+    at = at.parentNode;
+  }
+  return false;
+}
+
 function Tool({
   onClick,
   label,
+  active = false,
   children,
 }: {
   onClick: () => void;
   label: string;
+  /** Lit, because this formatting is already on what is selected. */
+  active?: boolean;
   children: React.ReactNode;
 }) {
   return (
     <IconButton
       label={label}
       size="sm"
+      aria-pressed={active}
+      className={cn(active && "bg-accent text-foreground")}
       onMouseDown={(event) => event.preventDefault()}
       onClick={onClick}
     >

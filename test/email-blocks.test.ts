@@ -470,9 +470,18 @@ describe("the blocks added for real newsletters", () => {
   it("gives a callout its fill as an attribute as well as a style", () => {
     // Outlook throws away a background in a style attribute, so bgcolor has
     // to be there too or the box arrives white on white.
-    const { html } = only("callout", { html: "Mind this" });
-    assert.ok(html.includes("bgcolor="));
+    const { html } = only("callout", { html: "Mind this", tint: "#eef2ff" });
+    assert.ok(html.includes('bgcolor="#eef2ff"'));
+    assert.ok(html.includes("background:#eef2ff"));
     assert.ok(html.includes("Mind this"));
+  });
+
+  it("leaves a callout with no fill unpainted", () => {
+    // It arrives transparent like every other block, and bgcolor="transparent"
+    // is not a colour.
+    const { html } = only("callout", { html: "Mind this" });
+    assert.ok(!html.includes("bgcolor="));
+    assert.ok(!html.includes("transparent"));
   });
 
   it("lays numbers out in cells that add up to one row", () => {

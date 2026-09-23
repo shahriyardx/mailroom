@@ -254,6 +254,15 @@ export interface ListBlock extends Common {
 export interface CalloutBlock extends Common {
   type: "callout";
   html: string;
+  /**
+   * The colour of the box.
+   *
+   * Its own field rather than `style.background`, which every block has and
+   * which paints the whole row it sits in. Using that one tinted the full
+   * width of the email instead of the notice, which is the opposite of what a
+   * callout is for.
+   */
+  tint: string;
   /** The stripe down the side. Empty turns it off. */
   accent: string;
   /** An emoji, or empty for none. Not an image: it has to survive a blocker. */
@@ -529,10 +538,13 @@ export function newBlock(kind: BlockKind, id: string): Block {
         id,
         type: "callout",
         html: "Worth knowing before you read the rest.",
+        // Transparent, like every other block. A notice reads as one from
+        // its stripe; a tint is a choice, not something to arrive with.
+        tint: "",
         accent: DEFAULT_THEME.link,
         icon: "",
         align: "left",
-        style: { ...style, background: "#f4f4f5" },
+        style,
       };
     case "stat":
       return {
@@ -1064,13 +1076,22 @@ function renderBlock(block: Block, theme: EmailTheme): string {
 
     case "callout": {
       const stripe = block.accent ? `border-left:4px solid ${attr(block.accent)};` : "";
-      const tint = block.style?.background ?? "#f4f4f5";
+      /*
+       * Written twice when there is one, and not at all when there is not.
+       *
+       * Outlook throws away a background in a style attribute, so bgcolor has
+       * to be there too — but `bgcolor="transparent"` is not a colour, and a
+       * callout with no fill should simply have none.
+       */
+      const fill = block.tint.trim();
+      const painted = fill ? ` bgcolor="${attr(fill)}" ` : " ";
+      const tint = fill ? `background:${attr(fill)};` : "";
       const icon = block.icon
         ? `<td valign="top" width="26" style="width:26px;font-size:16px;line-height:1.4;">${escapeHtml(block.icon)}</td>`
         : "";
       return cell(
         block,
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${attr(tint)}" style="background:${attr(tint)};${stripe}border-radius:${clamp(block.style?.border?.radius ?? 8, 0, 24)}px;">
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${painted}style="${tint}${stripe}border-radius:${clamp(block.style?.border?.radius ?? 8, 0, 24)}px;">
 <tr><td style="padding:14px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${icon}<td style="${typography(block, theme, { size: 15, weight: 400 })};text-align:${block.align};">${inline(block.html, theme.link)}</td></tr></table></td></tr>
 </table>`,
       );

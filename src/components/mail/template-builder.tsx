@@ -2460,7 +2460,7 @@ function BlockView({
         <div style={box} onClick={stop} onKeyDown={stop}>
           <div
             style={{
-              background: block.style?.background ?? "#f4f4f5",
+              background: block.tint || "transparent",
               borderLeft: block.accent ? `4px solid ${block.accent}` : undefined,
               borderRadius: block.style?.border?.radius ?? 8,
               padding: "14px 16px",
@@ -3594,6 +3594,9 @@ function Inspector({
 
         {block.type === "callout" && (
           <>
+            <Row label="Fill">
+              <Swatch value={block.tint} fallback="none" onChange={(tint) => onPatch({ tint })} />
+            </Row>
             <Row label="Stripe">
               <Swatch
                 value={block.accent}
@@ -3614,8 +3617,11 @@ function Inspector({
             </Row>
             {/* An emoji rather than a picture: an icon that is an image is an
                 icon most readers never see, because images are blocked. */}
+            {/* Its own fill, not the one under Background — that one paints
+                the whole width of the email behind the notice. */}
             <Note>
-              Type an emoji for the icon, or leave it empty. The fill is under Background.
+              Type an emoji for the icon, or leave it empty. Fill colours the box itself;
+              Background, lower down, colours the full width behind it.
             </Note>
           </>
         )}
