@@ -39,6 +39,7 @@ import {
   ArrowLeft,
   Check,
   Copy,
+  Download,
   FileUp,
   Filter,
   Pencil,
@@ -150,6 +151,15 @@ export function ListDetailPanel({
             : ""
         }`}
       >
+        {/* A plain link, not a fetch: the browser saves a file it was sent,
+            and building a blob here would put the whole audience into a
+            string first for no reason. */}
+        <Button asChild variant="ghost" size="md">
+          <a href={`/api/campaigns/lists/${list.id}/export`} download>
+            <Download />
+            Export
+          </a>
+        </Button>
         <Button variant="danger" size="md" disabled={busy} onClick={() => setDeleting(true)}>
           <Trash2 />
           Delete
@@ -563,6 +573,11 @@ function ListSegments({ list, segments }: { list: ListSummary; segments: Segment
                 ? "nobody yet"
                 : `${row.size} ${row.size === 1 ? "person" : "people"}`}
             </Badge>
+            <IconButton asChild label={`Export ${row.name}`}>
+              <a href={`/api/campaigns/lists/${list.id}/export?segment=${row.id}`} download>
+                <Download />
+              </a>
+            </IconButton>
             <IconButton label={`Edit ${row.name}`} onClick={() => setDraft(draftFrom(row))}>
               <Pencil />
             </IconButton>

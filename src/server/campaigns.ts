@@ -576,6 +576,105 @@ export async function fieldNamesByList(orgId: string): Promise<Record<string, st
   return byList;
 }
 
+/**
+ * A quoted CSV cell.
+ *
+ * Everything is quoted rather than only what needs it. A name with a comma in
+ * it is the normal case, not the exception, and deciding cell by cell is how
+ * an export ends up with one broken row in ten thousand that nobody notices
+ * until it has been imported somewhere else.
+ */
+function cell(value: string | null | undefined) {
+  return `"${(value ?? "").replace(/"/g, '""')}"`;
+}
+
+/**
+ * Everybody on a list, or everybody a segment describes, as a CSV.
+ *
+ * The answer to "can I get my people back out". A tool that imports and does
+ * not export is a tool people are right to be wary of putting a list into,
+ * and the question gets asked before the first campaign rather than after it.
+ *
+ * Streamed as one string rather than a file: a list large enough for this to
+ * matter is large enough that the browser should not be waiting on it, but a
+ * hundred thousand rows is still only a few megabytes.
+ */
+export async function exportMembers(
+  orgId: string,
+  listId: string,
+  segmentId?: string | null,
+): Promise<string> {
+  const narrowing = segmentId ? await findSegment(orgId, segmentId) : null;
+  if (segmentId && (!narrowing || narrowing.listId !== listId)) {
+    throw new Error("That segment is not about this list");
+  }
+
+  const rows = await db
+    .select({
+      address: listMember.address,
+      name: listMember.name,
+      status: listMember.status,
+      tags: listMember.tags,
+      fields: listMember.fields,
+      consentSource: listMember.consentSource,
+      consentAt: listMember.consentAt,
+      confirmedAt: listMember.confirmedAt,
+      unsubscribedAt: listMember.unsubscribedAt,
+    })
+    .from(listMember)
+    .where(
+      and(
+        eq(listMember.organizationId, orgId),
+        eq(listMember.listId, listId),
+        narrowing ? segmentCondition(narrowing) : undefined,
+      ),
+    )
+    .orderBy(asc(listMember.address));
+
+  // Every merge field anybody on this list carries becomes a column, so the
+  // file that comes out can go straight back into the file that went in.
+  const extras: string[] = [];
+  for (const row of rows) {
+    for (const name of Object.keys(row.fields ?? {})) {
+      if (!extras.includes(name)) extras.push(name);
+    }
+  }
+  extras.sort();
+
+  const header = [
+    "email",
+    "name",
+    "status",
+    "tags",
+    "consent_source",
+    "consent_at",
+    "confirmed_at",
+    "unsubscribed_at",
+    ...extras,
+  ];
+
+  const lines = [header.map(cell).join(",")];
+  for (const row of rows) {
+    lines.push(
+      [
+        cell(row.address),
+        cell(row.name),
+        cell(row.status),
+        cell(row.tags.join(" ")),
+        cell(row.consentSource),
+        cell(row.consentAt?.toISOString()),
+        cell(row.confirmedAt?.toISOString()),
+        cell(row.unsubscribedAt?.toISOString()),
+        ...extras.map((name) => cell(row.fields?.[name])),
+      ].join(","),
+    );
+  }
+
+  // A trailing newline: a file without one is a file some tools drop the last
+  // row of, and the last row is somebody.
+  return `${lines.join("\n")}\n`;
+}
+
 /* -------------------------------------------------------------------------- */
 /* Broadcasts                                                                 */
 /* -------------------------------------------------------------------------- */

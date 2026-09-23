@@ -197,6 +197,17 @@ Any **other** column in a file with a header is kept as a merge field, so an
 export carrying a plan or a city can be used in a subject line without
 reshaping the file first.
 
+### Taking them back out
+
+**Export** on a list's page downloads everybody on it as a CSV — addresses,
+names, status, tags, where the consent came from and when, and one column per
+merge field. The download icon beside a segment exports only the people that
+segment describes.
+
+It is the same shape the importer reads, so a file exported here goes straight
+back in, here or anywhere else. A tool that imports and does not export is one
+you should think twice about putting a list into.
+
 ::: tip Re-importing is safe
 Somebody already on the list is left exactly as they are. Importing last
 month's file again will **not** resubscribe anybody who has left since — which

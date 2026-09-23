@@ -920,3 +920,59 @@ describe("the overview", () => {
     assert.equal(typeof view.eventNames, "number");
   });
 });
+
+describe("getting people back out", () => {
+  it("exports everybody with their fields as columns", async () => {
+    const { addMembers, exportMembers } = await import("@/server/campaigns");
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [
+        { address: "ada@example.com", name: "Ada", fields: { plan: "pro" } },
+        { address: "bob@example.com", name: null, fields: { city: "London" } },
+      ],
+      "import",
+    );
+
+    const csv = await exportMembers(account.orgId, listId);
+    const [header, ...rows] = csv.trim().split("\n");
+    assert.ok(header?.includes('"city"'));
+    assert.ok(header?.includes('"plan"'));
+    assert.equal(rows.length, 2);
+    assert.ok(rows[0]?.startsWith('"ada@example.com","Ada"'));
+  });
+
+  it("quotes a name with a comma in it", async () => {
+    // Every export from every other tool looks like this, and a file that
+    // breaks on it is a file somebody cannot use.
+    const { addMembers, exportMembers } = await import("@/server/campaigns");
+    const listId = await aList();
+    await addMembers(
+      account.orgId,
+      listId,
+      [{ address: "ada@example.com", name: 'Lovelace, "Ada"' }],
+      "import",
+    );
+
+    const csv = await exportMembers(account.orgId, listId);
+    assert.ok(csv.includes('"Lovelace, ""Ada"""'));
+  });
+
+  it("refuses a segment that is about a different list", async () => {
+    const { addMembers, exportMembers } = await import("@/server/campaigns");
+    const { createSegment } = await import("@/server/segments");
+    const one = await aList("One");
+    const two = await aList("Two");
+    await addMembers(account.orgId, one, [{ address: "ada@example.com" }], "import");
+
+    const segmentId = await createSegment(account.orgId, {
+      listId: two,
+      name: "Everybody on two",
+      match: "all",
+      rules: [],
+    });
+
+    await assert.rejects(() => exportMembers(account.orgId, one, segmentId));
+  });
+});
