@@ -4,10 +4,14 @@ import {
   type EmailDesign,
   designToText,
   emptyDesign,
+  findBlock,
   inline,
   newBlock,
+  patchBlock,
   readDesign,
+  relocateBlock,
   renderDesign,
+  whereIs,
   youtubeId,
 } from "@/lib/email-blocks";
 
@@ -236,5 +240,83 @@ describe("colouring part of a line", () => {
       inline('<span style="color:red;position:fixed">x</span>', "#111"),
       '<span style="color:red;">x</span>',
     );
+  });
+});
+
+describe("columns hold blocks", () => {
+  it("lays each column out with the same code as the page", () => {
+    const columns = {
+      ...newBlock("columns", "c1"),
+      columns: [
+        { blocks: [{ ...newBlock("heading", "h1"), text: "Left" }] },
+        { blocks: [{ ...newBlock("button", "b1"), text: "Right" }] },
+      ],
+    };
+    const html = renderDesign(design(columns as never));
+
+    assert.match(html, /<h2[^>]*>Left<\/h2>/);
+    assert.match(html, />Right<\/a>/, "a button in a column is still a button");
+    assert.match(html, /class="mr-col"/, "and still stacks on a phone");
+  });
+
+  it("reads an older design, where a column was one lump of copy", () => {
+    const read = readDesign({
+      version: 1,
+      blocks: [{ id: "c1", type: "columns", gap: 20, columns: [{ html: "Hello" }] }],
+    });
+
+    const column = (read?.blocks[0] as { columns: { blocks: { type: string }[] }[] }).columns[0];
+    // The copy it had becomes the text block it always meant.
+    assert.equal(column?.blocks[0]?.type, "text");
+  });
+
+  it("refuses to nest columns inside columns", () => {
+    const read = readDesign({
+      version: 1,
+      blocks: [
+        {
+          id: "c1",
+          type: "columns",
+          gap: 20,
+          columns: [{ blocks: [{ id: "c2", type: "columns", gap: 20, columns: [] }] }],
+        },
+      ],
+    });
+
+    const column = (read?.blocks[0] as { columns: { blocks: unknown[] }[] }).columns[0];
+    // One level is all the renderer draws and all a client lays out reliably.
+    assert.equal(column?.blocks.length, 0);
+  });
+});
+
+describe("moving a block about", () => {
+  const columns = {
+    ...newBlock("columns", "c1"),
+    columns: [{ blocks: [{ ...newBlock("text", "t1"), html: "in" }] }, { blocks: [] }],
+  } as never;
+
+  it("finds one wherever it is", () => {
+    const blocks = [newBlock("heading", "h1"), columns];
+    assert.equal(findBlock(blocks, "t1")?.id, "t1");
+    assert.deepEqual(whereIs(blocks, "t1"), { parentId: "c1", column: 0 });
+    assert.deepEqual(whereIs(blocks, "h1"), {});
+  });
+
+  it("changes one inside a column", () => {
+    const blocks = patchBlock([columns], "t1", { html: "out" } as never);
+    assert.equal((findBlock(blocks, "t1") as { html: string }).html, "out");
+  });
+
+  it("carries one from a column back out to the page", () => {
+    const blocks = relocateBlock([columns], "t1", {}, 0);
+    assert.equal(blocks[0]?.id, "t1", "it is the first thing on the page now");
+    const parent = findBlock(blocks, "c1") as { columns: { blocks: unknown[] }[] };
+    assert.equal(parent.columns[0]?.blocks.length, 0);
+  });
+
+  it("will not put a columns block inside a column", () => {
+    const blocks = [newBlock("columns", "c2"), columns];
+    const after = relocateBlock(blocks, "c2", { parentId: "c1", column: 1 }, 0);
+    assert.deepEqual(after, blocks, "nothing moved");
   });
 });

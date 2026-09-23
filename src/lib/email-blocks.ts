@@ -107,8 +107,14 @@ export interface SpacerBlock extends Common {
 
 export interface ColumnsBlock extends Common {
   type: "columns";
-  /** Two or three columns of copy, side by side. */
-  columns: { html: string }[];
+  /**
+   * What is in each column. Blocks, not copy: a column with a picture and a
+   * button under it is the reason anybody reaches for columns at all.
+   *
+   * One level deep. Columns inside columns is a layout engine, and an email
+   * that needs one is an email that will arrive differently everywhere.
+   */
+  columns: { blocks: Block[] }[];
   /** Pixels between them. */
   gap: number;
 }
@@ -286,7 +292,7 @@ export function newBlock(kind: BlockKind, id: string): Block {
       return {
         id,
         type: "columns",
-        columns: [{ html: "Left column." }, { html: "Right column." }],
+        columns: [{ blocks: [] }, { blocks: [] }],
         gap: 20,
         style,
       };
@@ -367,7 +373,11 @@ export function readDesign(value: unknown): EmailDesign | null {
   if (!Array.isArray(raw.blocks)) return null;
 
   const theme = { ...DEFAULT_THEME, ...(raw.theme ?? {}) };
-  return { version: 1, theme, blocks: raw.blocks.filter(isBlock) };
+  const blocks = raw.blocks
+    .map((entry) => readBlock(entry))
+    .filter((entry): entry is Block => entry !== null);
+
+  return { version: 1, theme, blocks };
 }
 
 const KINDS: BlockKind[] = [
@@ -391,6 +401,34 @@ function isBlock(value: unknown): value is Block {
   if (!value || typeof value !== "object") return false;
   const block = value as Block;
   return typeof block.id === "string" && KINDS.includes(block.type);
+}
+
+/**
+ * A block as this release understands it.
+ *
+ * Columns used to hold one lump of copy each and now hold blocks, so an older
+ * design is read forward: the copy it had becomes the text block it always
+ * meant. Anything nested deeper than one level is flattened away, because
+ * that is all the renderer draws.
+ */
+function readBlock(value: unknown, depth = 0): Block | null {
+  if (!isBlock(value)) return null;
+  if (value.type !== "columns") return value;
+  if (depth > 0) return null;
+
+  const columns = (value.columns ?? []).map((column, index) => {
+    const legacy = (column as unknown as { html?: string }).html;
+    if (typeof legacy === "string") {
+      return { blocks: [{ ...newBlock("text", `${value.id}-c${index}`), html: legacy } as Block] };
+    }
+    return {
+      blocks: (column.blocks ?? [])
+        .map((entry) => readBlock(entry, depth + 1))
+        .filter((entry): entry is Block => entry !== null),
+    };
+  });
+
+  return { ...value, columns };
 }
 
 /**
@@ -423,6 +461,141 @@ export function youtubeThumb(id: string) {
 
 export function youtubeWatch(id: string) {
   return `https://www.youtube.com/watch?v=${id}`;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Where a block is                                                           */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * Blocks live in one of two places: the document, or a column of one.
+ *
+ * Everything the builder does to a block — change it, move it, copy it, throw
+ * it away — has to work in both, so the walking is here, once, rather than in
+ * the screen in two slightly different versions.
+ */
+export interface Where {
+  /** The columns block it is inside, if it is inside one. */
+  parentId?: string;
+  /** Which column of that block. */
+  column?: number;
+}
+
+/** Every block, wherever it is, including the ones inside columns. */
+export function everyBlock(blocks: Block[]): Block[] {
+  return blocks.flatMap((block) =>
+    block.type === "columns"
+      ? [block, ...block.columns.flatMap((column) => column.blocks)]
+      : [block],
+  );
+}
+
+export function findBlock(blocks: Block[], id: string): Block | null {
+  return everyBlock(blocks).find((block) => block.id === id) ?? null;
+}
+
+/** Which column of which block something is in, or nothing if it is loose. */
+export function whereIs(blocks: Block[], id: string): Where {
+  for (const block of blocks) {
+    if (block.type !== "columns") continue;
+    const column = block.columns.findIndex((entry) =>
+      entry.blocks.some((child) => child.id === id),
+    );
+    if (column >= 0) return { parentId: block.id, column };
+  }
+  return {};
+}
+
+/** The list a block belongs to, wherever it is. */
+function listOf(blocks: Block[], where: Where): Block[] {
+  if (!where.parentId) return blocks;
+  const parent = blocks.find((block) => block.id === where.parentId);
+  if (parent?.type !== "columns") return [];
+  return parent.columns[where.column ?? 0]?.blocks ?? [];
+}
+
+/** The same document with one list replaced. */
+function withList(blocks: Block[], where: Where, next: Block[]): Block[] {
+  if (!where.parentId) return next;
+  return blocks.map((block) =>
+    block.id === where.parentId && block.type === "columns"
+      ? {
+          ...block,
+          columns: block.columns.map((column, index) =>
+            index === (where.column ?? 0) ? { blocks: next } : column,
+          ),
+        }
+      : block,
+  );
+}
+
+/** Changes one block, wherever it is. */
+export function patchBlock(blocks: Block[], id: string, changes: Partial<Block>): Block[] {
+  return blocks.map((block) => {
+    if (block.id === id) return { ...block, ...changes } as Block;
+    if (block.type !== "columns") return block;
+    return {
+      ...block,
+      columns: block.columns.map((column) => ({
+        blocks: column.blocks.map((child) =>
+          child.id === id ? ({ ...child, ...changes } as Block) : child,
+        ),
+      })),
+    };
+  });
+}
+
+export function removeBlock(blocks: Block[], id: string): Block[] {
+  return blocks
+    .filter((block) => block.id !== id)
+    .map((block) =>
+      block.type === "columns"
+        ? {
+            ...block,
+            columns: block.columns.map((column) => ({
+              blocks: column.blocks.filter((child) => child.id !== id),
+            })),
+          }
+        : block,
+    );
+}
+
+/** Puts a block in, at a position, in the document or in a column. */
+export function insertBlock(blocks: Block[], block: Block, where: Where, at: number): Block[] {
+  const list = [...listOf(blocks, where)];
+  list.splice(Math.min(Math.max(at, 0), list.length), 0, block);
+  return withList(blocks, where, list);
+}
+
+/** Moves a block up or down among its own neighbours. */
+export function nudgeBlock(blocks: Block[], id: string, by: number): Block[] {
+  const where = whereIs(blocks, id);
+  const list = [...listOf(blocks, where)];
+  const index = list.findIndex((block) => block.id === id);
+  const next = index + by;
+  if (index < 0 || next < 0 || next >= list.length) return blocks;
+
+  const [moved] = list.splice(index, 1);
+  list.splice(next, 0, moved!);
+  return withList(blocks, where, list);
+}
+
+/** Takes a block out of wherever it is and puts it somewhere else. */
+export function relocateBlock(blocks: Block[], id: string, to: Where, at: number): Block[] {
+  const block = findBlock(blocks, id);
+  if (!block) return blocks;
+  // A columns block cannot go inside a column: one level deep is all the
+  // renderer draws, and all an email client can be relied on to lay out.
+  if (block.type === "columns" && to.parentId) return blocks;
+
+  const from = whereIs(blocks, id);
+  const sameList = from.parentId === to.parentId && from.column === to.column;
+  const before = listOf(blocks, from).findIndex((entry) => entry.id === id);
+
+  const without = removeBlock(blocks, id);
+  // Taking it out shifts everything after it up by one.
+  const target = sameList && before >= 0 && before < at ? at - 1 : at;
+  return insertBlock(without, block, to, target);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -559,11 +732,19 @@ function renderBlock(block: Block, theme: EmailTheme): string {
       const count = Math.max(1, block.columns.length);
       const share = Math.floor(100 / count);
       const half = Math.round(clamp(block.gap, 0, 64) / 2);
+      /*
+       * Each column is a table of its own, so the blocks inside one are laid
+       * out by exactly the code that lays out the blocks outside it. The
+       * width the inner blocks think they have is narrower, which matters to
+       * anything sized against it — a picture, mostly — so it is passed down.
+       */
+      const inner = { ...theme, width: Math.floor(theme.width / count) - block.gap };
+
       const cells = block.columns
-        .map(
-          (column) =>
-            `<td class="mr-col" width="${share}%" valign="top" style="width:${share}%;padding:0 ${half}px;${typography(block, theme, { size: 15, weight: 400 })};">${inline(column.html, theme.link)}</td>`,
-        )
+        .map((column) => {
+          const body = column.blocks.map((entry) => renderBlock(entry, inner)).join("");
+          return `<td class="mr-col" width="${share}%" valign="top" style="width:${share}%;padding:0 ${half}px;${typography(block, theme, { size: 15, weight: 400 })};"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">${body || "<tr><td></td></tr>"}</table></td>`;
+        })
         .join("");
       return cell(
         block,
@@ -718,7 +899,9 @@ export function designToText(design: EmailDesign): string {
         parts.push(block.code);
         break;
       case "columns":
-        for (const column of block.columns) parts.push(stripTags(column.html));
+        for (const column of block.columns) {
+          parts.push(designToText({ ...design, blocks: column.blocks }));
+        }
         break;
       case "button":
         parts.push(block.href ? `${block.text}: ${block.href}` : block.text);

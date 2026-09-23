@@ -34,16 +34,25 @@ import {
   type Block,
   type BlockKind,
   type BlockStyle,
+  type ColumnsBlock,
   type EmailDesign,
   type EmailTheme,
   FONTS,
   HEADING_DEFAULTS,
   type Padding,
+  type Where,
   designToText,
   emptyDesign,
+  findBlock,
+  insertBlock,
   newBlock,
+  nudgeBlock,
+  patchBlock,
   readDesign,
+  relocateBlock,
+  removeBlock,
   renderDesign,
+  whereIs,
   youtubeId,
   youtubeThumb,
 } from "@/lib/email-blocks";
@@ -268,7 +277,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
   const [leaving, setLeaving] = useState(false);
   const [testing, setTesting] = useState(false);
 
-  const block = design.blocks.find((entry) => entry.id === selected) ?? null;
+  const block = selected ? findBlock(design.blocks, selected) : null;
 
   const dirty = JSON.stringify({ details, design, html }) !== saved.current;
 
@@ -292,73 +301,57 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
     [details.subject, compiled],
   );
 
+  /*
+   * A block is either in the document or in a column of one, and every one of
+   * these has to work the same either way. The walking lives in the block
+   * module, so this screen only has to say what it wants done.
+   */
   function patch(id: string, changes: Partial<Block>) {
-    setDesign((current) => ({
-      ...current,
-      blocks: current.blocks.map((entry) =>
-        entry.id === id ? ({ ...entry, ...changes } as Block) : entry,
-      ),
-    }));
+    setDesign((current) => ({ ...current, blocks: patchBlock(current.blocks, id, changes) }));
   }
 
   function style(id: string, changes: Partial<BlockStyle>) {
-    setDesign((current) => ({
-      ...current,
-      blocks: current.blocks.map((entry) =>
-        entry.id === id ? ({ ...entry, style: { ...entry.style, ...changes } } as Block) : entry,
-      ),
-    }));
+    const existing = findBlock(design.blocks, id);
+    patch(id, { style: { ...existing?.style, ...changes } } as Partial<Block>);
   }
 
-  function add(kind: BlockKind, at?: number) {
+  function add(kind: BlockKind, at?: number, where: Where = {}) {
     const fresh = newBlock(kind, newId("blk"));
-    setDesign((current) => {
-      const blocks = [...current.blocks];
-      blocks.splice(at ?? blocks.length, 0, fresh);
-      return { ...current, blocks };
-    });
+    setDesign((current) => ({
+      ...current,
+      blocks: insertBlock(current.blocks, fresh, where, at ?? Number.MAX_SAFE_INTEGER),
+    }));
     setSelected(fresh.id);
     setTab("block");
   }
 
   function move(id: string, by: number) {
-    setDesign((current) => {
-      const index = current.blocks.findIndex((entry) => entry.id === id);
-      const next = index + by;
-      if (index < 0 || next < 0 || next >= current.blocks.length) return current;
-      const blocks = [...current.blocks];
-      const [moved] = blocks.splice(index, 1);
-      blocks.splice(next, 0, moved!);
-      return { ...current, blocks };
-    });
+    setDesign((current) => ({ ...current, blocks: nudgeBlock(current.blocks, id, by) }));
   }
 
-  function reorder(from: number, to: number) {
-    setDesign((current) => {
-      if (from === to || from < 0 || to < 0) return current;
-      const blocks = [...current.blocks];
-      const [moved] = blocks.splice(from, 1);
-      blocks.splice(to > from ? to - 1 : to, 0, moved!);
-      return { ...current, blocks };
-    });
+  function relocate(id: string, to: Where, at: number) {
+    setDesign((current) => ({ ...current, blocks: relocateBlock(current.blocks, id, to, at) }));
   }
 
   function duplicate(id: string) {
     setDesign((current) => {
-      const index = current.blocks.findIndex((entry) => entry.id === id);
-      if (index < 0) return current;
-      const copy = { ...current.blocks[index]!, id: newId("blk") };
-      const blocks = [...current.blocks];
-      blocks.splice(index + 1, 0, copy);
-      return { ...current, blocks };
+      const block = findBlock(current.blocks, id);
+      if (!block) return current;
+      const where = whereIs(current.blocks, id);
+      const list = where.parentId
+        ? ((current.blocks.find((entry) => entry.id === where.parentId) as ColumnsBlock | undefined)
+            ?.columns[where.column ?? 0]?.blocks ?? [])
+        : current.blocks;
+      const at = list.findIndex((entry) => entry.id === id) + 1;
+      return {
+        ...current,
+        blocks: insertBlock(current.blocks, { ...block, id: newId("blk") }, where, at),
+      };
     });
   }
 
   function remove(id: string) {
-    setDesign((current) => ({
-      ...current,
-      blocks: current.blocks.filter((entry) => entry.id !== id),
-    }));
+    setDesign((current) => ({ ...current, blocks: removeBlock(current.blocks, id) }));
     setSelected((current) => (current === id ? null : current));
   }
 
@@ -589,7 +582,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
               }}
               onPatch={patch}
               onMove={move}
-              onReorder={reorder}
+              onRelocate={relocate}
               onDuplicate={duplicate}
               onRemove={remove}
               onAdd={add}
@@ -916,13 +909,22 @@ function HtmlPane({
 /* The canvas                                                                 */
 /* -------------------------------------------------------------------------- */
 
+interface Aim {
+  where: Where;
+  at: number;
+}
+
+function sameWhere(a: Where, b: Where) {
+  return a.parentId === b.parentId && a.column === b.column;
+}
+
 function Canvas({
   design,
   selected,
   onSelect,
   onPatch,
   onMove,
-  onReorder,
+  onRelocate,
   onDuplicate,
   onRemove,
   onAdd,
@@ -932,25 +934,25 @@ function Canvas({
   onSelect: (id: string) => void;
   onPatch: (id: string, changes: Partial<Block>) => void;
   onMove: (id: string, by: number) => void;
-  onReorder: (from: number, to: number) => void;
+  onRelocate: (id: string, to: Where, at: number) => void;
   onDuplicate: (id: string) => void;
   onRemove: (id: string) => void;
-  onAdd: (kind: BlockKind, at?: number) => void;
+  onAdd: (kind: BlockKind, at?: number, where?: Where) => void;
 }) {
   const theme = design.theme;
-  const dragging = useRef<number | null>(null);
+  const dragging = useRef<string | null>(null);
 
   /*
    * Where a drop would land, twice: state so the line is drawn, and a ref so
    * the drop handler reads what the last dragover decided rather than what
    * the render it was created in happened to close over.
    */
-  const [over, setOver] = useState<number | null>(null);
-  const overRef = useRef<number | null>(null);
+  const [aim, setAim] = useState<Aim | null>(null);
+  const aimRef = useRef<Aim | null>(null);
 
-  function aim(at: number | null) {
-    overRef.current = at;
-    setOver(at);
+  function point(next: Aim | null) {
+    aimRef.current = next;
+    setAim(next);
   }
 
   /** One handler for the whole card, because a drop bubbles and the blocks
@@ -958,14 +960,28 @@ function Canvas({
   function drop(event: React.DragEvent) {
     event.preventDefault();
     const kind = event.dataTransfer.getData(NEW_BLOCK) as BlockKind | "";
-    const at = overRef.current ?? design.blocks.length;
+    const target = aimRef.current ?? { where: {}, at: design.blocks.length };
 
-    if (kind) onAdd(kind, at);
-    else if (dragging.current !== null) onReorder(dragging.current, at);
+    if (kind) onAdd(kind, target.at, target.where);
+    else if (dragging.current) onRelocate(dragging.current, target.where, target.at);
 
     dragging.current = null;
-    aim(null);
+    point(null);
   }
+
+  const shared = {
+    theme,
+    selected,
+    aim,
+    dragging,
+    onPoint: point,
+    onSelect,
+    onPatch,
+    onMove,
+    onDuplicate,
+    onRemove,
+    onAdd,
+  };
 
   return (
     /* No frame around it. The page colour runs to the edges of the pane and
@@ -973,20 +989,20 @@ function Canvas({
        screen is the email rather than a picture of one. */
     <div className="min-h-full w-full py-8" style={{ backgroundColor: theme.background }}>
       <div>
-        {/* The card takes a drop of its own, so a block dragged onto an
-            empty canvas — or into the room under the last block — lands
-            rather than bouncing back to the palette. */}
+        {/* The card takes the drop, so a block dragged onto an empty canvas —
+            or into the room under the last block — lands rather than bouncing
+            back to the palette. */}
         <div
           className="mx-auto overflow-hidden"
           onDragOver={(event) => {
             event.preventDefault();
             event.dataTransfer.dropEffect = dragging.current === null ? "copy" : "move";
-            // Anywhere on the card that is not a block itself — the room
-            // under the last one, or an empty canvas — means the end.
-            if (event.target === event.currentTarget) aim(design.blocks.length);
+            if (event.target === event.currentTarget) {
+              point({ where: {}, at: design.blocks.length });
+            }
           }}
           onDragLeave={(event) => {
-            if (event.target === event.currentTarget) aim(null);
+            if (event.target === event.currentTarget) point(null);
           }}
           onDrop={drop}
           style={{
@@ -998,7 +1014,13 @@ function Canvas({
           }}
         >
           {design.blocks.length === 0 ? (
-            <div className="px-8 py-16 text-center">
+            <div
+              className="px-8 py-16 text-center"
+              onDragOver={(event) => {
+                event.preventDefault();
+                point({ where: {}, at: 0 });
+              }}
+            >
               <p className="text-[13px]" style={{ color: "#71717a" }}>
                 Nothing here yet. Drag a block in from the left, or click one.
               </p>
@@ -1018,90 +1040,157 @@ function Canvas({
               </div>
             </div>
           ) : (
-            design.blocks.map((block, index) => (
-              <div
-                key={block.id}
-                draggable
-                onDragStart={() => {
-                  dragging.current = index;
-                }}
-                onDragEnd={() => {
-                  dragging.current = null;
-                  aim(null);
-                }}
-                onDragOver={(event) => {
-                  // Only aims. The card does the dropping.
-                  event.preventDefault();
-                  event.stopPropagation();
-                  const box = event.currentTarget.getBoundingClientRect();
-                  aim(event.clientY < box.top + box.height / 2 ? index : index + 1);
-                }}
-                onFocus={() => onSelect(block.id)}
-                onClick={() => onSelect(block.id)}
-                onKeyDown={(event) => {
-                  if (event.key === "Enter") onSelect(block.id);
-                }}
-                // Not a button: it is draggable and holds inputs of its own.
-                // Focus selects it, so the keyboard still reaches every block.
-                // biome-ignore lint/a11y/noNoninteractiveTabindex: a canvas block is selectable by design
-                tabIndex={0}
-                className={cn(
-                  "group relative cursor-default outline-none",
-                  "before:pointer-events-none before:absolute before:inset-0 before:z-10 before:transition-colors",
-                  selected === block.id
-                    ? "before:border-2 before:border-primary"
-                    : "hover:before:border hover:before:border-primary/40",
-                )}
-              >
-                {over === index && <DropLine where="top" />}
-                {over === index + 1 && <DropLine where="bottom" />}
-
-                <BlockView
-                  block={block}
-                  theme={theme}
-                  onPatch={(changes) => onPatch(block.id, changes)}
-                />
-
-                {/* The name of the thing you are about to change, where you
-                    are about to change it. */}
-                <span
-                  className={cn(
-                    "-top-px pointer-events-none absolute left-0 z-20 rounded-br-md bg-primary px-1.5 py-0.5 font-medium text-[10px] text-primary-foreground uppercase tracking-wide",
-                    selected === block.id ? "block" : "hidden",
-                  )}
-                >
-                  {LABELS[block.type]}
-                </span>
-
-                <div className="absolute top-1.5 right-1.5 z-20 hidden items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-focus-within:flex group-hover:flex">
-                  <span className="flex size-6 cursor-grab items-center justify-center text-muted-foreground">
-                    <GripVertical className="size-3.5" />
-                  </span>
-                  <Handle label="Move up" onClick={() => onMove(block.id, -1)}>
-                    <ChevronUp className="size-3.5" />
-                  </Handle>
-                  <Handle label="Move down" onClick={() => onMove(block.id, 1)}>
-                    <ChevronDown className="size-3.5" />
-                  </Handle>
-                  <Handle label="Duplicate" onClick={() => onDuplicate(block.id)}>
-                    <Copy className="size-3.5" />
-                  </Handle>
-                  <Handle label="Delete" onClick={() => onRemove(block.id)} destructive>
-                    <Trash2 className="size-3.5" />
-                  </Handle>
-                </div>
-              </div>
-            ))
-          )}
-
-          {over === design.blocks.length && design.blocks.length > 0 && (
-            <div className="relative">
-              <DropLine where="bottom" />
-            </div>
+            <BlockList blocks={design.blocks} where={{}} {...shared} />
           )}
         </div>
       </div>
     </div>
+  );
+}
+
+interface ListProps {
+  blocks: Block[];
+  where: Where;
+  theme: EmailTheme;
+  selected: string | null;
+  aim: Aim | null;
+  dragging: React.MutableRefObject<string | null>;
+  onPoint: (aim: Aim | null) => void;
+  onSelect: (id: string) => void;
+  onPatch: (id: string, changes: Partial<Block>) => void;
+  onMove: (id: string, by: number) => void;
+  onDuplicate: (id: string) => void;
+  onRemove: (id: string) => void;
+  onAdd: (kind: BlockKind, at?: number, where?: Where) => void;
+}
+
+/**
+ * A run of blocks, in the document or in a column of one.
+ *
+ * The same component either way, because a column is not a special kind of
+ * place — it is the same list somewhere narrower, and anything that can be
+ * put in one can be put in the other.
+ */
+function BlockList(props: ListProps) {
+  const { blocks, where, theme, selected, aim, dragging, onPoint } = props;
+  const pointing = aim && sameWhere(aim.where, where) ? aim.at : null;
+
+  return (
+    <>
+      {blocks.map((block, index) => (
+        <div
+          key={block.id}
+          draggable
+          onDragStart={(event) => {
+            event.stopPropagation();
+            dragging.current = block.id;
+          }}
+          onDragEnd={() => {
+            dragging.current = null;
+            onPoint(null);
+          }}
+          onDragOver={(event) => {
+            // Only aims. The card does the dropping.
+            event.preventDefault();
+            event.stopPropagation();
+            const box = event.currentTarget.getBoundingClientRect();
+            onPoint({
+              where,
+              at: event.clientY < box.top + box.height / 2 ? index : index + 1,
+            });
+          }}
+          onFocus={(event) => {
+            event.stopPropagation();
+            props.onSelect(block.id);
+          }}
+          onClick={(event) => {
+            event.stopPropagation();
+            props.onSelect(block.id);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") props.onSelect(block.id);
+          }}
+          // Not a button: it is draggable and holds inputs of its own.
+          // Focus selects it, so the keyboard still reaches every block.
+          // biome-ignore lint/a11y/noNoninteractiveTabindex: a canvas block is selectable by design
+          tabIndex={0}
+          className={cn(
+            "group relative cursor-default outline-none",
+            "before:pointer-events-none before:absolute before:inset-0 before:z-10 before:transition-colors",
+            selected === block.id
+              ? "before:border-2 before:border-primary"
+              : "hover:before:border hover:before:border-primary/40",
+          )}
+        >
+          {pointing === index && <DropLine where="top" />}
+          {pointing === index + 1 && <DropLine where="bottom" />}
+
+          <BlockView
+            block={block}
+            theme={theme}
+            onPatch={(changes) => props.onPatch(block.id, changes)}
+            column={(column) => (
+              <BlockList
+                {...props}
+                blocks={column.blocks}
+                where={{ parentId: block.id, column: column.index }}
+              />
+            )}
+          />
+
+          {/* The name of the thing you are about to change, where you are
+              about to change it. */}
+          <span
+            className={cn(
+              "-top-px pointer-events-none absolute left-0 z-20 rounded-br-md bg-primary px-1.5 py-0.5 font-medium text-[10px] text-primary-foreground uppercase tracking-wide",
+              selected === block.id ? "block" : "hidden",
+            )}
+          >
+            {LABELS[block.type]}
+          </span>
+
+          <div className="absolute top-1.5 right-1.5 z-20 hidden items-center gap-0.5 rounded-lg border border-border bg-card p-0.5 shadow-sm group-focus-within:flex group-hover:flex">
+            <span className="flex size-6 cursor-grab items-center justify-center text-muted-foreground">
+              <GripVertical className="size-3.5" />
+            </span>
+            <Handle label="Move up" onClick={() => props.onMove(block.id, -1)}>
+              <ChevronUp className="size-3.5" />
+            </Handle>
+            <Handle label="Move down" onClick={() => props.onMove(block.id, 1)}>
+              <ChevronDown className="size-3.5" />
+            </Handle>
+            <Handle label="Duplicate" onClick={() => props.onDuplicate(block.id)}>
+              <Copy className="size-3.5" />
+            </Handle>
+            <Handle label="Delete" onClick={() => props.onRemove(block.id)} destructive>
+              <Trash2 className="size-3.5" />
+            </Handle>
+          </div>
+        </div>
+      ))}
+
+      {/* The room after the last block, which is where a drop aimed at the
+          end of a list lands. */}
+      <div
+        className="relative"
+        onDragOver={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onPoint({ where, at: blocks.length });
+        }}
+        style={where.parentId ? { minHeight: 28 } : undefined}
+      >
+        {pointing === blocks.length && <DropLine where="bottom" />}
+        {where.parentId && blocks.length === 0 && (
+          <div
+            className="flex h-16 items-center justify-center rounded-md border border-dashed text-[11.5px]"
+            style={{ borderColor: "#d4d4d8", color: "#a1a1aa" }}
+          >
+            Drop a block here
+          </div>
+        )}
+      </div>
+    </>
   );
 }
 
@@ -1206,10 +1295,13 @@ function BlockView({
   block,
   theme,
   onPatch,
+  column,
 }: {
   block: Block;
   theme: EmailTheme;
   onPatch: (changes: Partial<Block>) => void;
+  /** How to draw what is inside a column. Only the columns block uses it. */
+  column?: (column: { blocks: Block[]; index: number }) => React.ReactNode;
 }) {
   const box = boxOf(block);
   const stop = (event: React.SyntheticEvent) => event.stopPropagation();
@@ -1312,23 +1404,10 @@ function BlockView({
 
     case "columns":
       return (
-        <div style={{ ...box, display: "flex", gap: block.gap }} onClick={stop} onKeyDown={stop}>
-          {block.columns.map((column, index) => (
-            <div
-              key={`${block.id}-${index}`}
-              className="min-w-0 flex-1 [&_a]:underline [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
-              style={typeOf(block, theme, { size: 15, weight: 400 })}
-            >
-              <RichEditor
-                value={column.html}
-                onChange={(html) =>
-                  onPatch({
-                    columns: block.columns.map((entry, at) => (at === index ? { html } : entry)),
-                  })
-                }
-                placeholder="Column…"
-                className="-mx-2"
-              />
+        <div style={{ ...box, display: "flex", gap: block.gap }}>
+          {block.columns.map((entry, index) => (
+            <div key={`${block.id}-${index}`} className="relative min-w-0 flex-1">
+              {column?.({ blocks: entry.blocks, index })}
             </div>
           ))}
         </div>
@@ -1968,9 +2047,12 @@ function Inspector({
               <Select
                 value={String(block.columns.length)}
                 onValueChange={(value) => {
+                  // Fewer columns keeps the first few as they are. What was in
+                  // the ones that go is gone, which is what removing a column
+                  // means — and it is one press of undo away from not being.
                   const count = Number(value);
                   const columns = Array.from({ length: count }, (_, index) => ({
-                    html: block.columns[index]?.html ?? "Column.",
+                    blocks: block.columns[index]?.blocks ?? [],
                   }));
                   onPatch({ columns });
                 }}
@@ -1988,7 +2070,10 @@ function Inspector({
             <Row label="Gap">
               <NumberField value={block.gap} onChange={(gap) => onPatch({ gap: gap ?? 20 })} />
             </Row>
-            <Note>They stack on a phone in the clients that allow it.</Note>
+            <Note>
+              Drop blocks into each column on the canvas. They stack on a phone in the clients that
+              allow it.
+            </Note>
           </>
         )}
 
