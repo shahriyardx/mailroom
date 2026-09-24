@@ -94,6 +94,7 @@ export function CampaignsShell({
   user,
   allowed,
   showSwitcher,
+  settingsHref,
   children,
 }: {
   user: { name: string; email: string };
@@ -101,6 +102,15 @@ export function CampaignsShell({
   allowed: string[];
   /** Only when the inbox is switched on too — otherwise there is nowhere to go. */
   showSwitcher: boolean;
+  /**
+   * The settings screen this person should land on.
+   *
+   * Worked out on the server, like the inbox side already does, so the gear
+   * goes straight there rather than to `/settings` and a redirect — which is
+   * an extra round trip and, to anybody reading the status bar, the wrong
+   * address.
+   */
+  settingsHref: string;
   children: React.ReactNode;
 }) {
   const pathname = usePathname();
@@ -155,7 +165,7 @@ export function CampaignsShell({
       </nav>
 
       <div className="shrink-0 border-t border-border pt-2.5">
-        <SidebarAccount user={user} />
+        <SidebarAccount user={user} settingsHref={settingsHref} />
       </div>
     </div>
   );
