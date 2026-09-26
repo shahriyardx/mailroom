@@ -118,7 +118,6 @@ import {
   Undo2,
   UnfoldVertical,
   UserMinus,
-  X,
   Youtube,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -128,6 +127,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
 import { CopyId } from "./copy-id";
 import { EmailFrame } from "./email-frame";
+import { EmojiField } from "./emoji-field";
 import { MediaPicker } from "./media-panel";
 import { RichEditor } from "./rich-editor";
 
@@ -3620,7 +3620,7 @@ function Inspector({
               />
             </Row>
             <Row label="Icon">
-              <IconPicker value={block.icon} onChange={(icon) => onPatch({ icon })} />
+              <EmojiField value={block.icon} onChange={(icon) => onPatch({ icon })} />
             </Row>
             <Row label="Align">
               <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
@@ -4365,66 +4365,6 @@ function DetailsForm({
           </div>
         )}
       </Section>
-    </div>
-  );
-}
-
-/** The emoji a notice usually wants, most common first. */
-const CALLOUT_ICONS = [
-  "\u{1F4A1}",
-  "\u2139\uFE0F",
-  "\u26A0\uFE0F",
-  "\u2705",
-  "\u2757",
-  "\u{1F4CC}",
-  "\u{1F389}",
-  "\u{1F525}",
-];
-
-/**
- * The emoji at the start of a callout.
- *
- * An emoji rather than a picture: an icon that is an image is an icon most
- * readers never see, because images are blocked. A text field alone gave no
- * hint of that, so the likely ones are offered and the field is for the rest.
- */
-function IconPicker({ value, onChange }: { value: string; onChange: (icon: string) => void }) {
-  return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1">
-        <button
-          type="button"
-          onClick={() => onChange("")}
-          aria-pressed={!value}
-          title="No icon"
-          className={cn(
-            "grid size-7 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground",
-            !value ? "border-primary bg-primary/10" : "border-border",
-          )}
-        >
-          <X className="size-3.5" />
-        </button>
-        {CALLOUT_ICONS.map((icon) => (
-          <button
-            key={icon}
-            type="button"
-            onClick={() => onChange(icon)}
-            aria-pressed={value === icon}
-            className={cn(
-              "grid size-7 place-items-center rounded-md border text-[15px] transition-colors hover:bg-accent",
-              value === icon ? "border-primary bg-primary/10" : "border-border",
-            )}
-          >
-            {icon}
-          </button>
-        ))}
-      </div>
-      <Input
-        value={value}
-        onChange={(event) => onChange(event.target.value.slice(0, 4))}
-        placeholder="Or paste any emoji"
-        className="h-8 text-[12.5px]"
-      />
     </div>
   );
 }
