@@ -118,6 +118,7 @@ import {
   Undo2,
   UnfoldVertical,
   UserMinus,
+  X,
   Youtube,
 } from "lucide-react";
 import dynamic from "next/dynamic";
@@ -1072,18 +1073,19 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background">
       {/* -- the bar ------------------------------------------------------- */}
       <header className="flex h-14 shrink-0 items-center gap-3 border-border border-b px-4">
-        <Button
-          variant="ghost"
-          size="sm"
+        {/* Bare, so the arrow lines up with the palette's edge below it. */}
+        <button
+          type="button"
           onClick={() => (dirty ? setLeaving(true) : router.push(basePath))}
+          className="flex shrink-0 items-center gap-1.5 font-medium text-[13px] text-muted-foreground outline-none transition-colors hover:text-foreground focus-visible:text-foreground"
         >
-          <ArrowLeft />
+          <ArrowLeft className="size-4" />
           {target.kind === "broadcast"
             ? "Campaigns"
             : target.kind === "step"
               ? target.automationName
               : "Templates"}
-        </Button>
+        </button>
 
         <span className="h-5 w-px bg-border" />
 
@@ -3618,18 +3620,11 @@ function Inspector({
               />
             </Row>
             <Row label="Icon">
-              <Input
-                value={block.icon}
-                onChange={(event) => onPatch({ icon: event.target.value.slice(0, 4) })}
-                placeholder="none"
-                className="h-8 text-[12.5px]"
-              />
+              <IconPicker value={block.icon} onChange={(icon) => onPatch({ icon })} />
             </Row>
             <Row label="Align">
               <AlignPicker value={block.align} onChange={(align) => onPatch({ align })} />
             </Row>
-            {/* An emoji rather than a picture: an icon that is an image is an
-                icon most readers never see, because images are blocked. */}
             {/* Its own fill, not the one under Background — that one paints
                 the whole width of the email behind the notice. */}
             <Note>
@@ -4370,6 +4365,66 @@ function DetailsForm({
           </div>
         )}
       </Section>
+    </div>
+  );
+}
+
+/** The emoji a notice usually wants, most common first. */
+const CALLOUT_ICONS = [
+  "\u{1F4A1}",
+  "\u2139\uFE0F",
+  "\u26A0\uFE0F",
+  "\u2705",
+  "\u2757",
+  "\u{1F4CC}",
+  "\u{1F389}",
+  "\u{1F525}",
+];
+
+/**
+ * The emoji at the start of a callout.
+ *
+ * An emoji rather than a picture: an icon that is an image is an icon most
+ * readers never see, because images are blocked. A text field alone gave no
+ * hint of that, so the likely ones are offered and the field is for the rest.
+ */
+function IconPicker({ value, onChange }: { value: string; onChange: (icon: string) => void }) {
+  return (
+    <div className="space-y-1.5">
+      <div className="flex flex-wrap gap-1">
+        <button
+          type="button"
+          onClick={() => onChange("")}
+          aria-pressed={!value}
+          title="No icon"
+          className={cn(
+            "grid size-7 place-items-center rounded-md border text-muted-foreground transition-colors hover:text-foreground",
+            !value ? "border-primary bg-primary/10" : "border-border",
+          )}
+        >
+          <X className="size-3.5" />
+        </button>
+        {CALLOUT_ICONS.map((icon) => (
+          <button
+            key={icon}
+            type="button"
+            onClick={() => onChange(icon)}
+            aria-pressed={value === icon}
+            className={cn(
+              "grid size-7 place-items-center rounded-md border text-[15px] transition-colors hover:bg-accent",
+              value === icon ? "border-primary bg-primary/10" : "border-border",
+            )}
+          >
+            {icon}
+          </button>
+        ))}
+      </div>
+      <Input
+        value={value}
+        onChange={(event) => onChange(event.target.value.slice(0, 4))}
+        placeholder="Or paste any emoji"
+        className="h-8 text-[12.5px]"
+      />
     </div>
   );
 }
