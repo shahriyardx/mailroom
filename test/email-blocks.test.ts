@@ -499,9 +499,8 @@ describe("the blocks added for real newsletters", () => {
   });
 
   it("leaves a callout with no fill unpainted", () => {
-    // It arrives transparent like every other block, and bgcolor="transparent"
-    // is not a colour.
-    const { html } = only("callout", { html: "Mind this" });
+    // Cleared by hand. bgcolor="transparent" is not a colour.
+    const { html } = only("callout", { html: "Mind this", tint: "" });
     assert.ok(!html.includes("bgcolor="));
     assert.ok(!html.includes("transparent"));
   });

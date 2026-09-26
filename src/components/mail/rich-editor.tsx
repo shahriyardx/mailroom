@@ -1,6 +1,7 @@
 "use client";
 
 import { ColorInput, IconButton, Separator } from "@/components/kit";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/kit/popover";
 import { cn } from "@/lib/utils";
 import {
   Baseline,
@@ -20,11 +21,42 @@ interface Props {
   onChange: (html: string) => void;
   placeholder?: string;
   className?: string;
+  /**
+   * Written where it will appear, as on the builder's canvas.
+   *
+   * The text takes the look of what holds it, and the toolbar floats above
+   * it only while somebody is typing, instead of sitting in the block as a
+   * strip of buttons and a rule the email will never have.
+   */
+  inline?: boolean;
 }
 
 /** Small contenteditable editor: enough formatting for real mail, no heavy dependency. */
-export function RichEditor({ value, onChange, placeholder, className }: Props) {
+export function RichEditor({ value, onChange, placeholder, className, inline = false }: Props) {
   const ref = useRef<HTMLDivElement>(null);
+
+  /** Whether the floating toolbar is up. Only an inline editor has one. */
+  const [editing, setEditing] = useState(false);
+
+  /*
+   * Put away by a press somewhere else, not by the focus leaving.
+   *
+   * The colour picker takes the focus while it is open, and the toolbar that
+   * holds it must not vanish underneath it. Anything inside a popover layer
+   * counts as still editing.
+   */
+  useEffect(() => {
+    if (!inline || !editing) return;
+    function away(event: PointerEvent) {
+      const target = event.target as Element | null;
+      if (!target) return;
+      if (ref.current?.contains(target)) return;
+      if (target.closest("[data-radix-popper-content-wrapper]")) return;
+      setEditing(false);
+    }
+    document.addEventListener("pointerdown", away, true);
+    return () => document.removeEventListener("pointerdown", away, true);
+  }, [inline, editing]);
 
   /*
    * What was selected before the picker took the focus.
@@ -146,119 +178,168 @@ export function RichEditor({ value, onChange, placeholder, className }: Props) {
     exec("formatBlock", on.blockquote ? "p" : "blockquote");
   }
 
+  const toolbar = (
+    <>
+      <Tool onClick={() => exec("bold")} label="Bold" active={on.bold}>
+        <Bold className="size-4" />
+      </Tool>
+      <Tool onClick={() => exec("italic")} label="Italic" active={on.italic}>
+        <Italic className="size-4" />
+      </Tool>
+      <Tool onClick={() => exec("underline")} label="Underline" active={on.underline}>
+        <Underline className="size-4" />
+      </Tool>
+      <Tool onClick={() => exec("strikeThrough")} label="Strikethrough" active={on.strikeThrough}>
+        <Strikethrough className="size-4" />
+      </Tool>
+      <Separator orientation="vertical" className="mx-1 h-4 self-center" />
+      <Tool
+        onClick={() => exec("insertUnorderedList")}
+        label="Bullet list"
+        active={on.insertUnorderedList}
+      >
+        <List className="size-4" />
+      </Tool>
+      <Tool
+        onClick={() => exec("insertOrderedList")}
+        label="Numbered list"
+        active={on.insertOrderedList}
+      >
+        <ListOrdered className="size-4" />
+      </Tool>
+      <Tool onClick={toggleQuote} label="Quote" active={on.blockquote}>
+        <Quote className="size-4" />
+      </Tool>
+      <Tool
+        onClick={() => {
+          // Already a link: the press people reach for is the one that
+          // takes it off again.
+          if (on.link) {
+            exec("unlink");
+            return;
+          }
+          const url = window.prompt("Link URL");
+          if (url) exec("createLink", url);
+        }}
+        label={on.link ? "Remove link" : "Insert link"}
+        active={on.link}
+      >
+        <Link2 className="size-4" />
+      </Tool>
+
+      {/* Colours what is selected rather than the whole block, which is the
+        only way to make one word — or one link — a different colour. The
+        selection has to survive the picker opening, so it is put back
+        before the colour is applied. */}
+      <ColorInput
+        value={colour}
+        onChange={setColour}
+        keepFocus
+        // Applied when the choice is finished rather than on every pixel of
+        // a drag: each application rewrites the selection, and doing that a
+        // hundred times on the way across the square nests a hundred spans
+        // and loses what was selected on the first one.
+        onCommit={applyColour}
+        trigger={
+          <button
+            type="button"
+            aria-label="Colour of the selected text"
+            // The same bargain the other tools make: the press must not
+            // move the caret, or there is nothing left to colour.
+            onMouseDown={(event) => {
+              event.preventDefault();
+              remember();
+            }}
+            className="ml-0.5 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <Baseline className="size-4" />
+          </button>
+        }
+      />
+    </>
+  );
+
+  const editor = (
+    <div
+      ref={ref}
+      contentEditable
+      role="textbox"
+      tabIndex={0}
+      aria-multiline="true"
+      aria-label="Message body"
+      data-placeholder={placeholder}
+      suppressContentEditableWarning
+      onInput={(event) => {
+        onChange(event.currentTarget.innerHTML);
+        readState();
+      }}
+      onClickCapture={(event) => {
+        // A link here is something being written, not somewhere to go.
+        //
+        // Caught on the way down and stopped there. Preventing the default
+        // is not enough on its own: the router's progress bar watches for
+        // clicks on anchors further up, so the page stayed put but the bar
+        // still ran across the top as though it were going somewhere.
+        if (!(event.target as HTMLElement).closest("a")) return;
+        event.preventDefault();
+        event.stopPropagation();
+      }}
+      onPaste={(event) => {
+        // Paste as plain text so foreign styles never leak into the message.
+        event.preventDefault();
+        const text = event.clipboardData.getData("text/plain");
+        document.execCommand("insertText", false, text);
+      }}
+      onFocus={() => inline && setEditing(true)}
+      onBlur={(event) => {
+        // Tabbing on to something else ends it. A press is handled above.
+        const next = event.relatedTarget as Element | null;
+        if (inline && next && !next.closest("[data-radix-popper-content-wrapper]")) {
+          setEditing(false);
+        }
+      }}
+      onKeyDown={(event) => {
+        if (inline && event.key === "Escape") {
+          setEditing(false);
+          event.currentTarget.blur();
+        }
+      }}
+      className={cn(
+        "outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)] [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5",
+        inline
+          ? "min-h-[1.4em] cursor-text rounded-sm focus:bg-foreground/[0.03]"
+          : "min-h-32 flex-1 overflow-y-auto px-3 py-2.5 text-[13px] leading-relaxed [&_a]:text-primary [&_blockquote]:text-muted-foreground",
+      )}
+    />
+  );
+
+  if (inline) {
+    return (
+      <Popover open={editing}>
+        <PopoverAnchor asChild>
+          <div className={className}>{editor}</div>
+        </PopoverAnchor>
+        <PopoverContent
+          side="top"
+          sideOffset={8}
+          className="flex w-auto items-center gap-0.5 p-1"
+          // The caret stays in the text: a toolbar that took the focus would
+          // take the selection its buttons are meant to act on.
+          onOpenAutoFocus={(event) => event.preventDefault()}
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
+          {toolbar}
+        </PopoverContent>
+      </Popover>
+    );
+  }
+
   return (
     <div className={cn("flex min-h-0 flex-col", className)}>
       <div className="flex shrink-0 flex-wrap items-center gap-0.5 border-b border-border px-2 py-1.5">
-        <Tool onClick={() => exec("bold")} label="Bold" active={on.bold}>
-          <Bold className="size-4" />
-        </Tool>
-        <Tool onClick={() => exec("italic")} label="Italic" active={on.italic}>
-          <Italic className="size-4" />
-        </Tool>
-        <Tool onClick={() => exec("underline")} label="Underline" active={on.underline}>
-          <Underline className="size-4" />
-        </Tool>
-        <Tool onClick={() => exec("strikeThrough")} label="Strikethrough" active={on.strikeThrough}>
-          <Strikethrough className="size-4" />
-        </Tool>
-        <Separator orientation="vertical" className="mx-1 h-4 self-center" />
-        <Tool
-          onClick={() => exec("insertUnorderedList")}
-          label="Bullet list"
-          active={on.insertUnorderedList}
-        >
-          <List className="size-4" />
-        </Tool>
-        <Tool
-          onClick={() => exec("insertOrderedList")}
-          label="Numbered list"
-          active={on.insertOrderedList}
-        >
-          <ListOrdered className="size-4" />
-        </Tool>
-        <Tool onClick={toggleQuote} label="Quote" active={on.blockquote}>
-          <Quote className="size-4" />
-        </Tool>
-        <Tool
-          onClick={() => {
-            // Already a link: the press people reach for is the one that
-            // takes it off again.
-            if (on.link) {
-              exec("unlink");
-              return;
-            }
-            const url = window.prompt("Link URL");
-            if (url) exec("createLink", url);
-          }}
-          label={on.link ? "Remove link" : "Insert link"}
-          active={on.link}
-        >
-          <Link2 className="size-4" />
-        </Tool>
-
-        {/* Colours what is selected rather than the whole block, which is the
-            only way to make one word — or one link — a different colour. The
-            selection has to survive the picker opening, so it is put back
-            before the colour is applied. */}
-        <ColorInput
-          value={colour}
-          onChange={setColour}
-          keepFocus
-          // Applied when the choice is finished rather than on every pixel of
-          // a drag: each application rewrites the selection, and doing that a
-          // hundred times on the way across the square nests a hundred spans
-          // and loses what was selected on the first one.
-          onCommit={applyColour}
-          trigger={
-            <button
-              type="button"
-              aria-label="Colour of the selected text"
-              // The same bargain the other tools make: the press must not
-              // move the caret, or there is nothing left to colour.
-              onMouseDown={(event) => {
-                event.preventDefault();
-                remember();
-              }}
-              className="ml-0.5 flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-            >
-              <Baseline className="size-4" />
-            </button>
-          }
-        />
+        {toolbar}
       </div>
-
-      <div
-        ref={ref}
-        contentEditable
-        role="textbox"
-        tabIndex={0}
-        aria-multiline="true"
-        aria-label="Message body"
-        data-placeholder={placeholder}
-        suppressContentEditableWarning
-        onInput={(event) => {
-          onChange(event.currentTarget.innerHTML);
-          readState();
-        }}
-        onClickCapture={(event) => {
-          // A link here is something being written, not somewhere to go.
-          //
-          // Caught on the way down and stopped there. Preventing the default
-          // is not enough on its own: the router's progress bar watches for
-          // clicks on anchors further up, so the page stayed put but the bar
-          // still ran across the top as though it were going somewhere.
-          if (!(event.target as HTMLElement).closest("a")) return;
-          event.preventDefault();
-          event.stopPropagation();
-        }}
-        onPaste={(event) => {
-          // Paste as plain text so foreign styles never leak into the message.
-          event.preventDefault();
-          const text = event.clipboardData.getData("text/plain");
-          document.execCommand("insertText", false, text);
-        }}
-        className="min-h-32 flex-1 overflow-y-auto px-3 py-2.5 text-[13px] leading-relaxed outline-none empty:before:text-muted-foreground empty:before:content-[attr(data-placeholder)] [&_a]:text-primary [&_a]:underline [&_blockquote]:border-l-2 [&_blockquote]:pl-3 [&_blockquote]:text-muted-foreground [&_ol]:list-decimal [&_ol]:pl-5 [&_ul]:list-disc [&_ul]:pl-5"
-      />
+      {editor}
     </div>
   );
 }

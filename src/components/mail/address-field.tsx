@@ -2,7 +2,7 @@
 
 import { Input } from "@/components/kit";
 import { resolveSendingAddressAction } from "@/server/actions";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { toast } from "sonner";
 
 /**
@@ -35,6 +35,9 @@ export function AddressField({
 }) {
   const [text, setText] = useState(value);
   const [busy, setBusy] = useState(false);
+
+  // The address can arrive after the first paint, when it has to be loaded.
+  useEffect(() => setText(value), [value]);
 
   /*
    * Settled on blur or on Enter, not on every keystroke.

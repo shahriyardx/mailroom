@@ -538,11 +538,11 @@ export function newBlock(kind: BlockKind, id: string): Block {
         id,
         type: "callout",
         html: "Worth knowing before you read the rest.",
-        // Transparent, like every other block. A notice reads as one from
-        // its stripe; a tint is a choice, not something to arrive with.
-        tint: "",
+        // A soft wash of the stripe's colour. Without one a fresh callout was
+        // a coloured line beside ordinary text, which reads as a quote.
+        tint: "#eef2ff",
         accent: DEFAULT_THEME.link,
-        icon: "",
+        icon: "\u{1F4A1}",
         align: "left",
         style,
       };
@@ -1105,7 +1105,7 @@ function renderBlock(block: Block, theme: EmailTheme): string {
         : "";
       return cell(
         block,
-        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${painted}style="${tint}${stripe}border-radius:${clamp(block.style?.border?.radius ?? 8, 0, 24)}px;">
+        `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"${painted}style="${tint}${stripe}border-radius:${clamp(block.style?.border?.radius ?? 0, 0, 24)}px;">
 <tr><td style="padding:14px 16px;"><table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0"><tr>${icon}<td style="${typography(block, theme, { size: 15, weight: 400 })};text-align:${block.align};">${inline(block.html, theme.link)}</td></tr></table></td></tr>
 </table>`,
       );

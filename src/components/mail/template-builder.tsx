@@ -125,6 +125,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
+import { CopyId } from "./copy-id";
 import { EmailFrame } from "./email-frame";
 import { MediaPicker } from "./media-panel";
 import { RichEditor } from "./rich-editor";
@@ -1443,6 +1444,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
         subject={details.subject}
         html={compiled}
         text={handwritten ? (source?.text ?? null) : designToText(design)}
+        typed={basePath.startsWith("/campaigns")}
       />
 
       <ConfirmDialog
@@ -1506,12 +1508,15 @@ function TestSend({
   subject,
   html,
   text,
+  typed,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   subject: string;
   html: string;
   text: string | null;
+  /** Campaigns: the From is an address you type, as it is everywhere there. */
+  typed: boolean;
 }) {
   const [boxes, setBoxes] = useState<{ id: string; address: string; name: string }[] | null>(null);
   const [from, setFrom] = useState("");
@@ -1538,18 +1543,33 @@ function TestSend({
 
         <div className="space-y-3">
           <Field label="From">
-            <Select value={from} onValueChange={setFrom}>
-              <SelectTrigger>
-                <SelectValue placeholder={boxes === null ? "Loading…" : "Pick a mailbox"} />
-              </SelectTrigger>
-              <SelectContent>
-                {(boxes ?? []).map((box) => (
-                  <SelectItem key={box.id} value={box.id} className="font-mono text-[12.5px]">
-                    {box.address}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {typed ? (
+              <AddressField
+                value={(boxes ?? []).find((box) => box.id === from)?.address ?? ""}
+                known={(boxes ?? []).map((box) => box.address)}
+                onResolved={(chosen) => {
+                  setBoxes((current) =>
+                    current?.some((box) => box.id === chosen.id)
+                      ? current
+                      : [...(current ?? []), { ...chosen, name: chosen.address }],
+                  );
+                  setFrom(chosen.id);
+                }}
+              />
+            ) : (
+              <Select value={from} onValueChange={setFrom}>
+                <SelectTrigger>
+                  <SelectValue placeholder={boxes === null ? "Loading…" : "Pick a mailbox"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {(boxes ?? []).map((box) => (
+                    <SelectItem key={box.id} value={box.id} className="font-mono text-[12.5px]">
+                      {box.address}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </Field>
 
           <Field label="To">
@@ -1561,7 +1581,7 @@ function TestSend({
             />
           </Field>
 
-          {boxes !== null && boxes.length === 0 && (
+          {!typed && boxes !== null && boxes.length === 0 && (
             <Note>There is no mailbox you can send from yet.</Note>
           )}
         </div>
@@ -2175,7 +2195,7 @@ function BlockView({
               value={block.html}
               onChange={(html) => onPatch({ html })}
               placeholder="Write something…"
-              className="-mx-2"
+              inline
             />
           </div>
         </div>
@@ -2266,7 +2286,7 @@ function BlockView({
                 value={block.html}
                 onChange={(html) => onPatch({ html })}
                 placeholder="Something worth repeating…"
-                className="-mx-2"
+                inline
               />
             </div>
           </div>
@@ -2436,7 +2456,7 @@ function BlockView({
                         })
                       }
                       placeholder="Another thing…"
-                      className="-mx-2"
+                      inline
                     />
                   </td>
                 </tr>
@@ -2453,20 +2473,22 @@ function BlockView({
             style={{
               background: block.tint || "transparent",
               borderLeft: block.accent ? `4px solid ${block.accent}` : undefined,
-              borderRadius: block.style?.border?.radius ?? 8,
+              borderRadius: block.style?.border?.radius ?? 0,
               padding: "14px 16px",
               display: "flex",
               gap: 10,
               textAlign: block.align,
             }}
           >
-            {block.icon ? <span style={{ fontSize: 16 }}>{block.icon}</span> : null}
+            {block.icon ? (
+              <span style={{ fontSize: 16, lineHeight: 1.5, flexShrink: 0 }}>{block.icon}</span>
+            ) : null}
             <div style={{ flex: 1, ...typeOf(block, theme, { size: 15, weight: 400 }) }}>
               <RichEditor
                 value={block.html}
                 onChange={(html) => onPatch({ html })}
                 placeholder="What is worth knowing…"
-                className="-mx-2"
+                inline
               />
             </div>
           </div>
@@ -4303,13 +4325,11 @@ function DetailsForm({
           />
         </Row>
         <Row label="ID">
-          <Input
-            value={templateId ?? ""}
-            readOnly
-            placeholder="Given on first save"
-            onFocus={(event) => event.currentTarget.select()}
-            className="h-8 font-mono text-[12px]"
-          />
+          {templateId ? (
+            <CopyId id={templateId} className="h-8 w-full justify-between rounded-lg px-2.5" />
+          ) : (
+            <p className="text-[12px] text-muted-foreground">Given on first save</p>
+          )}
         </Row>
         <Note>
           Your code passes this id when it sends. It never changes, so a new name breaks nothing.

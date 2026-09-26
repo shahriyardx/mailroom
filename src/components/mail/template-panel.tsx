@@ -13,11 +13,12 @@ import {
 import type { Template } from "@/db/schema";
 import { templateVariables } from "@/lib/template";
 import { deleteTemplateAction, duplicateTemplateAction } from "@/server/actions";
-import { Copy, FileCode2, LayoutTemplate, Plus, Trash2 } from "lucide-react";
+import { CopyPlus, FileCode2, LayoutTemplate, Plus, Trash2 } from "lucide-react";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
 import { toast } from "sonner";
+import { CopyId } from "./copy-id";
 
 /**
  * The templates an account has, as a list.
@@ -145,14 +146,16 @@ function TemplateRow({
       <div className="min-w-0 flex-1">
         {/* The whole row opens it: an edit pencil next to a row that does
             nothing when clicked is a target people miss. */}
-        <Link href={href} className="block outline-none after:absolute after:inset-0">
-          <p className="flex min-w-0 items-center gap-2">
-            <span className="truncate font-medium text-[13px] hover:underline">{row.name}</span>
-            <code className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {row.id}
-            </code>
-          </p>
-        </Link>
+        <p className="flex min-w-0 items-center gap-2">
+          <Link
+            href={href}
+            className="block min-w-0 truncate font-medium text-[13px] outline-none after:absolute after:inset-0 hover:underline"
+          >
+            {row.name}
+          </Link>
+          {/* Above the row's link, so a press copies instead of opening. */}
+          <CopyId id={row.id} className="relative z-10 shrink-0" />
+        </p>
 
         {/* The subject is what this template actually sends, so it is the
             line worth showing. A description, when there is one, says why it
@@ -169,7 +172,7 @@ function TemplateRow({
 
       <span className="relative z-10 flex shrink-0 items-center gap-0.5">
         <IconButton label={`Duplicate ${row.name}`} onClick={onCopy} disabled={copying}>
-          <Copy />
+          <CopyPlus />
         </IconButton>
         <IconButton variant="danger" label={`Delete ${row.name}`} onClick={onDelete}>
           <Trash2 />
