@@ -3,6 +3,7 @@
 import {
   Button,
   ConfirmDialog,
+  IconButton,
   Input,
   Select,
   SelectContent,
@@ -14,8 +15,8 @@ import { AddressField } from "@/components/mail/address-field";
 import { AutomationCanvas } from "@/components/mail/automation-canvas";
 import type { Automation } from "@/db/schema";
 import { type FlowNode, describeTrigger } from "@/lib/automation-flow";
-import { updateAutomationAction } from "@/server/actions";
-import { ArrowLeft, Pause, Play } from "lucide-react";
+import { duplicateAutomationAction, updateAutomationAction } from "@/server/actions";
+import { ArrowLeft, CopyPlus, Pause, Play } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -38,6 +39,7 @@ export function AutomationDetail({
   mailboxes,
   templates,
   tallies,
+  positions,
   appUrl,
   running,
 }: {
@@ -50,6 +52,8 @@ export function AutomationDetail({
   templates: { id: string; name: string }[];
   /** How each email box has done, by node id. */
   tallies: Record<string, { sent: number; opened: number; clicked: number }>;
+  /** How many people are on each box right now, by node id. */
+  positions: Record<string, number>;
   appUrl: string;
   running: number;
 }) {
@@ -63,6 +67,20 @@ export function AutomationDetail({
   const listName = lists.find((row) => row.id === automation.listId)?.name ?? null;
   const segmentName = segments.find((row) => row.id === automation.segmentId)?.name ?? null;
   const said = describeTrigger(automation.trigger, listName, automation.eventName, segmentName);
+
+  /* A copy opens straight away: changing it is the reason it was made. */
+  async function duplicate() {
+    setBusy(true);
+    try {
+      const made = await duplicateAutomationAction(automation.id);
+      if (!made.ok) throw new Error(made.error);
+      toast.success(`Copied ${automation.name}`);
+      router.push(`/campaigns/automations/${made.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not copy it");
+      setBusy(false);
+    }
+  }
 
   async function change(patch: Parameters<typeof updateAutomationAction>[1]) {
     setBusy(true);
@@ -156,7 +174,17 @@ export function AutomationDetail({
             {automation.trigger !== "event" && listName ? ` ${listName}` : ""}
           </span>
           {automation.exitEventName || automation.exitSegmentId ? " · stops early" : ""}
-          {live && ` · ${running} part-way through`}
+          {running > 0 && (
+            <>
+              {" · "}
+              <Link
+                href={`/campaigns/automations/${automation.id}/people`}
+                className="underline-offset-2 hover:text-foreground hover:underline"
+              >
+                {running} part-way through
+              </Link>
+            </>
+          )}
         </span>
 
         <div className="ml-auto flex shrink-0 items-center gap-2">
@@ -169,6 +197,10 @@ export function AutomationDetail({
               onResolved={(chosen) => change({ mailboxId: chosen.id })}
             />
           </span>
+
+          <IconButton label="Duplicate this automation" onClick={duplicate} disabled={busy}>
+            <CopyPlus />
+          </IconButton>
 
           {live ? (
             <Button
@@ -213,11 +245,14 @@ export function AutomationDetail({
         segmentId={automation.segmentId}
         exitSegmentId={automation.exitSegmentId}
         exitEventName={automation.exitEventName}
+        sendWindow={automation.sendWindow}
+        webhookSecret={automation.webhookSecret}
         lists={lists}
         segments={segments}
         events={events}
         templates={templates}
         tallies={tallies}
+        positions={positions}
         appUrl={appUrl}
         live={live}
       />

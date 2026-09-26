@@ -13,24 +13,29 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Switch,
 } from "@/components/kit";
 import { MomentField } from "@/components/mail/moment-field";
-import type { AutomationNodeKind, AutomationTrigger, NodeConfig } from "@/db/schema";
+import type { AutomationNodeKind, AutomationTrigger, NodeConfig, SendWindow } from "@/db/schema";
 import {
   type FlowNode,
-  GAP_Y,
   NODE_HEIGHT,
   NODE_WIDTH,
   TRIGGER_ID,
+  branchLabels,
   describeTrigger,
-  humanDelay,
+  flowWarnings,
+  forks,
   layout,
+  splitShare,
   summarise,
 } from "@/lib/automation-flow";
+import { DAY_NAMES, defaultWindow, describeWindow } from "@/lib/send-window";
 import { cn } from "@/lib/utils";
 import {
   addNodeAction,
   removeNodeAction,
+  testAutomationAction,
   updateAutomationAction,
   updateNodeAction,
 } from "@/server/actions";
@@ -39,21 +44,27 @@ import {
   Check,
   Clock,
   Copy,
+  FlaskConical,
   GitBranch,
+  Hourglass,
   Mail,
   PanelRightClose,
   Pencil,
   Play,
   Plus,
+  Shuffle,
   SlidersHorizontal,
   Tag,
   Trash2,
   UserMinus,
+  Users,
+  Webhook,
   Zap,
   ZoomIn,
   ZoomOut,
 } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { toast } from "sonner";
@@ -97,6 +108,15 @@ const KINDS: Kind[] = [
     tone: "text-primary",
   },
   {
+    key: "webhook",
+    short: "Webhook",
+    label: "Call a webhook",
+    hint: "Tell your own server they got here",
+    icon: Webhook,
+    group: "Messages",
+    tone: "text-muted-foreground",
+  },
+  {
     key: "wait",
     short: "Wait",
     label: "Wait",
@@ -111,6 +131,24 @@ const KINDS: Kind[] = [
     label: "Split on a condition",
     hint: "Two ways on: one for yes, one for no",
     icon: GitBranch,
+    group: "Flow",
+    tone: "text-warn",
+  },
+  {
+    key: "await",
+    short: "Wait for an event",
+    label: "Wait for an event",
+    hint: "One way if it arrives, the other if it does not",
+    icon: Hourglass,
+    group: "Flow",
+    tone: "text-warn",
+  },
+  {
+    key: "split",
+    short: "Split",
+    label: "Split at random",
+    hint: "Send a share each way, to test two versions",
+    icon: Shuffle,
     group: "Flow",
     tone: "text-warn",
   },
@@ -183,6 +221,9 @@ const TRIGGERS: { key: AutomationTrigger; label: string; hint: string; icon: Luc
 /** Room around the drawing, so a branch on the edge is not against the frame. */
 const PAD = 48;
 
+/** The test pane, in the same slot the inspectors use. */
+const TEST_ID = "__test";
+
 export function AutomationCanvas({
   automationId,
   nodes,
@@ -193,11 +234,14 @@ export function AutomationCanvas({
   segmentId,
   exitSegmentId,
   exitEventName,
+  sendWindow,
+  webhookSecret,
   lists,
   segments,
   events,
   templates,
   tallies,
+  positions,
   appUrl,
   live,
 }: {
@@ -213,6 +257,10 @@ export function AutomationCanvas({
   /** Lets somebody out early, whatever step they are on. */
   exitSegmentId: string | null;
   exitEventName: string | null;
+  /** The hours its email may go out in, or null for any time. */
+  sendWindow: SendWindow | null;
+  /** What its webhook boxes sign with, shown so a receiver can check. */
+  webhookSecret: string | null;
   lists: { id: string; name: string; subscribed: number }[];
   segments: { id: string; listId: string; name: string; size: number }[];
   /** Event names already known to this account, for the picker. */
@@ -221,6 +269,8 @@ export function AutomationCanvas({
   templates: { id: string; name: string }[];
   /** How each email box has done, by node id. */
   tallies: Record<string, { sent: number; opened: number; clicked: number }>;
+  /** How many people are on each box right now, by node id. */
+  positions: Record<string, number>;
   /** For the copyable call that starts an event flow. */
   appUrl: string;
   /** Running: the canvas says so, because edits reach real people. */
@@ -258,6 +308,13 @@ export function AutomationCanvas({
 
   const plan = useMemo(() => layout(nodes, entryNodeId), [nodes, entryNodeId]);
   const by = useMemo(() => new Map(nodes.map((node) => [node.id, node])), [nodes]);
+  const warnings = useMemo(() => flowWarnings(nodes), [nodes]);
+  /**
+   * The boxes a test run went through, lit on the canvas while its pane is
+   * open. Null when no test is showing.
+   */
+  const [path, setPath] = useState<Set<string> | null>(null);
+  const people = `/campaigns/automations/${automationId}/people`;
 
   /*
    * Escape backs out of whatever is open, innermost first.
@@ -410,7 +467,13 @@ export function AutomationCanvas({
     }
   }
 
-  const chosen = editing && editing !== TRIGGER_ID ? (by.get(editing) ?? null) : null;
+  const chosen =
+    editing && editing !== TRIGGER_ID && editing !== TEST_ID ? (by.get(editing) ?? null) : null;
+
+  /* Leaving the test pane puts the canvas back as it was. */
+  useEffect(() => {
+    if (editing !== TEST_ID) setPath(null);
+  }, [editing]);
   const listName = lists.find((row) => row.id === listId)?.name ?? null;
   /* Cards name what a box points at, and nothing about a list or a segment
      is stored on the node — a copy of the name would go stale the first time
@@ -433,11 +496,12 @@ export function AutomationCanvas({
           title="Remove this box?"
           description={removing ? summarise(removing, names).title : undefined}
           consequences={
-            removing?.kind === "condition" ? (
+            removing && forks(removing.kind) ? (
               <>
-                Everything on its <strong>no</strong> branch goes with it, because that branch has
-                nowhere left to hang from. The yes branch joins back onto whatever came before.
-                Anybody sitting inside the deleted part stops there.
+                Everything on its <strong>{branchLabels(removing)[1]}</strong> side goes with it,
+                because that side has nowhere left to hang from. The{" "}
+                <strong>{branchLabels(removing)[0]}</strong> side joins back onto whatever came
+                before. Anybody sitting inside the deleted part stops there.
               </>
             ) : (
               "Whatever pointed at it points at what came next instead, so nothing below is cut off. Anybody sitting on it moves on."
@@ -530,7 +594,9 @@ export function AutomationCanvas({
               {plan.edges.map((edge) => {
                 const parent = by.get(edge.from);
                 const label =
-                  parent?.kind === "condition" ? (edge.branch === "next" ? "Yes" : "No") : null;
+                  parent && forks(parent.kind)
+                    ? branchLabels(parent)[edge.branch === "next" ? 0 : 1]
+                    : null;
 
                 return (
                   <span
@@ -654,6 +720,7 @@ export function AutomationCanvas({
                 if (!node) return null;
                 const kind = BY_KIND.get(node.kind);
                 const said = summarise(node, names);
+                const warning = warnings[node.id];
 
                 return (
                   <Card
@@ -665,14 +732,20 @@ export function AutomationCanvas({
                     icon={kind?.icon ?? Mail}
                     tone={kind?.tone ?? "text-muted-foreground"}
                     note={
-                      // What it did beats what it is, once it has done
-                      // anything: "48 of 120 opened" is the sentence somebody
-                      // came to this screen to read.
-                      node.kind === "email" && tallies[node.id]?.sent
+                      // A warning first: it is the thing that goes wrong
+                      // quietly. Then what it did beats what it is, once it
+                      // has done anything: "48 of 120 opened" is the sentence
+                      // somebody came to this screen to read.
+                      warning ??
+                      (node.kind === "email" && tallies[node.id]?.sent
                         ? `${tallies[node.id]?.opened ?? 0} of ${tallies[node.id]?.sent} opened`
-                        : said.note
+                        : said.note)
                     }
-                    warn={node.kind === "email" && node.empty}
+                    warn={Boolean(warning)}
+                    here={positions[node.id] ?? 0}
+                    hereHref={`${people}?node=${node.id}`}
+                    dim={path !== null && !path.has(node.id)}
+                    lit={path?.has(node.id) ?? false}
                     selected={editing === node.id}
                     onOpen={() => setEditing(node.id)}
                     onRemove={() => setRemoving(node)}
@@ -792,6 +865,27 @@ export function AutomationCanvas({
           </IconButton>
         </div>
 
+        {/* Two ways to look at the flow rather than change it: who is in it,
+            and which way one person would go. */}
+        <div className="absolute top-4 right-4 flex items-center gap-1 rounded-full border border-border bg-card p-1 shadow-sm">
+          <Button variant="ghost" size="sm" pill asChild>
+            <Link href={people}>
+              <Users />
+              People
+            </Link>
+          </Button>
+          <Button
+            variant={editing === TEST_ID ? "solid" : "ghost"}
+            size="sm"
+            pill
+            disabled={!entryNodeId}
+            onClick={() => setEditing(editing === TEST_ID ? null : TEST_ID)}
+          >
+            <FlaskConical />
+            Test run
+          </Button>
+        </div>
+
         {live && (
           <div className="absolute top-4 left-4 flex items-center gap-2 rounded-full border border-ok/40 bg-ok/10 px-3 py-1.5 text-[12px] text-ok">
             <span className="size-1.5 rounded-full bg-ok" />
@@ -812,12 +906,25 @@ export function AutomationCanvas({
           segmentId={segmentId}
           exitSegmentId={exitSegmentId}
           exitEventName={exitEventName}
+          sendWindow={sendWindow}
           lists={lists}
           segments={segments}
           events={events}
           appUrl={appUrl}
           live={live}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {editing === TEST_ID && (
+        <TestInspector
+          automationId={automationId}
+          nodes={nodes}
+          onPath={setPath}
+          onClose={() => {
+            setPath(null);
+            setEditing(null);
+          }}
         />
       )}
 
@@ -829,6 +936,10 @@ export function AutomationCanvas({
           lists={lists.filter((row) => row.id !== listId)}
           segments={segments.filter((row) => row.listId === listId)}
           tally={tallies[chosen.id]}
+          here={positions[chosen.id] ?? 0}
+          peopleHref={`${people}?node=${chosen.id}`}
+          events={events}
+          webhookSecret={webhookSecret}
           templates={templates}
           onClose={() => setEditing(null)}
           onRemove={() => setRemoving(chosen)}
@@ -854,6 +965,7 @@ function TriggerInspector({
   segmentId,
   exitSegmentId,
   exitEventName,
+  sendWindow,
   lists,
   segments,
   events,
@@ -868,6 +980,7 @@ function TriggerInspector({
   segmentId: string | null;
   exitSegmentId: string | null;
   exitEventName: string | null;
+  sendWindow: SendWindow | null;
   lists: { id: string; name: string; subscribed: number }[];
   segments: { id: string; listId: string; name: string; size: number }[];
   events: { id: string; name: string; seenCount: number }[];
@@ -1133,6 +1246,12 @@ function TriggerInspector({
           </Note>
         </div>
 
+        <WindowSection
+          value={sendWindow}
+          busy={busy}
+          onSave={(next) => save({ sendWindow: next })}
+        />
+
         {live && (
           <Note className="text-warn">
             Running. Pause it before changing what starts it, so nobody is enrolled halfway through
@@ -1154,6 +1273,10 @@ function Card({
   icon: Icon,
   tone,
   warn,
+  here = 0,
+  hereHref,
+  dim,
+  lit,
   selected,
   onOpen,
   onRemove,
@@ -1167,6 +1290,14 @@ function Card({
   icon: LucideIcon;
   tone: string;
   warn?: boolean;
+  /** People sitting on this box right now. */
+  here?: number;
+  /** Where the count leads: the people list, narrowed to this box. */
+  hereHref?: string;
+  /** Off a test run's path, so faded. */
+  dim?: boolean;
+  /** On a test run's path. */
+  lit?: boolean;
   /** The one the inspector is showing. */
   selected?: boolean;
   onOpen?: () => void;
@@ -1177,12 +1308,15 @@ function Card({
   return (
     <div
       className={cn(
-        "group absolute flex items-stretch overflow-hidden rounded-xl border bg-card shadow-sm transition-all",
+        "group absolute flex items-stretch rounded-xl border bg-card shadow-sm transition-all",
         selected
           ? "border-primary ring-2 ring-primary/25"
-          : warn
-            ? "border-warn/50"
-            : "border-border",
+          : lit
+            ? "border-ok ring-2 ring-ok/25"
+            : warn
+              ? "border-warn/50"
+              : "border-border",
+        dim && "opacity-40",
         open && "cursor-pointer hover:shadow-md",
       )}
       style={{ left: x, top: y, width: NODE_WIDTH, height: NODE_HEIGHT }}
@@ -1191,7 +1325,7 @@ function Card({
       role={open ? "button" : undefined}
       tabIndex={open ? 0 : undefined}
     >
-      <span className="grid w-11 shrink-0 place-items-center border-border border-r bg-muted/40">
+      <span className="grid w-11 shrink-0 place-items-center rounded-l-xl border-border border-r bg-muted/40">
         <Icon className={cn("size-4", tone)} />
       </span>
 
@@ -1209,6 +1343,20 @@ function Card({
           </span>
         )}
       </span>
+
+      {/* Who is sitting here, as a badge on the corner — the number that
+          answers "is anybody stuck". A link, so it leads to the names. */}
+      {here > 0 && hereHref && (
+        <Link
+          href={hereHref}
+          onClick={(event) => event.stopPropagation()}
+          title={`${here} ${here === 1 ? "person is" : "people are"} here now`}
+          className="-top-2 -left-2 absolute z-10 flex h-5 min-w-5 items-center justify-center gap-0.5 rounded-full border border-card bg-primary px-1.5 font-medium text-[10.5px] text-primary-foreground tabular-nums shadow-sm hover:brightness-110"
+        >
+          <Users className="size-2.5" />
+          {here}
+        </Link>
+      )}
 
       {onRemove && (
         <span className="absolute top-1 right-1 opacity-0 transition-opacity group-hover:opacity-100">
@@ -1289,6 +1437,10 @@ function NodeInspector({
   segments,
   templates,
   tally,
+  here,
+  peopleHref,
+  events,
+  webhookSecret,
   onClose,
   onRemove,
 }: {
@@ -1296,6 +1448,12 @@ function NodeInspector({
   node: FlowNode;
   /** What this box has sent, and what came back. Absent until it has sent. */
   tally?: { sent: number; opened: number; clicked: number };
+  /** People sitting on this box right now. */
+  here: number;
+  peopleHref: string;
+  /** Event names already known, for a wait for an event. */
+  events: { id: string; name: string; seenCount: number }[];
+  webhookSecret: string | null;
   /** Somewhere to copy or move people to: every list but this flow's own. */
   lists: { id: string; name: string; subscribed: number }[];
   /** Segments of this flow's own list, for a condition to ask about. */
@@ -1311,6 +1469,7 @@ function NodeInspector({
   const [subject, setSubject] = useState(node.subject ?? "");
   const [config, setConfig] = useState<NodeConfig>(node.config);
   const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const kind = BY_KIND.get(node.kind);
 
@@ -1358,6 +1517,19 @@ function NodeInspector({
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 p-3">
+        {here > 0 && (
+          <Link
+            href={peopleHref}
+            className="flex items-center gap-2 rounded-lg border border-border px-2.5 py-2 text-[12.5px] transition-colors hover:bg-accent"
+          >
+            <Users className="size-3.5 text-muted-foreground" />
+            <span className="flex-1">
+              {here} {here === 1 ? "person is" : "people are"} here now
+            </span>
+            <span className="text-muted-foreground">See who</span>
+          </Link>
+        )}
+
         {node.kind === "email" && (
           <>
             <Field label="Subject">
@@ -1837,6 +2009,158 @@ function NodeInspector({
           </>
         )}
 
+        {node.kind === "split" && (
+          <>
+            <Field
+              label="Share that goes down A"
+              hint={`The other ${100 - splitShare(config)}% go down B.`}
+            >
+              <span className="flex items-center gap-2">
+                <input
+                  type="range"
+                  min={1}
+                  max={99}
+                  value={splitShare(config)}
+                  onChange={(event) =>
+                    setConfig({ ...config, percent: Number(event.target.value) })
+                  }
+                  onPointerUp={() => saveConfig(config)}
+                  onKeyUp={() => saveConfig(config)}
+                  className="flex-1 accent-primary"
+                  aria-label="Share that goes down A"
+                />
+                <span className="w-10 text-right font-mono text-[12.5px] tabular-nums">
+                  {splitShare(config)}%
+                </span>
+              </span>
+            </Field>
+            <Note>
+              Each person is sent one way at random. Put a different email on each side, and the
+              numbers on the two boxes say which one works better.
+            </Note>
+          </>
+        )}
+
+        {node.kind === "await" && (
+          <>
+            <Field label="Which event" hint="The name your code posts.">
+              <Select
+                value={config.event || ""}
+                onValueChange={(value) => saveConfig({ ...config, event: value })}
+                disabled={busy || events.length === 0}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder={events.length === 0 ? "None yet" : "Pick one…"} />
+                </SelectTrigger>
+                <SelectContent>
+                  {events.map((row) => (
+                    <SelectItem key={row.id} value={row.name}>
+                      {row.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </Field>
+
+            <Field label="Or type its name">
+              <Input
+                value={config.event ?? ""}
+                onChange={(event) => setConfig({ ...config, event: event.target.value })}
+                onBlur={() => saveConfig(config)}
+                placeholder="order.placed"
+                className="font-mono"
+              />
+            </Field>
+
+            <Field label="Wait up to">
+              <span className="flex items-center gap-2">
+                <Input
+                  type="number"
+                  min={1}
+                  value={amount}
+                  onChange={(event) => setAmount(Number(event.target.value))}
+                  onBlur={() =>
+                    save({
+                      delayMinutes: Math.max(
+                        1,
+                        Math.round(amount * (UNITS.find((entry) => entry.key === unit)?.per ?? 1)),
+                      ),
+                    })
+                  }
+                />
+                <Select
+                  value={unit}
+                  onValueChange={(value) => {
+                    setUnit(value);
+                    void save({
+                      delayMinutes: Math.max(
+                        1,
+                        Math.round(amount * (UNITS.find((entry) => entry.key === value)?.per ?? 1)),
+                      ),
+                    });
+                  }}
+                >
+                  <SelectTrigger className="w-[104px]">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {UNITS.map((entry) => (
+                      <SelectItem key={entry.key} value={entry.key}>
+                        {entry.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </span>
+            </Field>
+
+            <Note>
+              If the event arrives while they are here, they go down <strong>Arrived</strong> at
+              once. If the time runs out first, they go down <strong>Timed out</strong>. An event
+              that came before they reached this box does not count.
+            </Note>
+          </>
+        )}
+
+        {node.kind === "webhook" && (
+          <>
+            <Field label="URL" hint="Must be https, and a public address.">
+              <Input
+                value={config.url ?? ""}
+                onChange={(event) => setConfig({ ...config, url: event.target.value })}
+                onBlur={() => (config.url ?? "") !== (node.config.url ?? "") && saveConfig(config)}
+                placeholder="https://example.com/hooks/mailroom"
+                className="font-mono"
+              />
+            </Field>
+
+            {webhookSecret && (
+              <Field label="Signing secret" hint="Check X-Mailroom-Signature with this.">
+                <span className="flex gap-2">
+                  <Input value={webhookSecret} readOnly className="font-mono text-[11.5px]" />
+                  <IconButton
+                    label="Copy the secret"
+                    variant="outline"
+                    onClick={() => {
+                      void navigator.clipboard.writeText(webhookSecret);
+                      setCopied(true);
+                      setTimeout(() => setCopied(false), 1500);
+                    }}
+                  >
+                    {copied ? <Check /> : <Copy />}
+                  </IconButton>
+                </span>
+              </Field>
+            )}
+
+            <Note>
+              A POST with the person&apos;s email, name, fields and tags as JSON, signed the same
+              way as your account&apos;s webhooks. Any answer that is not 2xx is tried again later,
+              the same as an email that fails.
+            </Note>
+          </>
+        )}
+
         {node.kind === "unsubscribe" && (
           <Note>
             Nothing to set. Anybody who reaches this box is taken off the list and their journey
@@ -1851,6 +2175,296 @@ function NodeInspector({
           Remove this box
         </Button>
       </footer>
+    </aside>
+  );
+}
+
+/** Hours offered for a window, as they read on a clock. */
+const HOURS = Array.from({ length: 24 }, (_, hour) => hour);
+
+function clock(hour: number) {
+  return `${String(hour).padStart(2, "0")}:00`;
+}
+
+/** Every time zone this browser knows, with the reader's own first. */
+function timeZones(own: string) {
+  let all: string[] = [];
+  try {
+    all = Intl.supportedValuesOf("timeZone");
+  } catch {
+    all = ["UTC"];
+  }
+  return [own, ...all.filter((zone) => zone !== own)];
+}
+
+/**
+ * The hours its email may go out in.
+ *
+ * Only email is held by it. A wait, a condition or a tag at three in the
+ * morning reaches nobody's inbox, so holding those would only make a flow
+ * slower for no reason anybody could see.
+ */
+function WindowSection({
+  value,
+  busy,
+  onSave,
+}: {
+  value: SendWindow | null;
+  busy: boolean;
+  onSave: (next: SendWindow | null) => void;
+}) {
+  const own = useMemo(() => Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC", []);
+  const zones = useMemo(() => timeZones(value?.timeZone ?? own), [value?.timeZone, own]);
+
+  return (
+    <div className="space-y-3 border-border border-t pt-3">
+      <div className="flex items-center gap-2">
+        <p className="eyebrow flex-1">Only send email between</p>
+        <Switch
+          checked={value !== null}
+          disabled={busy}
+          onCheckedChange={(on) => onSave(on ? defaultWindow(own) : null)}
+          aria-label="Only send email at set hours"
+        />
+      </div>
+
+      {value ? (
+        <>
+          <span className="flex items-center gap-2">
+            <Select
+              value={String(value.from)}
+              onValueChange={(from) => onSave({ ...value, from: Number(from) })}
+              disabled={busy}
+            >
+              <SelectTrigger aria-label="From">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HOURS.map((hour) => (
+                  <SelectItem key={hour} value={String(hour)}>
+                    {clock(hour)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-[12px] text-muted-foreground">to</span>
+            <Select
+              value={String(value.to)}
+              onValueChange={(to) => onSave({ ...value, to: Number(to) })}
+              disabled={busy}
+            >
+              <SelectTrigger aria-label="To">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {HOURS.map((hour) => (
+                  <SelectItem key={hour} value={String(hour)}>
+                    {clock(hour)}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </span>
+
+          <span className="flex gap-1">
+            {/* Monday first, the way a week is read; stored in JavaScript's
+                numbering, where Sunday is 0. */}
+            {[1, 2, 3, 4, 5, 6, 0].map((day) => {
+              const on = value.days.includes(day);
+              return (
+                <button
+                  key={day}
+                  type="button"
+                  disabled={busy || (on && value.days.length === 1)}
+                  aria-pressed={on}
+                  onClick={() =>
+                    onSave({
+                      ...value,
+                      days: on ? value.days.filter((entry) => entry !== day) : [...value.days, day],
+                    })
+                  }
+                  className={cn(
+                    "h-7 flex-1 rounded-md border text-[11.5px] transition-colors",
+                    on
+                      ? "border-transparent bg-primary text-primary-foreground"
+                      : "border-border text-muted-foreground hover:bg-accent hover:text-foreground",
+                  )}
+                >
+                  {DAY_NAMES[day]?.slice(0, 2)}
+                </button>
+              );
+            })}
+          </span>
+
+          <Field label="In the time zone">
+            <Select
+              value={value.timeZone}
+              onValueChange={(timeZone) => onSave({ ...value, timeZone })}
+              disabled={busy}
+            >
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="max-h-72">
+                {zones.map((zone) => (
+                  <SelectItem key={zone} value={zone}>
+                    {zone.replaceAll("_", " ")}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </Field>
+
+          <Note>
+            {describeWindow(value)}. Somebody who reaches an email outside these hours waits for
+            them to open. Everything else in the flow still runs straight away.
+          </Note>
+        </>
+      ) : (
+        <Note>Email goes out whenever somebody reaches it, day or night.</Note>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Which way one person would go, drawn on the canvas.
+ *
+ * Nothing happens to them: nothing is sent, written or called. Their real
+ * fields, tags and segments answer the questions they can; the reader
+ * answers the ones about things that have not happened yet.
+ */
+function TestInspector({
+  automationId,
+  nodes,
+  onPath,
+  onClose,
+}: {
+  automationId: string;
+  nodes: FlowNode[];
+  onPath: (path: Set<string> | null) => void;
+  onClose: () => void;
+}) {
+  const [address, setAddress] = useState("");
+  const [opens, setOpens] = useState(true);
+  const [eventArrives, setEventArrives] = useState(false);
+  const [splitTo, setSplitTo] = useState<"a" | "b">("a");
+  const [busy, setBusy] = useState(false);
+  const [result, setResult] = useState<{
+    steps: { nodeId: string; text: string }[];
+    end: string;
+    note?: string;
+  } | null>(null);
+
+  const has = (kind: AutomationNodeKind) => nodes.some((node) => node.kind === kind);
+  const asksOpens = nodes.some(
+    (node) =>
+      node.kind === "condition" &&
+      (node.config.test === "opened" || node.config.test === "clicked"),
+  );
+
+  async function run(event: React.FormEvent) {
+    event.preventDefault();
+    setBusy(true);
+    try {
+      const made = await testAutomationAction(automationId, {
+        address,
+        opens,
+        eventArrives,
+        splitTo,
+      });
+      if (!made.ok) throw new Error(made.error);
+      setResult({ steps: made.steps, end: made.end, note: made.note });
+      onPath(new Set(made.steps.map((step) => step.nodeId)));
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "That could not be tested");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <aside className="flex w-[300px] shrink-0 flex-col overflow-y-auto border-border border-l bg-card">
+      <header className="flex h-12 shrink-0 items-center gap-2 border-border border-b px-3">
+        <span className="grid size-7 shrink-0 place-items-center rounded-lg bg-muted">
+          <FlaskConical className="size-3.5 text-ok" />
+        </span>
+        <span className="min-w-0 flex-1 truncate font-medium text-[12.5px]">Test run</span>
+        <IconButton label="Close" size="sm" onClick={onClose}>
+          <PanelRightClose />
+        </IconButton>
+      </header>
+
+      <form className="space-y-4 p-3" onSubmit={run}>
+        <Field label="As this person" hint="Somebody on the list, or any address.">
+          <Input
+            type="email"
+            value={address}
+            onChange={(event) => setAddress(event.target.value)}
+            placeholder="person@example.com"
+            required
+          />
+        </Field>
+
+        {/* Only the questions this flow actually asks. */}
+        {asksOpens && (
+          <span className="flex items-center justify-between gap-2 text-[12.5px]">
+            They open and click the emails
+            <Switch
+              checked={opens}
+              onCheckedChange={setOpens}
+              aria-label="They open and click the emails"
+            />
+          </span>
+        )}
+        {has("await") && (
+          <span className="flex items-center justify-between gap-2 text-[12.5px]">
+            The events they wait for arrive
+            <Switch
+              checked={eventArrives}
+              onCheckedChange={setEventArrives}
+              aria-label="The events they wait for arrive"
+            />
+          </span>
+        )}
+        {has("split") && (
+          <Field label="At a random split, they go">
+            <Select value={splitTo} onValueChange={(value) => setSplitTo(value as "a" | "b")}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="a">Down A</SelectItem>
+                <SelectItem value="b">Down B</SelectItem>
+              </SelectContent>
+            </Select>
+          </Field>
+        )}
+
+        <Button type="submit" variant="solid" className="w-full" disabled={busy || !address.trim()}>
+          <Play className="size-3.5" />
+          {result ? "Run it again" : "Run the test"}
+        </Button>
+
+        <Note>Nothing is sent, written or called. It only shows which way they would go.</Note>
+      </form>
+
+      {result && (
+        <div className="space-y-3 border-border border-t p-3">
+          {result.note && <Note className="text-warn">{result.note}</Note>}
+          <ol className="space-y-1.5">
+            {result.steps.map((step, index) => (
+              <li key={`${step.nodeId}-${index}`} className="flex gap-2 text-[12.5px]">
+                <span className="mt-px grid size-5 shrink-0 place-items-center rounded-full bg-ok/15 font-mono text-[10.5px] text-ok tabular-nums">
+                  {index + 1}
+                </span>
+                <span className="min-w-0 flex-1">{step.text}</span>
+              </li>
+            ))}
+          </ol>
+          <p className="text-[12px] text-muted-foreground">{result.end}</p>
+        </div>
+      )}
     </aside>
   );
 }

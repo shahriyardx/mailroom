@@ -82,6 +82,11 @@ export const POST = apiRoute("events:write", async ({ caller, request }) => {
         id: entry.automationId,
         name: entry.automation,
       })),
+      /* Flows that were waiting for this event, now moved on. */
+      resumed: receipt.resumed.map((entry) => ({
+        id: entry.automationId,
+        name: entry.automation,
+      })),
     });
   } catch (error) {
     return fail("invalid_request", error instanceof Error ? error.message : "Bad request");

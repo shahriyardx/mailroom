@@ -107,8 +107,11 @@ conditions branching into a **yes** side and a **no** side.
 | Box | What it does |
 | --- | --- |
 | **Send an email** | Written in the same builder templates and campaigns use |
+| **Call a webhook** | Tells your own server that somebody got here |
 | **Wait** | Holds somebody here — for a length of time, or until a date |
 | **Split on a condition** | Two ways on — one for yes, one for no |
+| **Wait for an event** | One way if the event arrives in time, the other if it does not |
+| **Split at random** | Sends a share of people each way, to test two versions |
 | **Set a field** | Writes something onto the person that a later condition or a segment can ask about |
 | **Add or remove a tag** | Puts a label on them, or takes one off |
 | **Copy or move to another list** | Puts them on a second list, with or without leaving this one |
@@ -149,6 +152,54 @@ before all move on together at the moment you set.
 Anybody who reaches the box *after* that moment has passed walks straight
 through. Holding them until the same date next year is the only other
 option, and nobody means that.
+
+If you change how long a wait is, the people already sitting on it follow the
+new length too. It is counted from when each of them arrived.
+
+## Waiting for an event
+
+A **Wait for an event** box holds somebody until one of two things happens:
+
+| | |
+| --- | --- |
+| **Arrived** | Your code posts the event for them while they are on the box. They go down this side at once |
+| **Timed out** | The time you set runs out first. They go down this side |
+
+This is what a cart-recovery flow is built on: wait up to a day for
+`order.placed`, thank the ones who bought, and nudge the ones who did not.
+
+Only an event that arrives *while they are on the box* counts. One that came
+before they got there is not saved up for them.
+
+## Testing two versions
+
+**Split at random** sends each person one way or the other by chance. You set
+the share — 50/50, or 90/10 to try something new on a few people first.
+
+Put a different email on each side. The numbers on each email box then tell
+you which version gets more opens and clicks.
+
+## Calling your own server
+
+**Call a webhook** sends a `POST` to a URL you choose, with the person's email,
+name, fields and tags as JSON:
+
+```json
+{
+  "event": "automation.step",
+  "automation": { "id": "aut_…", "name": "Welcome" },
+  "step": "atn_…",
+  "person": { "email": "person@example.com", "name": "Ada", "fields": {}, "tags": [] },
+  "at": "2026-09-26T10:00:00.000Z"
+}
+```
+
+It is signed in the `X-Mailroom-Signature` header, the same way as your
+account's [webhooks](/webhooks/). Each automation has its own signing
+secret, shown on the box. The URL must be `https` and a public address.
+
+An answer that is not `2xx` counts as a failure and is tried again, the same
+as an email that fails.
 
 ## Tags, and other lists
 
@@ -247,6 +298,62 @@ the opens of the first, and the third barely any.
 Opens are the tracking pixel and mean "it was loaded", not "it was read".
 Clicks need click tracking switched on in SES.
 
+## Only sending at set hours
+
+On the trigger card, **Only send email between** sets the hours and days email
+may go out, in a time zone you choose. For example, 9:00 to 17:00, Monday to
+Friday, in `Europe/London`.
+
+Somebody who reaches an email outside those hours waits there until the window
+opens. Everything else in the flow — waits, conditions, tags — still runs
+straight away, because none of it lands in an inbox.
+
+A window that starts later than it ends, such as 22:00 to 06:00, runs over
+midnight.
+
+## Who is in it
+
+Every box with people on it carries a small count in its corner. Click it to
+see who they are.
+
+**People**, at the top right of the canvas, lists everybody the flow has put
+through it:
+
+- where each person is now, and until when
+- what the flow sent them, and whether they opened or clicked it
+- why anybody stopped: they left the list, they reached the goal, an email
+  kept failing
+
+You can take one person out of the flow from there. They stay on the list,
+and they are not put back in if they join again.
+
+## A test run
+
+**Test run**, at the top right of the canvas, walks one person through the
+flow on paper. Type an address, and the path they would take lights up on the
+canvas, with each step written out beside it.
+
+Nothing is sent, written or called. Their real fields, tags and segments
+answer the questions they can. You answer the rest: whether they open the
+emails, whether the events they wait for arrive, and which way a random split
+sends them.
+
+## Copying one
+
+The copy button on an automation's row, or beside **Switch on**, makes a copy
+of the whole canvas. The copy starts as a draft with nobody in it, so it sends
+nothing until you switch it on.
+
+## Warnings on the canvas
+
+A box turns amber when it will run but not do what you meant:
+
+- an email with nothing written in it
+- **Opened the last email?** straight after the email, with no **Wait** in
+  between — nobody has had time to open it, so the answer is always no
+- **Opened the last email?** with no email before it at all
+- a **Wait for an event** with no event, or a webhook with no URL
+
 ## The clock
 
 A run is a row with a box and a date on it. There is no timer per person, so a
@@ -256,9 +363,15 @@ at all.
 Boxes that take no time — a condition, a field write — are walked straight
 through, so a person does not spend thirty seconds sitting on each one.
 
-An email that fails to send is tried again in an hour rather than dropped.
-Almost everything that fails is temporary, and abandoning the second email of
-a welcome series over a blip is worse than being an hour late.
+An email or webhook that fails is tried again rather than dropped: after 15
+minutes, then 1 hour, 4 hours and 12 hours. Almost everything that fails is
+temporary, and abandoning the second email of a welcome series over a blip is
+worse than being late. After the fifth failure the person is stopped, with the
+error as the reason, so a broken address does not retry forever.
+
+A busy flow is not held back by a fixed batch size. Each pass keeps going
+until nobody is due, so an import of thousands onto a welcome list starts
+straight away. The [hourly sending limit](/guide/campaigns#slowing-it-down-on-purpose) still applies.
 
 ## Before you switch it on
 

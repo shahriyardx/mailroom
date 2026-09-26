@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { after, before, beforeEach, describe, it } from "node:test";
+import { awsError, sesCalls, sesFailWith, sesReset } from "./fakes/ses";
 import { type Scratch, type Seeded, makeScratchDatabase, seedAccount } from "./helpers/db";
 
 /**
@@ -297,10 +298,16 @@ describe("who gets put through it", () => {
     assert.equal(person?.fields.stage, "welcomed");
 
     const [run] = await db
-      .select({ nextAt: automationRun.nextAt, nodeId: automationRun.nodeId })
+      .select({
+        nextAt: automationRun.nextAt,
+        nodeId: automationRun.nodeId,
+        parkedAt: automationRun.parkedAt,
+      })
       .from(automationRun);
-    // Parked past the wait, a day out, rather than still sitting on the field.
-    assert.equal(run?.nodeId, later);
+    // Sitting on the wait, a day out, rather than still on the field — and on
+    // the wait itself, so the canvas can count who is waiting there.
+    assert.equal(run?.nodeId, wait);
+    assert.ok(run?.parkedAt);
     assert.ok(run && run.nextAt.getTime() > Date.now() + 60_000);
   });
 
@@ -864,5 +871,390 @@ describe("a flow before it has an address", () => {
     });
 
     assert.equal((await findAutomation(account.orgId, id))?.status, "active");
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+
+/** Joins somebody to a live flow's list and runs one pass. */
+async function join(listId: string, ...addresses: string[]) {
+  const { addMembers } = await import("@/server/campaigns");
+  await addMembers(
+    account.orgId,
+    listId,
+    addresses.map((address) => ({ address })),
+    "signup form",
+  );
+}
+
+async function runsOf(id: string) {
+  const { db } = await import("@/db");
+  const { automationRun } = await import("@/db/schema");
+  const { eq } = await import("drizzle-orm");
+  return db.select().from(automationRun).where(eq(automationRun.automationId, id));
+}
+
+/** Makes every run in a flow due now, as if its wait had passed. */
+async function timePasses(id: string) {
+  const { db } = await import("@/db");
+  const { automationRun } = await import("@/db/schema");
+  const { eq } = await import("drizzle-orm");
+  await db
+    .update(automationRun)
+    .set({ nextAt: new Date(Date.now() - 1000) })
+    .where(eq(automationRun.automationId, id));
+}
+
+async function tagsFor(listId: string, address: string) {
+  const { db } = await import("@/db");
+  const { listMember } = await import("@/db/schema");
+  const { and, eq } = await import("drizzle-orm");
+  const row = await db.query.listMember.findFirst({
+    where: and(eq(listMember.listId, listId), eq(listMember.address, address)),
+  });
+  return row?.tags ?? [];
+}
+
+describe("keeping up with a big list", () => {
+  it("gets through more than one batch in a pass", async () => {
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, listId } = await anAutomation();
+    const box = await addNode(account.orgId, id, { kind: "tag" });
+    await updateNode(account.orgId, box, { config: { tagAction: "add", tag: "seen" } });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    // More than one batch of a hundred.
+    await join(listId, ...Array.from({ length: 130 }, (_, n) => `person${n}@example.com`));
+    await runAutomationsOnce();
+
+    const runs = await runsOf(id);
+    assert.equal(runs.length, 130);
+    assert.ok(
+      runs.every((run) => run.status === "done"),
+      "nobody is left for the next tick",
+    );
+  });
+});
+
+describe("an email that will not go", () => {
+  it("is tried again later, then given up on", async () => {
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { db } = await import("@/db");
+    const { automationRun } = await import("@/db/schema");
+    const { eq } = await import("drizzle-orm");
+
+    sesReset();
+    sesFailWith(() => awsError("MessageRejected"));
+    try {
+      const { id, listId } = await anAutomation();
+      const mail = await addNode(account.orgId, id, { kind: "email" });
+      await updateNode(account.orgId, mail, { html: "<p>Hello</p>", text: "Hello" });
+      await updateAutomation(account.orgId, id, { status: "active" });
+      await join(listId, "pat@example.com");
+
+      await runAutomationsOnce();
+      let [run] = await runsOf(id);
+      assert.equal(run?.status, "active");
+      assert.equal(run?.attempts, 1);
+      assert.equal(run?.nodeId, mail, "still on the email");
+      assert.ok(run?.stoppedReason, "the error is kept for somebody to read");
+      assert.ok(run && run.nextAt.getTime() > Date.now() + 10 * 60_000, "about a quarter hour");
+
+      // The fourth failure was the last retry; the fifth ends it.
+      await db.update(automationRun).set({ attempts: 4 }).where(eq(automationRun.automationId, id));
+      await timePasses(id);
+      await runAutomationsOnce();
+      [run] = await runsOf(id);
+      assert.equal(run?.status, "stopped");
+      assert.match(run?.stoppedReason ?? "", /Gave up after 5 tries/);
+    } finally {
+      sesReset();
+    }
+  });
+});
+
+describe("the hours it may send in", () => {
+  it("holds an email until the window opens, and sends nothing meanwhile", async () => {
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    sesReset();
+
+    const { id, listId } = await anAutomation();
+    const mail = await addNode(account.orgId, id, { kind: "email" });
+    await updateNode(account.orgId, mail, { html: "<p>Hello</p>", text: "Hello" });
+    // A one-hour window two hours from now, so it is certainly shut.
+    const hour = new Date().getUTCHours();
+    await updateAutomation(account.orgId, id, {
+      sendWindow: {
+        from: (hour + 2) % 24,
+        to: (hour + 3) % 24,
+        days: [0, 1, 2, 3, 4, 5, 6],
+        timeZone: "UTC",
+      },
+    });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await join(listId, "pat@example.com");
+
+    await runAutomationsOnce();
+
+    assert.equal(sesCalls.length, 0);
+    const [run] = await runsOf(id);
+    assert.equal(run?.nodeId, mail);
+    assert.equal(run?.parkedAt, null, "due to send, not sitting on a wait");
+    assert.ok(run && run.nextAt.getTime() > Date.now() + 60 * 60_000);
+  });
+
+  it("refuses a window with no days in it", async () => {
+    const { updateAutomation } = await import("@/server/automations");
+    const { id } = await anAutomation();
+    await assert.rejects(
+      updateAutomation(account.orgId, id, {
+        sendWindow: { from: 9, to: 17, days: [], timeZone: "UTC" },
+      }),
+      /at least one day/,
+    );
+  });
+});
+
+describe("a random split", () => {
+  async function splitFlow() {
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { id, listId } = await anAutomation();
+    const split = await addNode(account.orgId, id, { kind: "split" });
+    await updateNode(account.orgId, split, { config: { percent: 30 } });
+    const a = await addNode(account.orgId, id, { kind: "tag", after: split });
+    await updateNode(account.orgId, a, { config: { tagAction: "add", tag: "a" } });
+    const b = await addNode(account.orgId, id, { kind: "tag", after: split, branch: "nextElse" });
+    await updateNode(account.orgId, b, { config: { tagAction: "add", tag: "b" } });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    return { id, listId };
+  }
+
+  it("sends each person one way or the other, by the share", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const real = Math.random;
+    try {
+      const { listId } = await splitFlow();
+      Math.random = () => 0.1;
+      await join(listId, "low@example.com");
+      await runAutomationsOnce();
+      Math.random = () => 0.9;
+      await join(listId, "high@example.com");
+      await runAutomationsOnce();
+
+      assert.deepEqual(await tagsFor(listId, "low@example.com"), ["a"]);
+      assert.deepEqual(await tagsFor(listId, "high@example.com"), ["b"]);
+    } finally {
+      Math.random = real;
+    }
+  });
+});
+
+describe("waiting for an event", () => {
+  async function awaitFlow() {
+    const { addNode, updateAutomation, updateNode } = await import("@/server/automations");
+    const { id, listId } = await anAutomation();
+    const wait = await addNode(account.orgId, id, { kind: "await" });
+    await updateNode(account.orgId, wait, {
+      config: { event: "Order.Placed" },
+      delayMinutes: 60,
+    });
+    const yes = await addNode(account.orgId, id, { kind: "tag", after: wait });
+    await updateNode(account.orgId, yes, { config: { tagAction: "add", tag: "bought" } });
+    const no = await addNode(account.orgId, id, { kind: "tag", after: wait, branch: "nextElse" });
+    await updateNode(account.orgId, no, { config: { tagAction: "add", tag: "nudged" } });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    return { id, listId, wait };
+  }
+
+  it("goes the arrived way the moment the event lands", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { emitEvent } = await import("@/server/custom-events");
+    const { id, listId, wait } = await awaitFlow();
+    await join(listId, "pat@example.com");
+    await runAutomationsOnce();
+
+    let [run] = await runsOf(id);
+    assert.equal(run?.nodeId, wait, "sitting on the wait");
+    assert.ok(run?.parkedAt);
+
+    const receipt = await emitEvent(account.orgId, {
+      name: "order.placed",
+      address: "pat@example.com",
+    });
+    assert.equal(receipt.resumed.length, 1);
+
+    await runAutomationsOnce();
+    [run] = await runsOf(id);
+    assert.equal(run?.status, "done");
+    assert.deepEqual(await tagsFor(listId, "pat@example.com"), ["bought"]);
+  });
+
+  it("goes the other way when it never comes", async () => {
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, listId } = await awaitFlow();
+    await join(listId, "pat@example.com");
+    await runAutomationsOnce();
+
+    await timePasses(id);
+    await runAutomationsOnce();
+    assert.deepEqual(await tagsFor(listId, "pat@example.com"), ["nudged"]);
+  });
+
+  it("moves the people already waiting when the wait is changed", async () => {
+    const { updateNode } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, listId, wait } = await awaitFlow();
+    await join(listId, "pat@example.com");
+    await runAutomationsOnce();
+
+    const [before] = await runsOf(id);
+    await updateNode(account.orgId, wait, { delayMinutes: 60 * 24 * 7 });
+    const [after] = await runsOf(id);
+    assert.ok(before && after);
+    assert.ok(after.nextAt.getTime() - before.nextAt.getTime() > 6 * 86_400_000);
+  });
+});
+
+describe("a webhook box", () => {
+  it("posts the person, signed, and carries on", async () => {
+    const { createServer } = await import("node:http");
+    const { addNode, findAutomation, updateAutomation, updateNode } = await import(
+      "@/server/automations"
+    );
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { verifySignature } = await import("@/server/webhooks");
+
+    const received: { body: string; signature: string }[] = [];
+    const server = createServer((request, response) => {
+      let body = "";
+      request.on("data", (chunk) => {
+        body += chunk;
+      });
+      request.on("end", () => {
+        received.push({ body, signature: String(request.headers["x-mailroom-signature"]) });
+        response.writeHead(204).end();
+      });
+    });
+    await new Promise<void>((done) => server.listen(0, "127.0.0.1", done));
+    const port = (server.address() as { port: number }).port;
+
+    try {
+      const { id, listId } = await anAutomation();
+      const hook = await addNode(account.orgId, id, { kind: "webhook" });
+      await updateNode(account.orgId, hook, {
+        config: { url: `http://127.0.0.1:${port}/hook` },
+      });
+      await updateAutomation(account.orgId, id, { status: "active" });
+      await join(listId, "pat@example.com");
+      await runAutomationsOnce();
+
+      assert.equal(received.length, 1);
+      const secret = (await findAutomation(account.orgId, id))?.webhookSecret ?? "";
+      assert.ok(verifySignature(secret, received[0]?.body ?? "", received[0]?.signature ?? ""));
+      assert.equal(JSON.parse(received[0]?.body ?? "{}").person.email, "pat@example.com");
+
+      const [run] = await runsOf(id);
+      assert.equal(run?.status, "done");
+    } finally {
+      server.close();
+    }
+  });
+});
+
+describe("copying a flow", () => {
+  it("makes a draft with its own boxes, joined up the same way", async () => {
+    const { addNode, duplicateAutomation, findAutomation, updateAutomation } = await import(
+      "@/server/automations"
+    );
+    const { id } = await anAutomation();
+    const first = await addNode(account.orgId, id, { kind: "condition" });
+    await addNode(account.orgId, id, { kind: "email", after: first });
+    await addNode(account.orgId, id, { kind: "wait", after: first, branch: "nextElse" });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    const copyId = await duplicateAutomation(account.orgId, id);
+    const original = await findAutomation(account.orgId, id);
+    const copy = await findAutomation(account.orgId, copyId);
+    assert.ok(original && copy);
+
+    assert.equal(copy.status, "draft", "a copy never starts out sending");
+    assert.equal(copy.name, "Welcome (copy)");
+    assert.equal(copy.nodes.length, 3);
+
+    const theirs = new Set(original.nodes.map((node) => node.id));
+    assert.ok(
+      copy.nodes.every((node) => !theirs.has(node.id)),
+      "no box is shared",
+    );
+    const top = copy.nodes.find((node) => node.id === copy.entryNodeId);
+    assert.equal(top?.kind, "condition");
+    const by = new Map(copy.nodes.map((node) => [node.id, node]));
+    assert.equal(by.get(top?.next ?? "")?.kind, "email");
+    assert.equal(by.get(top?.nextElse ?? "")?.kind, "wait");
+  });
+});
+
+describe("seeing who is in a flow", () => {
+  it("counts people on each box, lists them, and lets one out", async () => {
+    const { addNode, automationPeople, stepPositions, stopRun, updateAutomation } = await import(
+      "@/server/automations"
+    );
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+    const { id, listId } = await anAutomation();
+    const wait = await addNode(account.orgId, id, { kind: "wait" });
+    await addNode(account.orgId, id, { kind: "tag", after: wait });
+    await updateAutomation(account.orgId, id, { status: "active" });
+    await join(listId, "ada@example.com", "bob@example.com");
+    await runAutomationsOnce();
+
+    assert.deepEqual(await stepPositions(account.orgId, id), { [wait]: 2 });
+
+    const found = await automationPeople(account.orgId, id, { search: "ada" });
+    assert.equal(found.total, 1);
+    assert.equal(found.people[0]?.address, "ada@example.com");
+    assert.equal(found.people[0]?.parked, true);
+    assert.equal(found.counts.active, 2);
+
+    await stopRun(account.orgId, id, found.people[0]?.runId ?? "");
+    const after = await automationPeople(account.orgId, id, { status: "stopped" });
+    assert.equal(after.total, 1);
+    assert.equal(after.people[0]?.reason, "Taken out by hand");
+  });
+});
+
+describe("a test run", () => {
+  it("shows the way somebody would go, and changes nothing", async () => {
+    sesReset();
+    const { addNode, updateNode } = await import("@/server/automations");
+    const { simulateRun } = await import("@/server/automation-runner");
+    const { id, listId } = await anAutomation();
+
+    const tag = await addNode(account.orgId, id, { kind: "tag" });
+    await updateNode(account.orgId, tag, { config: { tagAction: "add", tag: "vip" } });
+    const ask = await addNode(account.orgId, id, { kind: "condition", after: tag });
+    await updateNode(account.orgId, ask, { config: { test: "tag", tag: "vip" } });
+    const yes = await addNode(account.orgId, id, { kind: "email", after: ask });
+    const no = await addNode(account.orgId, id, {
+      kind: "unsubscribe",
+      after: ask,
+      branch: "nextElse",
+    });
+    await join(listId, "pat@example.com");
+
+    const result = await simulateRun(account.orgId, id, {
+      address: "pat@example.com",
+      opens: false,
+      eventArrives: false,
+      splitTo: "a",
+    });
+
+    const path = result.steps.map((step) => step.nodeId);
+    assert.deepEqual(path, [tag, ask, yes], "tagged on the way, so the question says yes");
+    assert.ok(!path.includes(no));
+    assert.deepEqual(await tagsFor(listId, "pat@example.com"), [], "nothing was written");
+    assert.equal(sesCalls.length, 0, "nothing was sent");
   });
 });

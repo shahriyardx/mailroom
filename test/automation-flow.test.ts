@@ -4,11 +4,14 @@ import {
   type FlowNode,
   NODE_WIDTH,
   TRIGGER_ID,
+  branchLabels,
   describeTrigger,
+  flowWarnings,
   humanDelay,
   layout,
   summarise,
 } from "@/lib/automation-flow";
+import { describeWindow, inWindow, nextOpening } from "@/lib/send-window";
 
 /**
  * Where the boxes go.
@@ -218,5 +221,129 @@ describe("what the trigger card says", () => {
     assert.equal(said.title, "trial.ended");
     assert.match(said.note ?? "", /Customers/);
     assert.ok(!said.warn);
+  });
+});
+
+describe("boxes with two ways out", () => {
+  it("lays a split out like a condition, one way each side", () => {
+    const plan = layout(
+      [
+        node("split", { kind: "split", config: { percent: 30 }, next: "a", nextElse: "b" }),
+        node("a"),
+        node("b"),
+      ],
+      "split",
+    );
+    const top = at(plan, "split");
+    const left = at(plan, "a");
+    const right = at(plan, "b");
+    assert.ok(top && left && right);
+    assert.ok(left.x < top.x && top.x < right.x, "the split sits between its two ways");
+  });
+
+  it("names the ways by what they mean", () => {
+    assert.deepEqual(branchLabels(node("s", { kind: "split", config: { percent: 30 } })), [
+      "A · 30%",
+      "B · 70%",
+    ]);
+    assert.deepEqual(branchLabels(node("w", { kind: "await" })), ["Arrived", "Timed out"]);
+    assert.deepEqual(branchLabels(node("c", { kind: "condition" })), ["Yes", "No"]);
+  });
+
+  it("says what a wait for an event is waiting for", () => {
+    const said = summarise(
+      node("w", { kind: "await", delayMinutes: 4320, config: { event: "order.placed" } }),
+    );
+    assert.equal(said.title, "Wait for order.placed");
+    assert.equal(said.note, "Up to 3 days");
+  });
+});
+
+describe("warning about a flow before it runs", () => {
+  it("flags an open question asked with no time to open anything", () => {
+    const warnings = flowWarnings([
+      node("mail", { next: "ask" }),
+      node("ask", { kind: "condition", config: { test: "opened" } }),
+    ]);
+    assert.match(warnings.ask ?? "", /Wait/);
+  });
+
+  it("is quiet once there is a wait in between", () => {
+    const warnings = flowWarnings([
+      node("mail", { next: "pause" }),
+      node("pause", { kind: "wait", delayMinutes: 1440, next: "ask" }),
+      node("ask", { kind: "condition", config: { test: "clicked" } }),
+    ]);
+    assert.equal(warnings.ask, undefined);
+  });
+
+  it("flags an open question with no email above it at all", () => {
+    const warnings = flowWarnings([
+      node("pause", { kind: "wait", delayMinutes: 60, next: "ask" }),
+      node("ask", { kind: "condition", config: { test: "opened" } }),
+    ]);
+    assert.match(warnings.ask ?? "", /always no/);
+  });
+
+  it("leaves questions about fields alone", () => {
+    const warnings = flowWarnings([
+      node("mail", { next: "ask" }),
+      node("ask", { kind: "condition", config: { test: "field", field: "plan" } }),
+    ]);
+    assert.equal(warnings.ask, undefined);
+  });
+
+  it("flags the boxes that are missing their one setting", () => {
+    const warnings = flowWarnings([
+      node("hook", { kind: "webhook", next: "wait" }),
+      node("wait", { kind: "await" }),
+    ]);
+    assert.ok(warnings.hook);
+    assert.ok(warnings.wait);
+  });
+});
+
+describe("the hours an automation may send in", () => {
+  const office = { from: 9, to: 17, days: [1, 2, 3, 4, 5], timeZone: "UTC" };
+
+  it("is open inside the hours and shut outside them", () => {
+    // Wednesday 1 October 2025.
+    assert.equal(inWindow(office, new Date("2025-10-01T10:00:00Z")), true);
+    assert.equal(inWindow(office, new Date("2025-10-01T17:00:00Z")), false);
+    assert.equal(inWindow(office, new Date("2025-10-01T08:59:00Z")), false);
+    // Saturday.
+    assert.equal(inWindow(office, new Date("2025-10-04T10:00:00Z")), false);
+    assert.equal(inWindow(null, new Date("2025-10-04T03:00:00Z")), true);
+  });
+
+  it("reads the hours in the automation's own time zone", () => {
+    const tokyo = { ...office, timeZone: "Asia/Tokyo" };
+    // 01:00 UTC is 10:00 in Tokyo.
+    assert.equal(inWindow(tokyo, new Date("2025-10-01T01:00:00Z")), true);
+    assert.equal(inWindow(tokyo, new Date("2025-10-01T10:00:00Z")), false);
+  });
+
+  it("finds the next opening, over a weekend", () => {
+    // Friday evening waits for Monday morning.
+    const next = nextOpening(office, new Date("2025-10-03T18:30:00Z"));
+    assert.equal(next.toISOString(), "2025-10-06T09:00:00.000Z");
+  });
+
+  it("gives back the same instant when it is already open", () => {
+    const now = new Date("2025-10-01T10:07:00Z");
+    assert.equal(nextOpening(office, now).getTime(), now.getTime());
+  });
+
+  it("runs over midnight when it starts later than it ends", () => {
+    const night = { from: 22, to: 6, days: [5], timeZone: "UTC" };
+    // Friday 23:00, and the small hours of Saturday that belong to it.
+    assert.equal(inWindow(night, new Date("2025-10-03T23:00:00Z")), true);
+    assert.equal(inWindow(night, new Date("2025-10-04T02:00:00Z")), true);
+    assert.equal(inWindow(night, new Date("2025-10-04T23:00:00Z")), false);
+  });
+
+  it("says itself in words", () => {
+    assert.equal(describeWindow(office), "09:00 – 17:00, Mon–Fri (UTC)");
+    assert.equal(describeWindow(null), "Any time");
   });
 });

@@ -26,11 +26,14 @@ import { renderTemplateParts, templateVariables } from "@/lib/template";
 import { newId } from "@/lib/utils";
 import { isWebhookEvent } from "@/lib/webhook-events";
 import { requireAccess } from "@/server/access";
+import { simulateRun } from "@/server/automation-runner";
 import {
   addNode,
   createAutomation,
+  duplicateAutomation,
   removeAutomation,
   removeNode,
+  stopRun,
   updateAutomation,
   updateNode,
 } from "@/server/automations";
@@ -1955,6 +1958,7 @@ export async function updateAutomationAction(
     segmentId?: string | null;
     exitSegmentId?: string | null;
     exitEventName?: string | null;
+    sendWindow?: { from: number; to: number; days: number[]; timeZone: string } | null;
   },
 ) {
   const access = await requireAccess();
@@ -1969,6 +1973,46 @@ export async function updateAutomationAction(
     return { ok: true as const };
   } catch (error) {
     return failure(error, "That automation could not be changed");
+  }
+}
+
+export async function duplicateAutomationAction(id: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, id);
+  try {
+    const copy = await duplicateAutomation(access.orgId, id);
+    revalidatePath("/campaigns/automations");
+    return { ok: true as const, id: copy };
+  } catch (error) {
+    return failure(error, "That automation could not be copied");
+  }
+}
+
+export async function stopRunAction(automationId: string, runId: string) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, automationId);
+  await stopRun(access.orgId, automationId, runId);
+  revalidatePath(`/campaigns/automations/${automationId}`);
+  revalidatePath(`/campaigns/automations/${automationId}/people`);
+  return { ok: true as const };
+}
+
+/** Walks somebody through the flow on paper. Sends, writes and calls nothing. */
+export async function testAutomationAction(
+  automationId: string,
+  input: { address: string; opens: boolean; eventArrives: boolean; splitTo: "a" | "b" },
+) {
+  const access = await requireAccess();
+  assertCan(access, "mail:send");
+  await assertCanRunAutomation(access, automationId);
+  try {
+    if (!input.address.includes("@")) throw new Error("Type an email address to test with");
+    const result = await simulateRun(access.orgId, automationId, input);
+    return { ok: true as const, ...result };
+  } catch (error) {
+    return failure(error, "That could not be tested");
   }
 }
 

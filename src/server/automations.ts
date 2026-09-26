@@ -5,19 +5,24 @@ import {
   type AutomationStatus,
   type AutomationTrigger,
   type NodeConfig,
+  type SendWindow,
   automation,
   automationNode,
   automationRun,
   automationSend,
+  listMember,
   mailbox,
   mailingList,
   segment,
 } from "@/db/schema";
+import { forks } from "@/lib/automation-flow";
 import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { env } from "@/lib/env";
+import { isTimeZone } from "@/lib/send-window";
 import { newId } from "@/lib/utils";
-import { and, asc, count, eq, inArray, isNull, or, sql } from "drizzle-orm";
+import { and, asc, count, desc, eq, ilike, inArray, isNull, or, sql } from "drizzle-orm";
 import { normaliseEventName } from "./custom-events";
+import { checkWebhookUrl, makeWebhookSecret } from "./webhooks";
 
 /**
  * Series of emails that start when one person does something.
@@ -99,6 +104,8 @@ export async function updateAutomation(
     segmentId?: string | null;
     exitSegmentId?: string | null;
     exitEventName?: string | null;
+    /** Null to send at any time. */
+    sendWindow?: SendWindow | null;
   },
 ) {
   const row = await db.query.automation.findFirst({
@@ -193,8 +200,33 @@ export async function updateAutomation(
       segmentId,
       exitSegmentId,
       exitEventName,
+      sendWindow: input.sendWindow === undefined ? row.sendWindow : checkWindow(input.sendWindow),
     })
     .where(eq(automation.id, row.id));
+}
+
+/**
+ * A window the runner can trust, or a reason it cannot be saved.
+ *
+ * Every field is checked, because the runner reads this on every email and a
+ * time zone it cannot parse would throw there instead of here.
+ */
+function checkWindow(window: SendWindow | null): SendWindow | null {
+  if (!window) return null;
+  const hour = (value: unknown) =>
+    Number.isInteger(value) && Number(value) >= 0 && Number(value) <= 24;
+  if (!hour(window.from) || !hour(window.to)) throw new Error("Hours run from 0 to 24");
+  const days = [...new Set(window.days)].filter(
+    (day) => Number.isInteger(day) && day >= 0 && day <= 6,
+  );
+  if (days.length === 0) throw new Error("Pick at least one day to send on");
+  if (!isTimeZone(window.timeZone)) throw new Error("That time zone is not one this server knows");
+  return {
+    from: window.from % 24,
+    to: window.to % 24,
+    days: days.sort(),
+    timeZone: window.timeZone,
+  };
 }
 
 export async function removeAutomation(orgId: string, id: string) {
@@ -216,6 +248,10 @@ const BLANK: Record<AutomationNodeKind, Partial<typeof automationNode.$inferInse
   tag: { config: { tagAction: "add", tag: "" } },
   move: { config: { listAction: "copy", listId: "" } },
   unsubscribe: {},
+  split: { config: { percent: 50 } },
+  // Three days is how long most "did they buy" questions are worth waiting.
+  await: { delayMinutes: 4320, config: { event: "" } },
+  webhook: { config: { url: "" } },
 };
 
 /**
@@ -270,6 +306,14 @@ export async function addNode(
     await db.update(automation).set({ entryNodeId: id }).where(eq(automation.id, automationId));
   }
 
+  // The secret a webhook box signs with, made the first time one is needed.
+  if (input.kind === "webhook" && !row.webhookSecret) {
+    await db
+      .update(automation)
+      .set({ webhookSecret: makeWebhookSecret() })
+      .where(eq(automation.id, automationId));
+  }
+
   return id;
 }
 
@@ -315,27 +359,71 @@ export async function updateNode(
     return;
   }
 
+  let config = input.config;
+  if (config && node.kind === "await") {
+    // Normalised the way an arriving event is, or the two would never meet.
+    config = { ...config, event: config.event ? normaliseEventName(config.event) : "" };
+  }
+  if (config && node.kind === "webhook" && config.url?.trim()) {
+    const checked = checkWebhookUrl(config.url);
+    if (!checked.ok) throw new Error(checked.reason);
+    config = { ...config, url: checked.url.toString() };
+  }
+  if (config && node.kind === "split") {
+    const share = Math.round(Number(config.percent ?? 50));
+    config = { ...config, percent: Number.isFinite(share) ? Math.min(99, Math.max(1, share)) : 50 };
+  }
+
   // Same rule as everywhere else: a design decides the body, compiled here so
   // the canvas and what goes out cannot disagree.
   const body = input.design
     ? { html: renderDesign(input.design, env.appUrl), text: designToText(input.design) }
     : { html: input.html, text: input.text };
 
+  const delayMinutes =
+    input.delayMinutes === undefined
+      ? node.delayMinutes
+      : Math.max(node.kind === "await" ? 1 : 0, Math.round(input.delayMinutes));
+  const waitUntil = input.waitUntil === undefined ? node.waitUntil : input.waitUntil;
+
   await db
     .update(automationNode)
     .set({
       subject: input.subject?.trim() || node.subject,
-      delayMinutes:
-        input.delayMinutes === undefined
-          ? node.delayMinutes
-          : Math.max(0, Math.round(input.delayMinutes)),
-      waitUntil: input.waitUntil === undefined ? node.waitUntil : input.waitUntil,
-      config: input.config === undefined ? node.config : input.config,
+      delayMinutes,
+      waitUntil,
+      config: config === undefined ? node.config : config,
       html: body.html === undefined ? node.html : (body.html ?? null),
       text: body.text === undefined ? node.text : (body.text ?? null),
       design: input.design === undefined ? node.design : input.design,
     })
     .where(eq(automationNode.id, nodeId));
+
+  /*
+   * People already sitting on the box follow the new setting.
+   *
+   * Otherwise changing "wait 3 days" to "wait 1 day" only reaches the people
+   * who arrive afterwards, and the ones who were already waiting sit out the
+   * old length — which is not what anybody means by changing it.
+   */
+  const timing = input.delayMinutes !== undefined || input.waitUntil !== undefined;
+  if (timing && (node.kind === "wait" || node.kind === "await")) {
+    await db
+      .update(automationRun)
+      .set({
+        nextAt:
+          node.kind === "wait" && waitUntil
+            ? waitUntil
+            : sql`${automationRun.parkedAt} + make_interval(mins => ${delayMinutes})`,
+      })
+      .where(
+        and(
+          eq(automationRun.nodeId, nodeId),
+          eq(automationRun.status, "active"),
+          sql`${automationRun.parkedAt} is not null`,
+        ),
+      );
+  }
 }
 
 /**
@@ -352,7 +440,7 @@ export async function removeNode(orgId: string, nodeId: string) {
   if (!node) return;
 
   const doomed =
-    node.kind === "condition" && node.nextElse
+    forks(node.kind) && node.nextElse
       ? await descendants(node.automationId, node.nextElse)
       : new Set<string>();
 
@@ -380,7 +468,7 @@ export async function removeNode(orgId: string, nodeId: string) {
    */
   await db
     .update(automationRun)
-    .set({ nodeId: node.next, nextAt: new Date() })
+    .set({ nodeId: node.next, nextAt: new Date(), parkedAt: null, attempts: 0 })
     .where(eq(automationRun.nodeId, nodeId));
 
   await db.delete(automationNode).where(eq(automationNode.id, nodeId));
@@ -565,4 +653,260 @@ export async function automationsView(
       finished: mine.find((entry) => entry.status === "done")?.howMany ?? 0,
     };
   });
+}
+
+/* -------------------------------------------------------------------------- */
+/* Copying one                                                                */
+/* -------------------------------------------------------------------------- */
+
+/**
+ * A second automation with the same canvas, as a draft.
+ *
+ * Nobody from the first one comes along: the copy is somewhere to change
+ * one thing and try it, and a copy that started life with people already in
+ * it would be sending before anybody had looked at it.
+ */
+export async function duplicateAutomation(orgId: string, id: string) {
+  const original = await findAutomation(orgId, id);
+  if (!original) throw new Error("No such automation");
+
+  const copyId = newId("aut");
+  await db.insert(automation).values({
+    id: copyId,
+    organizationId: orgId,
+    name: `${original.name} (copy)`,
+    listId: original.listId,
+    mailboxId: original.mailboxId,
+    trigger: original.trigger,
+    eventName: original.eventName,
+    segmentId: original.segmentId,
+    exitSegmentId: original.exitSegmentId,
+    exitEventName: original.exitEventName,
+    sendWindow: original.sendWindow,
+    // A secret of its own: a receiver that trusts one flow has not agreed to
+    // trust every copy of it.
+    webhookSecret: original.webhookSecret ? makeWebhookSecret() : null,
+    status: "draft",
+  });
+
+  if (original.nodes.length === 0) return copyId;
+
+  /*
+   * Every box gets a new id, and every arrow is pointed at the new ids.
+   * Inserted with no arrows first, because an arrow may point at a box that
+   * is further down the list and does not exist yet.
+   */
+  const renamed = new Map(original.nodes.map((node) => [node.id, newId("atn")]));
+  const moved = (from: string | null) => (from ? (renamed.get(from) ?? null) : null);
+
+  await db.insert(automationNode).values(
+    original.nodes.map((node) => ({
+      id: renamed.get(node.id) as string,
+      automationId: copyId,
+      kind: node.kind,
+      subject: node.subject,
+      html: node.html,
+      text: node.text,
+      design: node.design,
+      delayMinutes: node.delayMinutes,
+      waitUntil: node.waitUntil,
+      config: node.config,
+      createdAt: node.createdAt,
+    })),
+  );
+  for (const node of original.nodes) {
+    if (!node.next && !node.nextElse) continue;
+    await db
+      .update(automationNode)
+      .set({ next: moved(node.next), nextElse: moved(node.nextElse) })
+      .where(eq(automationNode.id, renamed.get(node.id) as string));
+  }
+  await db
+    .update(automation)
+    .set({ entryNodeId: moved(original.entryNodeId) })
+    .where(eq(automation.id, copyId));
+
+  return copyId;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Who is in it                                                               */
+/* -------------------------------------------------------------------------- */
+
+/** How many people are on each box right now, by node id. */
+export async function stepPositions(orgId: string, automationId: string) {
+  const rows = await db
+    .select({ nodeId: automationRun.nodeId, howMany: count() })
+    .from(automationRun)
+    .where(
+      and(
+        eq(automationRun.organizationId, orgId),
+        eq(automationRun.automationId, automationId),
+        eq(automationRun.status, "active"),
+      ),
+    )
+    .groupBy(automationRun.nodeId);
+
+  const out: Record<string, number> = {};
+  for (const row of rows) if (row.nodeId) out[row.nodeId] = row.howMany;
+  return out;
+}
+
+export interface PersonInFlow {
+  runId: string;
+  memberId: string;
+  address: string;
+  name: string | null;
+  status: "active" | "done" | "stopped";
+  nodeId: string | null;
+  /** When the box they are on is due. Only meaningful while active. */
+  nextAt: Date;
+  /** True while they are sitting on a wait rather than due to do something. */
+  parked: boolean;
+  attempts: number;
+  /** Why they stopped, or what went wrong on the last try. */
+  reason: string | null;
+  startedAt: Date;
+  sends: {
+    nodeId: string | null;
+    subject: string | null;
+    sentAt: Date;
+    opened: boolean;
+    clicked: boolean;
+  }[];
+}
+
+export const PEOPLE_PAGE = 50;
+
+/**
+ * The people in a flow, newest first, with what it has sent each of them.
+ *
+ * The count on the canvas says how many; this says who, and why somebody
+ * stopped — the question after "why did they not get the second email".
+ */
+export async function automationPeople(
+  orgId: string,
+  automationId: string,
+  filter: {
+    status?: "active" | "done" | "stopped";
+    nodeId?: string;
+    search?: string;
+    page?: number;
+  },
+): Promise<{ people: PersonInFlow[]; total: number; counts: Record<string, number> }> {
+  const where = and(
+    eq(automationRun.organizationId, orgId),
+    eq(automationRun.automationId, automationId),
+    filter.status ? eq(automationRun.status, filter.status) : undefined,
+    filter.nodeId ? eq(automationRun.nodeId, filter.nodeId) : undefined,
+    filter.search?.trim() ? ilike(listMember.address, `%${filter.search.trim()}%`) : undefined,
+  );
+  const page = Math.max(0, filter.page ?? 0);
+
+  const [rows, [total], byStatus] = await Promise.all([
+    db
+      .select({
+        runId: automationRun.id,
+        memberId: listMember.id,
+        address: listMember.address,
+        name: listMember.name,
+        status: automationRun.status,
+        nodeId: automationRun.nodeId,
+        nextAt: automationRun.nextAt,
+        parkedAt: automationRun.parkedAt,
+        attempts: automationRun.attempts,
+        reason: automationRun.stoppedReason,
+        startedAt: automationRun.createdAt,
+      })
+      .from(automationRun)
+      .innerJoin(listMember, eq(listMember.id, automationRun.listMemberId))
+      .where(where)
+      .orderBy(desc(automationRun.createdAt))
+      .limit(PEOPLE_PAGE)
+      .offset(page * PEOPLE_PAGE),
+    db
+      .select({ howMany: count() })
+      .from(automationRun)
+      .innerJoin(listMember, eq(listMember.id, automationRun.listMemberId))
+      .where(where),
+    db
+      .select({ status: automationRun.status, howMany: count() })
+      .from(automationRun)
+      .where(
+        and(eq(automationRun.organizationId, orgId), eq(automationRun.automationId, automationId)),
+      )
+      .groupBy(automationRun.status),
+  ]);
+
+  const sends =
+    rows.length === 0
+      ? []
+      : await db
+          .select({
+            memberId: automationSend.listMemberId,
+            nodeId: automationSend.nodeId,
+            subject: automationSend.subject,
+            sentAt: automationSend.sentAt,
+            openedAt: automationSend.openedAt,
+            clickedAt: automationSend.clickedAt,
+          })
+          .from(automationSend)
+          .where(
+            and(
+              eq(automationSend.automationId, automationId),
+              inArray(
+                automationSend.listMemberId,
+                rows.map((row) => row.memberId),
+              ),
+            ),
+          )
+          .orderBy(asc(automationSend.sentAt));
+
+  return {
+    people: rows.map((row) => ({
+      runId: row.runId,
+      memberId: row.memberId,
+      address: row.address,
+      name: row.name,
+      status: row.status,
+      nodeId: row.nodeId,
+      nextAt: row.nextAt,
+      parked: row.parkedAt !== null,
+      attempts: row.attempts,
+      reason: row.reason,
+      startedAt: row.startedAt,
+      sends: sends
+        .filter((send) => send.memberId === row.memberId)
+        .map((send) => ({
+          nodeId: send.nodeId,
+          subject: send.subject,
+          sentAt: send.sentAt,
+          opened: send.openedAt !== null,
+          clicked: send.clickedAt !== null,
+        })),
+    })),
+    total: total?.howMany ?? 0,
+    counts: Object.fromEntries(byStatus.map((row) => [row.status, row.howMany])),
+  };
+}
+
+/**
+ * Takes one person out of a flow by hand.
+ *
+ * Marked stopped rather than deleted, the same as every other way out, so
+ * the record of how far they got survives — and so a joining trigger does
+ * not see them as new and put them straight back in.
+ */
+export async function stopRun(orgId: string, automationId: string, runId: string) {
+  await db
+    .update(automationRun)
+    .set({ status: "stopped", stoppedReason: "Taken out by hand", parkedAt: null })
+    .where(
+      and(
+        eq(automationRun.id, runId),
+        eq(automationRun.organizationId, orgId),
+        eq(automationRun.automationId, automationId),
+        eq(automationRun.status, "active"),
+      ),
+    );
 }

@@ -44,6 +44,35 @@ export const GAP_Y = 62;
 /** The trigger card sits above the first node and is not part of the graph. */
 export const TRIGGER_ID = "__trigger";
 
+/**
+ * Boxes with two ways out.
+ *
+ * A condition answers yes or no, a split sends a share of people each way,
+ * and a wait for an event goes one way when it arrives and the other when
+ * it does not. The canvas, the layout and deleting all treat the three the
+ * same: the second way out is `nextElse`.
+ */
+export function forks(kind: AutomationNodeKind) {
+  return kind === "condition" || kind === "split" || kind === "await";
+}
+
+/** What the two ways out of a forking box are called on the canvas. */
+export function branchLabels(node: Pick<FlowNode, "kind" | "config">): [string, string] {
+  if (node.kind === "split") {
+    const share = splitShare(node.config);
+    return [`A · ${share}%`, `B · ${100 - share}%`];
+  }
+  if (node.kind === "await") return ["Arrived", "Timed out"];
+  return ["Yes", "No"];
+}
+
+/** The share that goes down a split's first way, kept between 1 and 99. */
+export function splitShare(config: NodeConfig) {
+  const raw = Number(config.percent ?? 50);
+  if (!Number.isFinite(raw)) return 50;
+  return Math.min(99, Math.max(1, Math.round(raw)));
+}
+
 export interface Placed {
   id: string;
   x: number;
@@ -77,7 +106,7 @@ function spread(id: string | null, by: Map<string, FlowNode>, seen: Set<string>)
   const node = by.get(id);
   if (!node) return 1;
 
-  if (node.kind === "condition") {
+  if (forks(node.kind)) {
     // Both ways out get room, including the empty one — the "+" that adds to
     // it has to be somewhere, and a branch that appears only once it is used
     // is a branch nobody discovers.
@@ -120,7 +149,7 @@ export function layout(nodes: FlowNode[], entryId: string | null): Layout {
 
     const y = depth * row;
 
-    if (node.kind === "condition") {
+    if (forks(node.kind)) {
       const yesWide = spread(node.next, by, new Set());
       const yesCentre = place(node.next, left, depth + 1);
       const noCentre = place(node.nextElse, left + yesWide * column, depth + 1);
@@ -307,6 +336,29 @@ export function summarise(node: FlowNode, names?: FlowNames): { title: string; n
     }
     case "unsubscribe":
       return { title: "Off the list", note: "Their journey ends here" };
+    case "split": {
+      const share = splitShare(node.config);
+      return { title: `${share}% / ${100 - share}%`, note: "Chosen at random, for a test" };
+    }
+    case "await": {
+      const event = node.config.event?.trim();
+      if (!event) return { title: "Pick an event", note: "Nothing set yet" };
+      return {
+        title: `Wait for ${event}`,
+        note: `Up to ${humanDelay(Math.max(1, node.delayMinutes))}`,
+      };
+    }
+    case "webhook": {
+      const url = node.config.url?.trim();
+      if (!url) return { title: "Pick a URL", note: "Nothing set yet" };
+      let host = url;
+      try {
+        host = new URL(url).host;
+      } catch {
+        // Shown as typed: the inspector is where it gets corrected.
+      }
+      return { title: `Call ${host}`, note: "POST, signed" };
+    }
     default:
       return { title: "" };
   }
@@ -398,4 +450,59 @@ export function humanDelay(minutes: number) {
   }
   const days = Math.round((minutes / 1440) * 10) / 10;
   return `${days} ${days === 1 ? "day" : "days"}`;
+}
+
+/**
+ * What is wrong with a flow that will not stop it being switched on.
+ *
+ * Each of these runs without complaint and does something nobody meant, so
+ * the canvas has to say so before the numbers do a week later.
+ */
+export function flowWarnings(nodes: FlowNode[]): Record<string, string> {
+  const by = new Map(nodes.map((node) => [node.id, node]));
+  const parent = new Map<string, string>();
+  for (const node of nodes) {
+    if (node.next) parent.set(node.next, node.id);
+    if (node.nextElse) parent.set(node.nextElse, node.id);
+  }
+
+  const out: Record<string, string> = {};
+  for (const node of nodes) {
+    if (node.kind === "email" && node.empty) out[node.id] = "Nothing written yet";
+    if (node.kind === "await" && !node.config.event?.trim()) out[node.id] = "Pick an event";
+    if (node.kind === "webhook" && !node.config.url?.trim()) out[node.id] = "Pick a URL";
+
+    const test = node.config.test ?? "opened";
+    if (node.kind !== "condition" || (test !== "opened" && test !== "clicked")) continue;
+
+    /*
+     * Asked about the last email, so what matters is what lies between that
+     * email and this box. With no time in between, nobody has had a chance
+     * to open it and the answer is always no.
+     */
+    let at = parent.get(node.id);
+    let waited = false;
+    const seen = new Set<string>();
+    while (at && !seen.has(at)) {
+      seen.add(at);
+      const above = by.get(at);
+      if (!above) break;
+      if (above.kind === "email") break;
+      if (
+        (above.kind === "wait" && (above.waitUntil || above.delayMinutes > 0)) ||
+        above.kind === "await"
+      ) {
+        waited = true;
+      }
+      at = parent.get(at);
+    }
+
+    const found = at ? by.get(at) : undefined;
+    if (!found || found.kind !== "email") {
+      out[node.id] = "Nothing is sent before this, so it is always no";
+    } else if (!waited) {
+      out[node.id] = "No time to open it yet. Put a Wait before this";
+    }
+  }
+  return out;
 }

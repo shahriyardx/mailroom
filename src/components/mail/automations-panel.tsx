@@ -25,9 +25,13 @@ import {
   SelectValue,
 } from "@/components/kit";
 import { AddressField } from "@/components/mail/address-field";
-import { createAutomationAction, removeAutomationAction } from "@/server/actions";
+import {
+  createAutomationAction,
+  duplicateAutomationAction,
+  removeAutomationAction,
+} from "@/server/actions";
 import type { AutomationRow } from "@/server/automations";
-import { Plus, Trash2, Workflow } from "lucide-react";
+import { CopyPlus, Plus, Trash2, Workflow } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
@@ -68,6 +72,23 @@ export function AutomationsPanel({
   const [removing, setRemoving] = useState<AutomationRow | null>(null);
   const [busy, setBusy] = useState(false);
   const [draft, setDraft] = useState({ name: "", mailboxId: "" });
+  /** Which row is being copied, so only its own button waits. */
+  const [copying, setCopying] = useState<string | null>(null);
+
+  /* A copy opens straight away: changing it is the reason it was made. */
+  async function duplicate(row: AutomationRow) {
+    setCopying(row.id);
+    try {
+      const made = await duplicateAutomationAction(row.id);
+      if (!made.ok) throw new Error(made.error);
+      toast.success(`Copied ${row.name}`);
+      router.push(`/campaigns/automations/${made.id}`);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Could not copy it");
+    } finally {
+      setCopying(null);
+    }
+  }
 
   async function create() {
     setBusy(true);
@@ -208,14 +229,22 @@ export function AutomationsPanel({
                   <br />
                   {row.finished} finished
                 </span>
-                <IconButton
-                  variant="danger"
-                  label={`Delete ${row.name}`}
-                  className="relative z-10"
-                  onClick={() => setRemoving(row)}
-                >
-                  <Trash2 />
-                </IconButton>
+                <span className="relative z-10 flex shrink-0 items-center gap-0.5">
+                  <IconButton
+                    label={`Duplicate ${row.name}`}
+                    disabled={copying === row.id}
+                    onClick={() => duplicate(row)}
+                  >
+                    <CopyPlus />
+                  </IconButton>
+                  <IconButton
+                    variant="danger"
+                    label={`Delete ${row.name}`}
+                    onClick={() => setRemoving(row)}
+                  >
+                    <Trash2 />
+                  </IconButton>
+                </span>
               </ListRow>
             );
           })}

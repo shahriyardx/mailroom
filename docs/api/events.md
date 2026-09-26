@@ -60,8 +60,15 @@ what they were for.
 { "stopped": [{ "id": "aut_…", "name": "Cart recovery" }] }
 ```
 
-An event can be both — starting one flow and ending another — which is
-exactly what `order.placed` does.
+And `resumed`: flows where this person was sitting on a **Wait for an event**
+box for this name. They move on down its *arrived* side straight away.
+
+```json
+{ "resumed": [{ "id": "aut_…", "name": "After checkout" }] }
+```
+
+An event can do all three — starting one flow, ending another and waking a
+third — which is exactly what `order.placed` does.
 
 `matched: 0` means nothing was listening — no automation is switched on for
 that name. The event is still recorded.

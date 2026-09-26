@@ -1667,6 +1667,19 @@ export const automation = pgTable(
      * this to fail.
      */
     segmentId: text("segment_id").references(() => segment.id, { onDelete: "set null" }),
+    /**
+     * When its email may go out. Null means any time.
+     *
+     * Somebody who reaches an email box at three in the morning waits for the
+     * window to open instead. Waits, conditions and the rest are not held:
+     * only mail landing in an inbox has a time of day that matters.
+     */
+    sendWindow: jsonb("send_window").$type<SendWindow>(),
+    /**
+     * Signs the calls its webhook boxes make, so the receiver can tell they
+     * came from here. Made the first time a webhook box is added.
+     */
+    webhookSecret: text("webhook_secret"),
     status: automationStatusEnum("status").notNull().default("draft"),
     /** Where the flow starts. Null on a canvas nobody has put anything on yet. */
     entryNodeId: text("entry_node_id"),
@@ -1723,6 +1736,9 @@ export const automationNodeKindEnum = pgEnum("automation_node_kind", [
   "tag",
   "move",
   "unsubscribe",
+  "split",
+  "await",
+  "webhook",
 ]);
 
 /**
@@ -1751,6 +1767,27 @@ export interface NodeConfig {
   listAction?: "copy" | "move";
   /** move: where they go. */
   listId?: string;
+  /** split: the share, out of 100, that goes down the first way. */
+  percent?: number;
+  /** await: which event lets them on down the first way. */
+  event?: string;
+  /** webhook: where the call goes. */
+  url?: string;
+}
+
+/**
+ * The hours an automation may send in, or null for any time.
+ *
+ * `from` and `to` are whole hours on a 24-hour clock in `timeZone`; `to` is
+ * where the window closes, so 9 to 17 means nine in the morning until five.
+ * A `from` later than `to` runs over midnight. `days` uses the JavaScript
+ * numbering: 0 is Sunday.
+ */
+export interface SendWindow {
+  from: number;
+  to: number;
+  days: number[];
+  timeZone: string;
 }
 
 /**
@@ -1894,12 +1931,25 @@ export const automationRun = pgTable(
     /** When that step is due. The runner's only filter. */
     nextAt: timestamp("next_at", { withTimezone: true }).notNull(),
     lastSentAt: timestamp("last_sent_at", { withTimezone: true }),
+    /**
+     * Set while the run sits on a box that holds people — a wait, or a wait
+     * for an event — and null while it is only due to do something.
+     *
+     * The same row can be due for two different reasons. On a wait box,
+     * "due" means the wait is over; before it, it means they have just
+     * arrived. This says which, so the box can count who is sitting on it.
+     */
+    parkedAt: timestamp("parked_at", { withTimezone: true }),
+    /** Failed tries at the box it is on. Back to zero once one works. */
+    attempts: integer("attempts").notNull().default(0),
     stoppedReason: text("stopped_reason"),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => [
     uniqueIndex("automation_run_unique_idx").on(t.automationId, t.listMemberId),
     index("automation_run_due_idx").on(t.status, t.nextAt),
+    // What an arriving event looks up: who is waiting on which box.
+    index("automation_run_node_idx").on(t.nodeId, t.status),
   ],
 );
 

@@ -3,6 +3,7 @@ import { db } from "@/db";
 import {
   type CustomEvent,
   automation,
+  automationNode,
   automationRun,
   customEvent,
   listMember,
@@ -159,6 +160,8 @@ export interface EventReceipt {
   matched: EventOutcome[];
   /** Runs this event ended, because it was what they were waiting for. */
   stopped: { automationId: string; automation: string }[];
+  /** Runs sitting on a "wait for this event" box, now moved on. */
+  resumed: { automationId: string; automation: string }[];
 }
 
 export interface EventInput {
@@ -246,6 +249,7 @@ export async function emitEvent(orgId: string, input: EventInput): Promise<Event
    * emails too many.
    */
   const stopped = await stopOnEvent(orgId, name, address);
+  const resumed = await resumeWaiting(orgId, name, address);
 
   const matched: EventOutcome[] = [];
 
@@ -264,7 +268,50 @@ export async function emitEvent(orgId: string, input: EventInput): Promise<Event
     matched.push({ automationId: job.id, automation: job.name, ...outcome });
   }
 
-  return { event: name, declared: known?.declared ?? false, matched, stopped };
+  return { event: name, declared: known?.declared ?? false, matched, stopped, resumed };
+}
+
+/**
+ * Moves on whoever was waiting for this event, down the "arrived" way.
+ *
+ * Only runs sitting on the box — parked, in a flow that is switched on.
+ * Somebody who has not reached it yet is not waiting for anything, and the
+ * event is not saved up for them: a wait asks whether it happens while they
+ * are there.
+ */
+async function resumeWaiting(orgId: string, name: string, address: string) {
+  const waiting = await db
+    .select({
+      runId: automationRun.id,
+      automationId: automation.id,
+      automation: automation.name,
+      next: automationNode.next,
+    })
+    .from(automationRun)
+    .innerJoin(automationNode, eq(automationNode.id, automationRun.nodeId))
+    .innerJoin(automation, eq(automation.id, automationRun.automationId))
+    .innerJoin(listMember, eq(listMember.id, automationRun.listMemberId))
+    .where(
+      and(
+        eq(automationRun.organizationId, orgId),
+        eq(automationRun.status, "active"),
+        sql`${automationRun.parkedAt} is not null`,
+        eq(automationNode.kind, "await"),
+        sql`${automationNode.config}->>'event' = ${name}`,
+        eq(automation.status, "active"),
+        eq(listMember.address, address),
+      ),
+    );
+
+  for (const run of waiting) {
+    // Due now, on the box after. With nothing after, the runner finishes it.
+    await db
+      .update(automationRun)
+      .set({ nodeId: run.next, parkedAt: null, attempts: 0, nextAt: new Date() })
+      .where(eq(automationRun.id, run.runId));
+  }
+
+  return waiting.map((run) => ({ automationId: run.automationId, automation: run.automation }));
 }
 
 /**
