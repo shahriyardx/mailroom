@@ -20,9 +20,21 @@ The first covers a welcome series. The second covers everything else a
 product wants to say, because only the product knows it happened: a trial
 ending, an order shipping, a card being declined.
 
-Both kinds name a list. For a joining trigger it is the list to watch; for an
-event it is where those people live, which is what unsubscribe links and
+Both kinds can name a list. For a joining trigger it is the list to watch; for
+an event it is where those people live, which is what unsubscribe links and
 merge fields are read from.
+
+Leave the list empty and it means **any list**:
+
+| Trigger | With no list |
+| --- | --- |
+| **Somebody joins a list** | Anybody who joins any list. Once per person — joining a second list does not start it again |
+| **An event you post** | The person can be on any list. Somebody on no list is skipped, and `consent_source` cannot add them, because there is no list to add them to |
+
+The list they joined — or, for an event, the one they joined most recently —
+is where their unsubscribe link and merge fields come from. Segments belong to
+one list, so they are only offered once a list is picked. Only somebody who can
+send to every list can switch on a flow with no list.
 
 Either kind can be narrowed to a **segment** — *only if they match* on the
 trigger card. The rules are asked at the moment somebody would be put in, so
@@ -31,8 +43,7 @@ on the day the segment was written. An event for somebody outside the segment
 comes back `skipped`, naming the segment.
 
 ::: warning You cannot switch one on until the trigger is answered
-A half-answered trigger — an event flow with no event, either kind with no
-list — leaves the **Switch on** button disabled and the trigger card marked in
+A half-answered trigger — an event flow with no event — leaves the **Switch on** button disabled and the trigger card marked in
 amber. It is the one thing that cannot be discovered later, because "nothing
 happened" looks the same either way.
 :::

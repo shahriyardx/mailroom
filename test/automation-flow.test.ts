@@ -211,9 +211,14 @@ describe("what the trigger card says", () => {
     // A card reading "Event received" with nothing under it is how somebody
     // finds out at switch-on time that they never picked the event.
     assert.ok(describeTrigger("event", "Newsletter", null).warn);
-    assert.ok(describeTrigger("event", null, "trial.ended").warn);
-    assert.ok(describeTrigger("subscribed", null, null).warn);
     assert.ok(describeTrigger(null, "Newsletter", null).warn);
+  });
+
+  it("reads no list as any list, not as something missing", () => {
+    const joins = describeTrigger("subscribed", null, null);
+    assert.ok(!joins.warn);
+    assert.equal(joins.note, "Any list");
+    assert.ok(!describeTrigger("event", null, "trial.ended").warn);
   });
 
   it("says who posts it once both halves are answered", () => {

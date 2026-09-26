@@ -105,23 +105,31 @@ async function enrol(): Promise<number> {
   let made = 0;
 
   for (const job of live) {
-    if (!job.entryNodeId || !job.listId) continue;
+    if (!job.entryNodeId) continue;
 
     /*
      * A narrowing is asked here, at the moment somebody would be enrolled,
      * rather than kept as a membership somewhere. A flow for "people on the
      * pro plan" is then right on the day it runs.
      */
-    const narrowing = job.segmentId
-      ? await db.query.segment.findFirst({ where: eq(segment.id, job.segmentId) })
-      : null;
+    const narrowing =
+      job.segmentId && job.listId
+        ? await db.query.segment.findFirst({ where: eq(segment.id, job.segmentId) })
+        : null;
 
-    const fresh = await db
-      .select({ id: listMember.id })
+    const found = await db
+      .select({ id: listMember.id, address: listMember.address })
       .from(listMember)
       .where(
         and(
-          eq(listMember.listId, job.listId),
+          /*
+           * No list means any list: whoever joins any list in the account.
+           * The row they joined with is the one the run follows, so the
+           * unsubscribe link and the merge fields are that list's.
+           */
+          job.listId
+            ? eq(listMember.listId, job.listId)
+            : eq(listMember.organizationId, job.organizationId),
           eq(listMember.status, "subscribed"),
           narrowing ? segmentCondition(narrowing) : undefined,
           /*
@@ -130,15 +138,35 @@ async function enrol(): Promise<number> {
            * type it should be, and postgres-js refuses it outright.
            */
           sql`coalesce(${listMember.consentAt}, ${listMember.createdAt}) >= ${job.createdAt.toISOString()}::timestamptz`,
-          sql`not exists (
-            select 1 from automation_run
-            where automation_run.automation_id = ${job.id}
-              and automation_run.list_member_id = ${listMember.id}
-          )`,
+          job.listId
+            ? sql`not exists (
+                select 1 from automation_run
+                where automation_run.automation_id = ${job.id}
+                  and automation_run.list_member_id = ${listMember.id}
+              )`
+            : /*
+               * Once per person, not once per list. Somebody who joins three
+               * lists is one person, and a welcome series sent three times
+               * is the thing this must never do.
+               */
+              sql`not exists (
+                select 1 from automation_run
+                join list_member as enrolled on enrolled.id = automation_run.list_member_id
+                where automation_run.automation_id = ${job.id}
+                  and enrolled.address = ${listMember.address}
+              )`,
         ),
       )
+      .orderBy(asc(listMember.createdAt))
       .limit(500);
 
+    // Two lists joined in the same breath are still one person.
+    const seen = new Set<string>();
+    const fresh = found.filter((person) => {
+      if (seen.has(person.address)) return false;
+      seen.add(person.address);
+      return true;
+    });
     if (fresh.length === 0) continue;
 
     await db
@@ -459,6 +487,7 @@ export async function runAutomationsOnce(): Promise<AutomationPass> {
         status: listMember.status,
         fields: listMember.fields,
         tags: listMember.tags,
+        listId: listMember.listId,
       })
       .from(listMember)
       .where(
@@ -499,6 +528,8 @@ async function advance(
         status: string;
         fields: Record<string, string>;
         tags: string[];
+        /** The list this run follows: the flow's own, or the one they joined. */
+        listId: string;
       }
     | undefined,
   memory: PassMemory,
@@ -692,7 +723,7 @@ async function advance(
       const target = node.config.listId;
       const moving = node.config.listAction === "move";
 
-      if (target && target !== job.listId) {
+      if (target && target !== member.listId) {
         /*
          * Everything about them comes along: the name to address them by,
          * the fields a later subject merges, the tags a later segment asks
@@ -940,12 +971,15 @@ export async function simulateRun(
   if (!row) throw new Error("No such automation");
 
   const address = input.address.trim().toLowerCase();
-  const found = row.listId
-    ? await db.query.listMember.findFirst({
-        where: and(eq(listMember.listId, row.listId), eq(listMember.address, address)),
-        columns: { id: true, address: true, fields: true, tags: true, status: true },
-      })
-    : undefined;
+  // With no list, whichever list they joined most recently.
+  const found = await db.query.listMember.findFirst({
+    where: and(
+      row.listId ? eq(listMember.listId, row.listId) : eq(listMember.organizationId, orgId),
+      eq(listMember.address, address),
+    ),
+    orderBy: desc(listMember.createdAt),
+    columns: { id: true, address: true, fields: true, tags: true, status: true },
+  });
 
   const memory = new PassMemory();
   const person: Person = found
@@ -953,8 +987,11 @@ export async function simulateRun(
     : { id: "", address, fields: {}, tags: [] };
 
   const notes: string[] = [];
-  if (!found) notes.push("Not on the list, so treated as somebody new with no fields or tags.");
-  else if (found.status !== "subscribed")
+  if (!found) {
+    notes.push(
+      `Not on ${row.listId ? "the list" : "any list"}, so treated as somebody new with no fields or tags.`,
+    );
+  } else if (found.status !== "subscribed")
     notes.push(`They are ${found.status}, so a real run would not start.`);
 
   if (found && row.segmentId) {

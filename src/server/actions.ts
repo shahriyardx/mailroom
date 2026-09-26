@@ -4,6 +4,7 @@ import { db } from "@/db";
 import {
   type Folder,
   apiKey,
+  automation,
   domain as domainTable,
   filterRule,
   label,
@@ -44,6 +45,7 @@ import {
   assertCanSendBroadcast,
   assertCanSendToList,
   automationOfNode,
+  campaignReach,
   hasCampaignAccess,
   listOfMember,
   listOfSegment,
@@ -1966,6 +1968,22 @@ export async function updateAutomationAction(
   await assertCanRunAutomation(access, id);
   // Pointing it at another list needs the right to send to that one too.
   await assertCanSendToList(access, input.listId);
+  /*
+   * No list means every list, so a live one with no list needs the right to
+   * send to every list — or somebody allowed one list could reach them all.
+   */
+  const current = await db.query.automation.findFirst({
+    where: and(eq(automation.id, id), eq(automation.organizationId, access.orgId)),
+    columns: { listId: true, status: true },
+  });
+  const listAfter = input.listId === undefined ? current?.listId : input.listId;
+  const liveAfter = (input.status ?? current?.status) === "active";
+  if (!listAfter && liveAfter && !(await campaignReach(access)).everything) {
+    return {
+      ok: false as const,
+      error: "Pick a list first. Only somebody who can send to every list can run one on any list",
+    };
+  }
   try {
     await updateAutomation(access.orgId, id, input);
     revalidatePath("/campaigns/automations");

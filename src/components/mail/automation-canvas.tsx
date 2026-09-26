@@ -59,6 +59,7 @@ import {
   UserMinus,
   Users,
   Webhook,
+  X,
   Zap,
   ZoomIn,
   ZoomOut,
@@ -1110,27 +1111,45 @@ function TriggerInspector({
         <Field
           label={trigger === "event" ? "These people are on" : "The list"}
           hint={
-            trigger === "event"
-              ? "Where the person in the event lives. Unsubscribes and merge fields come from here."
-              : "Only people who join after you switch it on."
+            listId
+              ? trigger === "event"
+                ? "Where the person in the event lives. Unsubscribes and merge fields come from here."
+                : "Only people who join after you switch it on."
+              : trigger === "event"
+                ? "Left empty, the person can be on any list. Somebody on none is skipped."
+                : "Left empty, anybody who joins any list after you switch it on. Once per person."
           }
         >
-          <Select
-            value={listId ?? ""}
-            onValueChange={(value) => save({ listId: value })}
-            disabled={busy || live}
-          >
-            <SelectTrigger>
-              <SelectValue placeholder="Pick a list" />
-            </SelectTrigger>
-            <SelectContent>
-              {lists.map((row) => (
-                <SelectItem key={row.id} value={row.id}>
-                  {row.name} · {row.subscribed}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <span className="flex gap-2">
+            <Select
+              // Remounted when cleared, so the placeholder shows again.
+              key={listId ?? "any"}
+              value={listId ?? undefined}
+              onValueChange={(value) => save({ listId: value })}
+              disabled={busy || live}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Any list" />
+              </SelectTrigger>
+              <SelectContent>
+                {lists.map((row) => (
+                  <SelectItem key={row.id} value={row.id}>
+                    {row.name} · {row.subscribed}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {listId && (
+              <IconButton
+                label="Clear the list"
+                variant="outline"
+                disabled={busy || live}
+                onClick={() => save({ listId: null })}
+              >
+                <X />
+              </IconButton>
+            )}
+          </span>
         </Field>
 
         {/* Narrowing is offered for both triggers, and only once a list is
@@ -1184,9 +1203,15 @@ function TriggerInspector({
               {copied ? "Copied" : "Copy the call"}
             </Button>
             <Note>
-              An address nobody has heard of is skipped, not added — send{" "}
-              <code className="font-mono">consent_source</code> with it to put them on{" "}
-              {list?.name ?? "the list"} first.
+              {list ? (
+                <>
+                  An address nobody has heard of is skipped, not added — send{" "}
+                  <code className="font-mono">consent_source</code> with it to put them on{" "}
+                  {list.name} first.
+                </>
+              ) : (
+                "An address that is on no list is skipped. Pick a list to be able to add new people with consent_source."
+              )}
             </Note>
           </div>
         )}

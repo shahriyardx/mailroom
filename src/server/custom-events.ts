@@ -11,7 +11,7 @@ import {
   segment,
 } from "@/db/schema";
 import { newId } from "@/lib/utils";
-import { and, asc, eq, sql } from "drizzle-orm";
+import { and, asc, desc, eq, sql } from "drizzle-orm";
 import { subscribe } from "./campaigns";
 import { segmentCondition } from "./segments";
 
@@ -254,7 +254,7 @@ export async function emitEvent(orgId: string, input: EventInput): Promise<Event
   const matched: EventOutcome[] = [];
 
   for (const job of waiting) {
-    if (!job.listId || !job.entryNodeId) {
+    if (!job.entryNodeId) {
       matched.push({
         automationId: job.id,
         automation: job.name,
@@ -363,7 +363,8 @@ async function stopOnEvent(orgId: string, name: string, address: string) {
 interface Ready {
   id: string;
   name: string;
-  listId: string;
+  /** Null means any list: whichever list the person is already on. */
+  listId: string | null;
   segmentId: string | null;
   entryNodeId: string;
 }
@@ -373,12 +374,21 @@ async function startOne(
   job: Ready,
   input: EventInput & { address: string },
 ): Promise<{ status: EventOutcome["status"]; reason?: string }> {
-  let member = await db.query.listMember.findFirst({
-    where: and(eq(listMember.listId, job.listId), eq(listMember.address, input.address)),
-    columns: { id: true, status: true, fields: true },
-  });
+  let member = job.listId
+    ? await db.query.listMember.findFirst({
+        where: and(eq(listMember.listId, job.listId), eq(listMember.address, input.address)),
+        columns: { id: true, status: true, fields: true },
+      })
+    : await anyListMember(orgId, job.id, input.address);
 
   if (!member) {
+    /*
+     * With no list there is nowhere to add them, whatever consent came with
+     * the event. They have to be on a list already.
+     */
+    if (!job.listId) {
+      return { status: "skipped", reason: "Not on any list" };
+    }
     if (!input.consentSource) {
       const list = await db.query.mailingList.findFirst({
         where: eq(mailingList.id, job.listId),
@@ -485,6 +495,38 @@ async function startOne(
     nextAt: new Date(),
   });
   return { status: "started" };
+}
+
+/**
+ * Which of somebody's list rows an any-list flow follows.
+ *
+ * The one it already follows, if they have been through it, so a second
+ * event restarts that run instead of starting a second one beside it.
+ * Otherwise the list they joined most recently, among the ones they are
+ * still subscribed to.
+ */
+async function anyListMember(orgId: string, automationId: string, address: string) {
+  const rows = await db
+    .select({
+      id: listMember.id,
+      status: listMember.status,
+      fields: listMember.fields,
+      run: automationRun.id,
+    })
+    .from(listMember)
+    .leftJoin(
+      automationRun,
+      and(
+        eq(automationRun.listMemberId, listMember.id),
+        eq(automationRun.automationId, automationId),
+      ),
+    )
+    .where(and(eq(listMember.organizationId, orgId), eq(listMember.address, address)))
+    .orderBy(desc(listMember.createdAt));
+
+  const chosen =
+    rows.find((row) => row.run) ?? rows.find((row) => row.status === "subscribed") ?? rows[0];
+  return chosen ? { id: chosen.id, status: chosen.status, fields: chosen.fields } : undefined;
 }
 
 /** How many events have arrived, for the overview. */

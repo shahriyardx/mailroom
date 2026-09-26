@@ -183,7 +183,8 @@ export async function updateAutomation(
     if (!(input.mailboxId ?? row.mailboxId)) {
       throw new Error("Choose an address for this automation to send from first");
     }
-    if (!trigger || !listId) throw new Error("Choose what starts this automation first");
+    // No list is allowed: it means any list.
+    if (!trigger) throw new Error("Choose what starts this automation first");
     if (trigger === "event" && !eventName) throw new Error("Choose which event starts it");
     if (!row.entryNodeId) throw new Error("Put something on the canvas first");
   }

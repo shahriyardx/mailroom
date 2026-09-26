@@ -113,10 +113,10 @@ export function AutomationDetail({
             </>
           ) : (
             <>
-              Everybody who joins {listName ?? "the list"} from now on is put through this flow.
-              People already on the list are left alone — only new joiners are enrolled, so
-              switching on a welcome series does not welcome everybody who has been a subscriber for
-              two years.
+              Everybody who joins {listName ?? "any list"} from now on is put through this flow
+              {listName ? "" : ", once each"}. People already on {listName ? "the list" : "a list"}{" "}
+              are left alone — only new joiners are enrolled, so switching on a welcome series does
+              not welcome everybody who has been a subscriber for two years.
             </>
           )
         }
@@ -171,7 +171,7 @@ export function AutomationDetail({
           <span className={said.warn ? "text-warn" : undefined}>
             {automation.trigger === "event" ? "on " : ""}
             {said.title.toLowerCase()}
-            {automation.trigger !== "event" && listName ? ` ${listName}` : ""}
+            {automation.trigger === "subscribed" ? ` ${listName ?? "any list"}` : ""}
           </span>
           {automation.exitEventName || automation.exitSegmentId ? " · stops early" : ""}
           {running > 0 && (

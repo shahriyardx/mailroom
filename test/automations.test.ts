@@ -1258,3 +1258,54 @@ describe("a test run", () => {
     assert.equal(sesCalls.length, 0, "nothing was sent");
   });
 });
+
+describe("a flow with no list", () => {
+  it("enrols whoever joins any list, once per person", async () => {
+    const { addMembers, createList } = await import("@/server/campaigns");
+    const { addNode, createAutomation, updateAutomation } = await import("@/server/automations");
+    const { runAutomationsOnce } = await import("@/server/automation-runner");
+
+    const id = await createAutomation(account.orgId, { mailboxId: account.mailboxId, name: "Hi" });
+    await updateAutomation(account.orgId, id, { trigger: "subscribed" });
+    await addNode(account.orgId, id, { kind: "wait" });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    const news = await createList(account.orgId, "News");
+    const deals = await createList(account.orgId, "Deals");
+    await addMembers(account.orgId, news, [{ address: "ada@example.com" }], "signup form");
+    await addMembers(account.orgId, deals, [{ address: "ada@example.com" }], "signup form");
+    await addMembers(account.orgId, deals, [{ address: "bob@example.com" }], "signup form");
+    await runAutomationsOnce();
+    await runAutomationsOnce();
+
+    const runs = await runsOf(id);
+    assert.equal(runs.length, 2, "Ada joined two lists and is in it once");
+  });
+
+  it("starts from an event for somebody on any list, and skips somebody on none", async () => {
+    const { addMembers, createList } = await import("@/server/campaigns");
+    const { addNode, createAutomation, updateAutomation } = await import("@/server/automations");
+    const { emitEvent } = await import("@/server/custom-events");
+
+    const id = await createAutomation(account.orgId, { mailboxId: account.mailboxId, name: "Ev" });
+    await updateAutomation(account.orgId, id, { trigger: "event", eventName: "trial.ended" });
+    await addNode(account.orgId, id, { kind: "wait" });
+    await updateAutomation(account.orgId, id, { status: "active" });
+
+    const news = await createList(account.orgId, "News");
+    await addMembers(account.orgId, news, [{ address: "ada@example.com" }], "signup form");
+
+    const known = await emitEvent(account.orgId, {
+      name: "trial.ended",
+      address: "ada@example.com",
+    });
+    assert.equal(known.matched[0]?.status, "started");
+
+    const stranger = await emitEvent(account.orgId, {
+      name: "trial.ended",
+      address: "nobody@example.com",
+      consentSource: "checkout",
+    });
+    assert.equal(stranger.matched[0]?.status, "skipped");
+  });
+});

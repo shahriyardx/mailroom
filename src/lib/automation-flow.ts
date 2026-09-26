@@ -381,17 +381,16 @@ export function describeTrigger(
 
   // Named on the card when there is one: a flow that quietly runs for a
   // quarter of the list is the kind of surprise that is found in the numbers
-  // a week later.
-  const who = segmentName ? `${listName} · ${segmentName}` : listName;
+  // a week later. No list is not a gap: it means any list.
+  const list = listName ?? "Any list";
+  const who = segmentName ? `${list} · ${segmentName}` : list;
 
   if (trigger === "event") {
     if (!eventName) return { title: "An event arrives", note: "Pick which event", warn: true };
-    if (!listName) return { title: eventName, note: "Pick a list for these people", warn: true };
     return { title: eventName, note: `Your code posts it · ${who}` };
   }
 
-  if (!listName) return { title: "Somebody joins", note: "Pick a list", warn: true };
-  return { title: "Somebody joins", note: who ?? listName };
+  return { title: "Somebody joins", note: who };
 }
 
 /**

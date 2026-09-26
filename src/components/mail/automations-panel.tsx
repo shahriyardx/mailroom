@@ -42,7 +42,7 @@ function describeStart(row: AutomationRow) {
   if (!row.trigger) return "no trigger yet";
   const narrowed = row.segmentName ? `, ${row.segmentName} only` : "";
   if (row.trigger === "event") return `on ${row.eventName ?? "an event"}${narrowed}`;
-  return `joins ${row.listName ?? "a list"}${narrowed}`;
+  return `joins ${row.listName ?? "any list"}${narrowed}`;
 }
 
 const LOOK = {
