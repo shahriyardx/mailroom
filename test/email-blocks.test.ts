@@ -127,6 +127,28 @@ describe("reading a stored design back", () => {
     assert.equal(read?.theme.width, 600);
   });
 
+  it("gives an older callout a tint, taken from the row it used to paint", () => {
+    const read = readDesign({
+      version: 1,
+      blocks: [
+        {
+          id: "c1",
+          type: "callout",
+          html: "Heads up",
+          accent: "#2563eb",
+          icon: "",
+          align: "left",
+          style: { background: "#fef3c7", padding: [12, 24, 12, 24] },
+        },
+      ],
+    });
+
+    const callout = read?.blocks[0] as { tint: string; style: { background?: string } };
+    assert.equal(callout.tint, "#fef3c7");
+    assert.equal(callout.style.background, undefined, "the row is no longer painted");
+    assert.doesNotThrow(() => renderDesign(read!, "https://mail.example.com"));
+  });
+
   it("says nothing at all when there is nothing to read", () => {
     assert.equal(readDesign(null), null);
     assert.equal(readDesign("{}"), null);

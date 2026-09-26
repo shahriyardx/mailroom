@@ -670,6 +670,20 @@ function readBlock(value: unknown, depth = 0): Block | null {
     };
   }
 
+  // A callout painted its box with `style.background` before it had a tint of
+  // its own. That colour was meant for the box, so it moves there, and the
+  // row stops being painted edge to edge.
+  if (value.type === "callout" && typeof value.tint !== "string") {
+    const { background, ...style } = value.style ?? {};
+    return {
+      ...value,
+      tint: typeof background === "string" ? background : "",
+      accent: value.accent ?? "",
+      icon: value.icon ?? "",
+      style,
+    };
+  }
+
   if (value.type !== "columns") return value;
   if (depth > 0) return null;
 
