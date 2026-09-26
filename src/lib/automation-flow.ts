@@ -452,12 +452,46 @@ export function humanDelay(minutes: number) {
 }
 
 /**
+ * One problem with one box: a few words that fit on the card, and the whole
+ * explanation for the pane beside it.
+ */
+export interface FlowWarning {
+  note: string;
+  detail: string;
+}
+
+const WARNINGS = {
+  empty: {
+    note: "Nothing written yet",
+    detail: "An empty email still goes out — blank — so this one needs writing first.",
+  },
+  event: {
+    note: "Pick an event",
+    detail: "With no event nothing can arrive, so everybody takes the Timed out side.",
+  },
+  url: {
+    note: "Pick a URL",
+    detail: "With no URL the call fails every time, and people stop here after five tries.",
+  },
+  noEmail: {
+    note: "No email before this",
+    detail:
+      "Nothing is sent before this box, so there is nothing to open and the answer is always no.",
+  },
+  noWait: {
+    note: "Add a Wait before this",
+    detail:
+      "It comes straight after the email, so nobody has had time to open it and the answer is almost always no. Put a Wait between them.",
+  },
+} satisfies Record<string, FlowWarning>;
+
+/**
  * What is wrong with a flow that will not stop it being switched on.
  *
  * Each of these runs without complaint and does something nobody meant, so
  * the canvas has to say so before the numbers do a week later.
  */
-export function flowWarnings(nodes: FlowNode[]): Record<string, string> {
+export function flowWarnings(nodes: FlowNode[]): Record<string, FlowWarning> {
   const by = new Map(nodes.map((node) => [node.id, node]));
   const parent = new Map<string, string>();
   for (const node of nodes) {
@@ -465,11 +499,11 @@ export function flowWarnings(nodes: FlowNode[]): Record<string, string> {
     if (node.nextElse) parent.set(node.nextElse, node.id);
   }
 
-  const out: Record<string, string> = {};
+  const out: Record<string, FlowWarning> = {};
   for (const node of nodes) {
-    if (node.kind === "email" && node.empty) out[node.id] = "Nothing written yet";
-    if (node.kind === "await" && !node.config.event?.trim()) out[node.id] = "Pick an event";
-    if (node.kind === "webhook" && !node.config.url?.trim()) out[node.id] = "Pick a URL";
+    if (node.kind === "email" && node.empty) out[node.id] = WARNINGS.empty;
+    if (node.kind === "await" && !node.config.event?.trim()) out[node.id] = WARNINGS.event;
+    if (node.kind === "webhook" && !node.config.url?.trim()) out[node.id] = WARNINGS.url;
 
     const test = node.config.test ?? "opened";
     if (node.kind !== "condition" || (test !== "opened" && test !== "clicked")) continue;
@@ -498,9 +532,9 @@ export function flowWarnings(nodes: FlowNode[]): Record<string, string> {
 
     const found = at ? by.get(at) : undefined;
     if (!found || found.kind !== "email") {
-      out[node.id] = "Nothing is sent before this, so it is always no";
+      out[node.id] = WARNINGS.noEmail;
     } else if (!waited) {
-      out[node.id] = "No time to open it yet. Put a Wait before this";
+      out[node.id] = WARNINGS.noWait;
     }
   }
   return out;

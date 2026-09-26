@@ -270,7 +270,7 @@ describe("warning about a flow before it runs", () => {
       node("mail", { next: "ask" }),
       node("ask", { kind: "condition", config: { test: "opened" } }),
     ]);
-    assert.match(warnings.ask ?? "", /Wait/);
+    assert.match(warnings.ask?.note ?? "", /Wait/);
   });
 
   it("is quiet once there is a wait in between", () => {
@@ -287,7 +287,7 @@ describe("warning about a flow before it runs", () => {
       node("pause", { kind: "wait", delayMinutes: 60, next: "ask" }),
       node("ask", { kind: "condition", config: { test: "opened" } }),
     ]);
-    assert.match(warnings.ask ?? "", /always no/);
+    assert.match(warnings.ask?.detail ?? "", /always no/);
   });
 
   it("leaves questions about fields alone", () => {
@@ -296,6 +296,19 @@ describe("warning about a flow before it runs", () => {
       node("ask", { kind: "condition", config: { test: "field", field: "plan" } }),
     ]);
     assert.equal(warnings.ask, undefined);
+  });
+
+  it("keeps what the card says short enough to fit", () => {
+    const warnings = flowWarnings([
+      node("mail", { empty: true, next: "ask" }),
+      node("ask", { kind: "condition", config: { test: "opened" }, next: "hook" }),
+      node("hook", { kind: "webhook", next: "wait" }),
+      node("wait", { kind: "await", next: "ask2" }),
+      node("ask2", { kind: "condition", config: { test: "opened" } }),
+    ]);
+    for (const warning of Object.values(warnings)) {
+      assert.ok(warning.note.length <= 24, `"${warning.note}" is too long for a card`);
+    }
   });
 
   it("flags the boxes that are missing their one setting", () => {

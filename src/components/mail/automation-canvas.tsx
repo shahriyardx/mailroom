@@ -737,7 +737,7 @@ export function AutomationCanvas({
                       // quietly. Then what it did beats what it is, once it
                       // has done anything: "48 of 120 opened" is the sentence
                       // somebody came to this screen to read.
-                      warning ??
+                      warning?.note ??
                       (node.kind === "email" && tallies[node.id]?.sent
                         ? `${tallies[node.id]?.opened ?? 0} of ${tallies[node.id]?.sent} opened`
                         : said.note)
@@ -938,6 +938,7 @@ export function AutomationCanvas({
           segments={segments.filter((row) => row.listId === listId)}
           tally={tallies[chosen.id]}
           here={positions[chosen.id] ?? 0}
+          warning={warnings[chosen.id]?.detail}
           peopleHref={`${people}?node=${chosen.id}`}
           events={events}
           webhookSecret={webhookSecret}
@@ -1466,6 +1467,7 @@ function NodeInspector({
   peopleHref,
   events,
   webhookSecret,
+  warning,
   onClose,
   onRemove,
 }: {
@@ -1476,6 +1478,8 @@ function NodeInspector({
   /** People sitting on this box right now. */
   here: number;
   peopleHref: string;
+  /** What is wrong with it, in full. The card only has room for a few words. */
+  warning?: string;
   /** Event names already known, for a wait for an event. */
   events: { id: string; name: string; seenCount: number }[];
   webhookSecret: string | null;
@@ -1542,6 +1546,8 @@ function NodeInspector({
       </header>
 
       <div className="min-h-0 flex-1 space-y-4 p-3">
+        {warning && <Note className="text-warn">{warning}</Note>}
+
         {here > 0 && (
           <Link
             href={peopleHref}
@@ -1615,13 +1621,6 @@ function NodeInspector({
                   </span>
                 ))}
               </div>
-            )}
-
-            {node.empty && (
-              <Note className="text-warn">
-                Nothing in it yet. An empty email still goes out — blank — so this one needs writing
-                before the flow is switched on.
-              </Note>
             )}
           </>
         )}
