@@ -69,10 +69,33 @@ interface SesEvent {
     timestamp?: string;
   };
   delivery?: { recipients?: string[]; timestamp?: string };
-  deliveryDelay?: { delayType?: string };
+  deliveryDelay?: { delayType?: string; timestamp?: string };
+  subscription?: { timestamp?: string };
   /** SES rewrites the links itself when the configuration set asks it to. */
   click?: { link?: string; timestamp?: string };
   open?: { timestamp?: string };
+}
+
+/**
+ * When the event itself happened, not when the message was sent.
+ *
+ * Each kind carries its own time in its own object. The message's send time
+ * is only the fallback for the kinds that have none (a send, a reject), and
+ * using it for everything put every open and click at the moment the message
+ * left, however long afterwards somebody actually opened it.
+ */
+function whenItHappened(event: SesEvent) {
+  return new Date(
+    event.bounce?.timestamp ??
+      event.complaint?.timestamp ??
+      event.delivery?.timestamp ??
+      event.open?.timestamp ??
+      event.click?.timestamp ??
+      event.deliveryDelay?.timestamp ??
+      event.subscription?.timestamp ??
+      event.mail?.timestamp ??
+      Date.now(),
+  );
 }
 
 /**
@@ -143,13 +166,7 @@ export async function POST(request: NextRequest) {
     recipient: recipients[0] || null,
     detail,
     payload: event as unknown as Record<string, unknown>,
-    occurredAt: new Date(
-      event.bounce?.timestamp ??
-        event.complaint?.timestamp ??
-        event.delivery?.timestamp ??
-        event.mail?.timestamp ??
-        Date.now(),
-    ),
+    occurredAt: whenItHappened(event),
   });
 
   // An open says nothing about delivery status, so it is recorded beside it
@@ -159,7 +176,7 @@ export async function POST(request: NextRequest) {
     await db
       .update(message)
       .set({
-        openedAt: row.openedAt ?? new Date(event.mail?.timestamp ?? Date.now()),
+        openedAt: row.openedAt ?? whenItHappened(event),
         openCount: sql`${message.openCount} + 1`,
       })
       .where(eq(message.id, row.id));
