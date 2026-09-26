@@ -28,8 +28,8 @@ export const emailSchema = z.object({
   html: z.string().optional(),
   text: z.string().optional(),
   /**
-   * A saved template to send instead of a body written here, by id or by
-   * slug. `data` fills its holes. A `subject` given alongside it wins, so a
+   * A saved template to send instead of a body written here, by id. `data`
+   * fills its holes. A `subject` given alongside it wins, so a
    * one-off can override the saved line without a second template.
    */
   template: z.string().optional(),

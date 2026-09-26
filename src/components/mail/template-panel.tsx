@@ -47,7 +47,7 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
     setCopying(row.id);
     try {
       const made = await duplicateTemplateAction(row.id);
-      toast.success(`Copied to ${made.slug}`);
+      toast.success(`Copied ${row.name}`);
       router.push(`${base}/${made.id}`);
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Could not copy it");
@@ -76,7 +76,7 @@ export function TemplatePanel({ templates }: { templates: Template[] }) {
         open={removing !== null}
         onOpenChange={(next) => !next && setRemoving(null)}
         title="Delete this template?"
-        description={removing ? `${removing.name} (${removing.slug})` : undefined}
+        description={removing ? `${removing.name} (${removing.id})` : undefined}
         consequences={
           <>
             Any send that names this template starts failing with a 404. Mail already sent from it
@@ -149,7 +149,7 @@ function TemplateRow({
           <p className="flex min-w-0 items-center gap-2">
             <span className="truncate font-medium text-[13px] hover:underline">{row.name}</span>
             <code className="shrink-0 rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-muted-foreground">
-              {row.slug}
+              {row.id}
             </code>
           </p>
         </Link>

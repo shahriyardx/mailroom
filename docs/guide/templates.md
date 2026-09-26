@@ -3,8 +3,8 @@
 **Settings → Templates**, or **Templates** in the campaigns view. The same
 screen either way.
 
-A template is a subject and a body you save once and send by name. Your code
-passes the name and the values that go in the holes; the words, the layout and
+A template is a subject and a body you save once and send by its id. Your code
+passes the id and the values that go in the holes; the words, the layout and
 the colours stay here, where somebody can change them without a deploy.
 
 ## The builder
@@ -159,16 +159,16 @@ PNG, JPEG, GIF, WebP and PDF, up to 10 MB each.
 await mailroom.emails.send({
   from: "hello@yourdomain.com",
   to: "customer@example.com",
-  template: "order-shipped",
+  template: "tpl_…",
   data: { name: "Sam", order: { id: "A-1183" } },
 });
 ```
 
-The slug is what your code passes. It follows the name until you give it one of
-its own, and never again after that — because by then something is holding on
-to it.
+The id is what your code passes. Find it in the template's Details tab, or
+next to its name in the list. It never changes, so you can rename a template
+at any time.
 
-::: warning Changing a slug breaks the code that used it
-Anything still sending by the old name gets a 404. Mail already sent is
-unaffected: the body was copied into the message when it went.
+::: warning Deleting a template breaks the code that used it
+Anything still sending by its id gets a 404. Mail already sent is unaffected:
+the body was copied into the message when it went.
 :::

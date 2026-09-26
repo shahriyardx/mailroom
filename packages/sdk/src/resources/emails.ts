@@ -57,13 +57,13 @@ export class Emails {
    * });
    * ```
    *
-   * A saved template sends by name instead of a body written here:
+   * A saved template sends by id instead of a body written here:
    *
    * ```ts
    * await mail.emails.send({
    *   from: "receipts@example.com",
    *   to: "customer@example.net",
-   *   template: "receipt",
+   *   template: "tpl_…",
    *   data: { name: "Ada", amount: "£10" },
    * });
    * ```

@@ -64,7 +64,7 @@ import {
   youtubeThumb,
 } from "@/lib/email-blocks";
 import { randomTitle } from "@/lib/random-name";
-import { slugify, templateVariables } from "@/lib/template";
+import { templateVariables } from "@/lib/template";
 import { useSubmit } from "@/lib/use-submit";
 import { cn, newId } from "@/lib/utils";
 import {
@@ -550,7 +550,6 @@ const LABELS: Record<BlockKind, string> = {
 
 interface Details {
   name: string;
-  slug: string;
   description: string;
   subject: string;
   /** Campaign-only, and ignored by a template. */
@@ -564,7 +563,7 @@ interface Details {
  * What this screen is editing.
  *
  * A template and a broadcast are the same document with different paperwork
- * around it: a name and a slug on one, a list and a send button on the other.
+ * around it: a name and a subject on one, a list and a send button on the other.
  * Everything between the palette and the inspector is identical, so it is one
  * screen that knows which of the two it has rather than two screens that will
  * drift.
@@ -748,7 +747,6 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
 
   const [details, setDetails] = useState<Details>({
     name: template?.name ?? "",
-    slug: template?.slug ?? "",
     description: template?.description ?? "",
     subject: source?.subject ?? "",
     subjectB: campaign?.subjectB ?? "",
@@ -802,7 +800,6 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
     JSON.stringify({
       details: {
         name: template?.name ?? "",
-        slug: template?.slug ?? "",
         description: template?.description ?? "",
         subject: source?.subject ?? "",
       },
@@ -1042,7 +1039,6 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
 
     const payload = {
       name,
-      slug: details.slug.trim() || slugify(name),
       description: details.description,
       subject: details.subject,
       // Only one of the two goes: a design compiles to the body on the server,
@@ -1108,14 +1104,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
             value={details.name}
             onChange={(event) => {
               const name = event.target.value;
-              setDetails((current) => ({
-                ...current,
-                name,
-                // The slug follows the name until somebody gives it one of its
-                // own, and never again: a program is holding onto it.
-                slug:
-                  template || current.slug !== slugify(current.name) ? current.slug : slugify(name),
-              }));
+              setDetails((current) => ({ ...current, name }));
             }}
             placeholder="Untitled template"
             aria-label="Template name"
@@ -1440,7 +1429,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
                     details={details}
                     onChange={(changes) => setDetails((current) => ({ ...current, ...changes }))}
                     variables={variables}
-                    locked={Boolean(template)}
+                    templateId={template?.id ?? null}
                   />
                 ))}
             </div>
@@ -1484,7 +1473,7 @@ function Builder({ target, basePath }: { target: BuilderTarget; basePath: string
         open={removing && target.kind === "template"}
         onOpenChange={setRemoving}
         title="Delete this template?"
-        description={template ? `${template.name} (${template.slug})` : undefined}
+        description={template ? `${template.name} (${template.id})` : undefined}
         consequences="Any send that names this template starts failing with a 404. Mail already sent from it is unaffected."
         confirmLabel="Delete template"
         onConfirm={async () => {
@@ -3958,7 +3947,7 @@ function PageStyle({
 }
 
 /**
- * What one automation email has instead of a name and a slug.
+ * What one automation email has instead of a name.
  *
  * Less than a campaign has, deliberately. Who it goes to and when are drawn
  * on the canvas as boxes of their own, so repeating them here would be two
@@ -3997,7 +3986,7 @@ function StepDetails({
 }
 
 /**
- * What a broadcast has instead of a name and a slug.
+ * What a broadcast has instead of a name.
  *
  * Everything that decides where a campaign goes lives here, including the
  * button that sends it. It used to live on the campaigns list, one screen
@@ -4296,12 +4285,12 @@ function DetailsForm({
   details,
   onChange,
   variables,
-  locked,
+  templateId,
 }: {
   details: Details;
   onChange: (changes: Partial<Details>) => void;
   variables: string[];
-  locked: boolean;
+  templateId: string | null;
 }) {
   return (
     <div>
@@ -4313,17 +4302,17 @@ function DetailsForm({
             className="h-8 text-[12.5px]"
           />
         </Row>
-        <Row label="Slug">
+        <Row label="ID">
           <Input
-            value={details.slug}
-            onChange={(event) => onChange({ slug: slugify(event.target.value) })}
+            value={templateId ?? ""}
+            readOnly
+            placeholder="Given on first save"
+            onFocus={(event) => event.currentTarget.select()}
             className="h-8 font-mono text-[12px]"
           />
         </Row>
         <Note>
-          {locked
-            ? "The slug is what your code passes. Changing it breaks anything already sending by the old one."
-            : "The slug is what your code will pass when it sends this."}
+          Your code passes this id when it sends. It never changes, so a new name breaks nothing.
         </Note>
         <Row label="Subject">
           <Input

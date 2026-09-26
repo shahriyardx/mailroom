@@ -345,8 +345,8 @@ export interface SendEmailInput {
   text?: string;
   headers?: Record<string, string>;
   /**
-   * A saved template to send instead of a body written here, by slug or by
-   * id, with `data` filling its holes. A `subject` given alongside it wins.
+   * A saved template to send instead of a body written here, by id, with
+   * `data` filling its holes. A `subject` given alongside it wins.
    */
   template?: string;
   template_id?: string;
@@ -394,8 +394,6 @@ export interface Template {
   id: string;
   /** What a person calls it. */
   name: string;
-  /** What your code calls it: stable, lowercase, unique in the account. */
-  slug: string;
   description: string | null;
   subject: string;
   html: string | null;
@@ -408,8 +406,6 @@ export interface Template {
 
 export interface TemplateInput {
   name: string;
-  /** Derived from the name when left out. */
-  slug?: string;
   description?: string;
   subject?: string;
   html?: string;

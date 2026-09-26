@@ -92,18 +92,12 @@ describe("filling a template in", () => {
       ["name", "amount", "footer"],
     );
   });
-
-  it("makes a usable slug out of a name", async () => {
-    const { slugify } = await import("@/lib/template");
-    assert.equal(slugify("Welcome Email!"), "welcome-email");
-    assert.equal(slugify("  Order — shipped  "), "order-shipped");
-  });
 });
 
 /* -------------------------------------------------------------------------- */
 
 describe("keeping templates", () => {
-  it("saves one and finds it by id or by slug", async () => {
+  it("saves one and finds it by id, and only by id", async () => {
     const { createTemplate, findTemplate } = await import("@/server/templates");
     const row = await createTemplate(account.orgId, {
       name: "Welcome Email",
@@ -111,27 +105,17 @@ describe("keeping templates", () => {
       html: "<p>Hello {{ name }}</p>",
     });
 
-    assert.equal(row.slug, "welcome-email");
     assert.equal((await findTemplate(account.orgId, row.id))?.id, row.id);
-    assert.equal((await findTemplate(account.orgId, "welcome-email"))?.id, row.id);
+    assert.equal(row.slug, row.id, "the unused slug column holds the id");
+    assert.equal(await findTemplate(account.orgId, "welcome-email"), null, "a name finds nothing");
     assert.equal(await findTemplate("org_elsewhere", row.id), null);
   });
 
-  it("refuses a name another template already has", async () => {
-    const { TemplateConflict, createTemplate } = await import("@/server/templates");
-    await createTemplate(account.orgId, { name: "Receipt" });
-    await assert.rejects(
-      createTemplate(account.orgId, { name: "Receipt" }),
-      (error: unknown) => error instanceof TemplateConflict,
-    );
-  });
-
-  it("refuses a slug that is not one", async () => {
-    const { TemplateInvalid, createTemplate } = await import("@/server/templates");
-    await assert.rejects(
-      createTemplate(account.orgId, { name: "Bad", slug: "Not A Slug" }),
-      (error: unknown) => error instanceof TemplateInvalid,
-    );
+  it("lets two templates share a name", async () => {
+    const { createTemplate } = await import("@/server/templates");
+    const first = await createTemplate(account.orgId, { name: "Receipt" });
+    const second = await createTemplate(account.orgId, { name: "Receipt" });
+    assert.notEqual(first.id, second.id);
   });
 
   it("changes only what it is given", async () => {
@@ -145,10 +129,10 @@ describe("keeping templates", () => {
     const updated = await updateTemplate(account.orgId, row.id, { subject: "Your invoice" });
     assert.equal(updated.subject, "Your invoice");
     assert.equal(updated.html, "<p>Thanks</p>", "the body was left alone");
-    assert.equal(updated.slug, "receipt");
+    assert.equal(updated.id, row.id);
   });
 
-  it("copies one under a name nothing else is using", async () => {
+  it("copies one under a new id", async () => {
     const { createTemplate, duplicateTemplate } = await import("@/server/templates");
     const row = await createTemplate(account.orgId, {
       name: "Welcome",
@@ -159,12 +143,11 @@ describe("keeping templates", () => {
     const copy = await duplicateTemplate(account.orgId, row.id);
     assert.notEqual(copy.id, row.id, "a copy is a second template, not the same row");
     assert.equal(copy.name, "Welcome (copy)");
-    assert.equal(copy.slug, "welcome-copy");
     assert.equal(copy.html, "<p>Hello</p>", "the body came with it");
 
-    // Copying the copy counts rather than failing on the name.
+    // A second copy is as ordinary as the first.
     const again = await duplicateTemplate(account.orgId, row.id);
-    assert.equal(again.slug, "welcome-copy-2");
+    assert.notEqual(again.id, copy.id);
   });
 
   it("will not copy a template belonging to somebody else", async () => {
@@ -193,14 +176,14 @@ describe("sending one", () => {
   }
 
   it("uses the saved wording, filled in", async () => {
-    await saveWelcome();
+    const welcome = await saveWelcome();
     const { sendOne } = await import("@/server/api-send");
 
     const result = await sendOne(caller(), {
       from: account.address,
       to: "someone@example.com",
       subject: "",
-      template: "welcome",
+      template: welcome.id,
       data: { name: "Ada", amount: "£10" },
     });
 
@@ -218,14 +201,14 @@ describe("sending one", () => {
   });
 
   it("lets the request override the saved subject", async () => {
-    await saveWelcome();
+    const welcome = await saveWelcome();
     const { sendOne } = await import("@/server/api-send");
 
     const result = await sendOne(caller(), {
       from: account.address,
       to: "someone@example.com",
       subject: "A different line",
-      template: "welcome",
+      template: welcome.id,
       data: { name: "Ada", amount: "£10" },
     });
 
@@ -233,7 +216,7 @@ describe("sending one", () => {
   });
 
   it("says which value is missing rather than sending a hole", async () => {
-    await saveWelcome();
+    const welcome = await saveWelcome();
     const { sendOne } = await import("@/server/api-send");
     const { SendError } = await import("@/server/send");
 
@@ -242,7 +225,7 @@ describe("sending one", () => {
         from: account.address,
         to: "someone@example.com",
         subject: "",
-        template: "welcome",
+        template: welcome.id,
         data: { name: "Ada" },
       }),
       (error: unknown) => {
@@ -306,14 +289,14 @@ describe("sending one", () => {
   });
 
   it("can be scheduled like any other send", async () => {
-    await saveWelcome();
+    const welcome = await saveWelcome();
     const { sendOne } = await import("@/server/api-send");
 
     const result = await sendOne(caller(), {
       from: account.address,
       to: "someone@example.com",
       subject: "",
-      template: "welcome",
+      template: welcome.id,
       data: { name: "Ada", amount: "£10" },
       scheduled_at: "in 2 hours",
     });

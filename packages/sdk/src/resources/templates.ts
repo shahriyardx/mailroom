@@ -33,11 +33,11 @@ export class Templates {
     return paginate((cursor) => this.list({ ...params, cursor }, options));
   }
 
-  /** One template, by id or by slug — both are names for it. */
-  get(idOrSlug: string, options?: RequestOptions): Promise<Template> {
+  /** One template, by id. */
+  get(id: string, options?: RequestOptions): Promise<Template> {
     return this.http.request<Template>({
       method: "GET",
-      path: `/templates/${encodeURIComponent(idOrSlug)}`,
+      path: `/templates/${encodeURIComponent(id)}`,
       options,
     });
   }
@@ -63,23 +63,19 @@ export class Templates {
   }
 
   /** Changes what is given and leaves the rest alone. */
-  update(
-    idOrSlug: string,
-    input: Partial<TemplateInput>,
-    options?: RequestOptions,
-  ): Promise<Template> {
+  update(id: string, input: Partial<TemplateInput>, options?: RequestOptions): Promise<Template> {
     return this.http.request<Template>({
       method: "PATCH",
-      path: `/templates/${encodeURIComponent(idOrSlug)}`,
+      path: `/templates/${encodeURIComponent(id)}`,
       body: input,
       options,
     });
   }
 
-  delete(idOrSlug: string, options?: RequestOptions): Promise<{ id: string; deleted: boolean }> {
+  delete(id: string, options?: RequestOptions): Promise<{ id: string; deleted: boolean }> {
     return this.http.request<{ id: string; deleted: boolean }>({
       method: "DELETE",
-      path: `/templates/${encodeURIComponent(idOrSlug)}`,
+      path: `/templates/${encodeURIComponent(id)}`,
       options,
     });
   }

@@ -1306,7 +1306,6 @@ export async function recentDeliveriesAction(limit = 20) {
 
 const templateSchema = z.object({
   name: z.string().min(1),
-  slug: z.string().optional(),
   description: z.string().optional(),
   subject: z.string().default(""),
   html: z.string().optional(),
@@ -1326,7 +1325,7 @@ export async function createTemplateAction(raw: z.input<typeof templateSchema>) 
 
   const row = await createTemplate(access.orgId, input, access.userId);
   revalidatePath("/settings/templates");
-  return { id: row.id, slug: row.slug };
+  return { id: row.id };
 }
 
 export async function updateTemplateAction(
@@ -1339,7 +1338,7 @@ export async function updateTemplateAction(
 
   const row = await updateTemplate(access.orgId, id, input);
   revalidatePath("/settings/templates");
-  return { id: row.id, slug: row.slug };
+  return { id: row.id };
 }
 
 export async function duplicateTemplateAction(id: string) {
@@ -1348,7 +1347,7 @@ export async function duplicateTemplateAction(id: string) {
 
   const row = await duplicateTemplate(access.orgId, id, access.userId);
   revalidatePath("/settings/templates");
-  return { id: row.id, slug: row.slug };
+  return { id: row.id };
 }
 
 export async function deleteTemplateAction(id: string) {

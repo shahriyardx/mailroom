@@ -1,12 +1,7 @@
 import { fail, limitOf, makeCursor, ok, page, readBody, splitCursor } from "@/lib/api-http";
 import { apiRoute } from "@/server/api-auth";
 import { serializeTemplate } from "@/server/api-serialize";
-import {
-  TemplateConflict,
-  TemplateInvalid,
-  createTemplate,
-  listTemplates,
-} from "@/server/templates";
+import { TemplateInvalid, createTemplate, listTemplates } from "@/server/templates";
 import { z } from "zod";
 
 export const runtime = "nodejs";
@@ -14,8 +9,6 @@ export const dynamic = "force-dynamic";
 
 const templateSchema = z.object({
   name: z.string().min(1),
-  /** What a program calls it. Derived from the name when left out. */
-  slug: z.string().min(1).max(60).optional(),
   description: z.string().optional(),
   subject: z.string().default(""),
   html: z.string().optional(),
@@ -51,7 +44,6 @@ export const POST = apiRoute("templates:write", async ({ caller, request }) => {
     const row = await createTemplate(caller.orgId, input);
     return ok(serializeTemplate(row), 201);
   } catch (error) {
-    if (error instanceof TemplateConflict) return fail("conflict", error.message);
     if (error instanceof TemplateInvalid) return fail("invalid_request", error.message);
     throw error;
   }

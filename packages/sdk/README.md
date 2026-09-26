@@ -202,7 +202,7 @@ Both throw `ConflictError` once the message has been picked up for sending — a
 Save the wording once, send it by name. Changing a receipt then needs no deploy of whatever service sends it.
 
 ```ts
-await mail.templates.create({
+const receipt = await mail.templates.create({
   name: "Receipt",
   subject: "Your receipt, {{ name }}",
   html: "<p>Hello {{ name }}, you paid {{ amount }}.</p>",
@@ -211,7 +211,7 @@ await mail.templates.create({
 await mail.emails.send({
   from: "receipts@example.com",
   to: "customer@example.net",
-  template: "receipt",
+  template: receipt.id,
   data: { name: "Ada", amount: "£10" },
 });
 ```
@@ -228,10 +228,10 @@ That is all of it — no loops, no conditionals, no function calls. A template t
 
 Two things worth knowing. A value you did not send is a `ValidationError` naming what is missing, not an empty string: `"Hi ,"` arriving at a customer is worse than an error, and an empty string cannot be told later from a value that really was empty. And `{{ }}` escapes what it inserts, so a name from a signup form cannot write tags into mail sent under your domain — use `{{{ }}}` only for markup you produced yourself.
 
-`subject` given alongside a template wins, so a one-off variation needs no second template. `template_id` works wherever `template` does, and `templates.get()` takes either.
+`subject` given alongside a template wins, so a one-off variation needs no second template. A template is sent by its id, which never changes. `template_id` works wherever `template` does.
 
 ```ts
-const template = await mail.templates.get("receipt");
+const template = await mail.templates.get(receipt.id);
 console.log(template.variables); // ["name", "amount"]
 ```
 

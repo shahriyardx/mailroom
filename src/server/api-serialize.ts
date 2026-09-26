@@ -220,7 +220,6 @@ export function serializeTemplate(row: Template) {
     object: "template" as const,
     id: row.id,
     name: row.name,
-    slug: row.slug,
     description: row.description,
     subject: row.subject,
     html: row.html,

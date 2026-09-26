@@ -4,20 +4,20 @@ import { db } from "@/db";
 import { type Template, template } from "@/db/schema";
 import { type EmailDesign, designToText, renderDesign } from "@/lib/email-blocks";
 import { env } from "@/lib/env";
-import { SLUG_PATTERN, TemplateError, renderTemplateParts, slugify } from "@/lib/template";
+import { TemplateError, renderTemplateParts } from "@/lib/template";
 import { newId } from "@/lib/utils";
-import { and, asc, eq, ne } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 
 /**
- * Saved subjects and bodies, looked up by a name a program can hold onto.
+ * Saved subjects and bodies, looked up by id.
  *
- * Both an id and a slug find one, because both are useful: an id is what the
- * API hands back, and a slug is what somebody types into a config file.
+ * The id is the only handle a program gets. It never changes, so renaming a
+ * template never breaks the code that sends it.
  */
 
 export class TemplateNotFound extends Error {
   constructor(reference: string) {
-    super(`No template called "${reference}"`);
+    super(`No template with the id "${reference}"`);
     this.name = "TemplateNotFound";
   }
 }
@@ -30,28 +30,20 @@ export async function listTemplates(orgId: string) {
     .orderBy(asc(template.name));
 }
 
-export async function findTemplate(orgId: string, reference: string): Promise<Template | null> {
-  const wanted = reference.trim();
+export async function findTemplate(orgId: string, id: string): Promise<Template | null> {
+  const wanted = id.trim();
   if (!wanted) return null;
 
-  const [byId] = await db
+  const [row] = await db
     .select()
     .from(template)
     .where(and(eq(template.organizationId, orgId), eq(template.id, wanted)))
     .limit(1);
-  if (byId) return byId;
-
-  const [bySlug] = await db
-    .select()
-    .from(template)
-    .where(and(eq(template.organizationId, orgId), eq(template.slug, wanted.toLowerCase())))
-    .limit(1);
-  return bySlug ?? null;
+  return row ?? null;
 }
 
 export interface TemplateInput {
   name: string;
-  slug?: string | null;
   description?: string | null;
   subject?: string;
   html?: string | null;
@@ -73,13 +65,6 @@ function compiled(input: Partial<TemplateInput>) {
   return { html: renderDesign(input.design, env.appUrl), text: designToText(input.design) };
 }
 
-export class TemplateConflict extends Error {
-  constructor(slug: string) {
-    super(`Another template already uses the name "${slug}"`);
-    this.name = "TemplateConflict";
-  }
-}
-
 export class TemplateInvalid extends Error {
   constructor(message: string) {
     super(message);
@@ -87,24 +72,9 @@ export class TemplateInvalid extends Error {
   }
 }
 
-function checkSlug(value: string) {
-  if (!value) throw new TemplateInvalid("A template needs a name");
-  if (!SLUG_PATTERN.test(value)) {
-    throw new TemplateInvalid(
-      "slug can only contain lowercase letters, numbers and single hyphens",
-    );
-  }
-  return value;
-}
-
 export async function createTemplate(orgId: string, input: TemplateInput, userId?: string) {
   const name = input.name.trim();
   if (!name) throw new TemplateInvalid("A template needs a name");
-
-  const slug = checkSlug(input.slug?.trim().toLowerCase() || slugify(name));
-
-  const clash = await findTemplate(orgId, slug);
-  if (clash) throw new TemplateConflict(slug);
 
   const body = compiled(input);
   const id = newId("tpl");
@@ -114,7 +84,9 @@ export async function createTemplate(orgId: string, input: TemplateInput, userId
       id,
       organizationId: orgId,
       name,
-      slug,
+      // Nothing reads the slug any more. The id fills it, because the column
+      // must be filled and must be unique in the account.
+      slug: id,
       description: input.description?.trim() || null,
       subject: input.subject ?? "",
       html: body.html || null,
@@ -131,33 +103,12 @@ export async function updateTemplate(orgId: string, id: string, input: Partial<T
   const existing = await findTemplate(orgId, id);
   if (!existing) throw new TemplateNotFound(id);
 
-  const slug =
-    input.slug === undefined || input.slug === null
-      ? existing.slug
-      : checkSlug(input.slug.trim().toLowerCase());
-
-  if (slug !== existing.slug) {
-    const [clash] = await db
-      .select({ id: template.id })
-      .from(template)
-      .where(
-        and(
-          eq(template.organizationId, orgId),
-          eq(template.slug, slug),
-          ne(template.id, existing.id),
-        ),
-      )
-      .limit(1);
-    if (clash) throw new TemplateConflict(slug);
-  }
-
   const body = compiled(input);
 
   const [row] = await db
     .update(template)
     .set({
       name: input.name?.trim() || existing.name,
-      slug,
       description:
         input.description === undefined ? existing.description : input.description?.trim() || null,
       subject: input.subject === undefined ? existing.subject : input.subject,
@@ -173,35 +124,25 @@ export async function updateTemplate(orgId: string, id: string, input: Partial<T
 }
 
 /**
- * Copies one, body and all, under a name nothing else is using.
+ * Copies one, body and all, under a new id.
  *
  * The copy is a real second template rather than a draft of the first: the
  * point of it is to change one thing about a working email without risking
- * the one that is already being sent by name. It keeps the design, so the
+ * the one that is already being sent by id. It keeps the design, so the
  * copy opens in the builder exactly as the original does.
  */
 export async function duplicateTemplate(orgId: string, id: string, userId?: string) {
   const existing = await findTemplate(orgId, id);
   if (!existing) throw new TemplateNotFound(id);
 
-  /*
-   * "welcome" becomes "welcome-copy", and then "welcome-copy-2" — counting
-   * rather than failing, because the second copy of something is exactly as
-   * ordinary as the first and being told the name is taken helps nobody.
-   */
-  const base = slugify(`${existing.slug}-copy`);
-  let slug = base;
-  for (let attempt = 2; await findTemplate(orgId, slug); attempt += 1) {
-    slug = `${base}-${attempt}`;
-  }
-
+  const copyId = newId("tpl");
   const [row] = await db
     .insert(template)
     .values({
-      id: newId("tpl"),
+      id: copyId,
       organizationId: orgId,
       name: `${existing.name} (copy)`,
-      slug,
+      slug: copyId,
       description: existing.description,
       subject: existing.subject,
       html: existing.html,
@@ -236,16 +177,16 @@ export interface RenderedTemplate {
  * Looks a template up and fills it in.
  *
  * Throws {@link TemplateNotFound} or {@link TemplateError}, both of which the
- * caller turns into something the sender can act on: the wrong name, or the
- * right name with a value missing.
+ * caller turns into something the sender can act on: the wrong id, or the
+ * right id with a value missing.
  */
 export async function renderFor(
   orgId: string,
-  reference: string,
+  id: string,
   data: Record<string, unknown>,
 ): Promise<RenderedTemplate> {
-  const row = await findTemplate(orgId, reference);
-  if (!row) throw new TemplateNotFound(reference);
+  const row = await findTemplate(orgId, id);
+  if (!row) throw new TemplateNotFound(id);
 
   const rendered = renderTemplateParts(
     { subject: row.subject, html: row.html, text: row.text },

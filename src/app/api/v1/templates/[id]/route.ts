@@ -2,7 +2,6 @@ import { fail, ok, readBody } from "@/lib/api-http";
 import { apiRoute } from "@/server/api-auth";
 import { serializeTemplate } from "@/server/api-serialize";
 import {
-  TemplateConflict,
   TemplateInvalid,
   TemplateNotFound,
   deleteTemplate,
@@ -16,14 +15,13 @@ export const dynamic = "force-dynamic";
 
 const patchSchema = z.object({
   name: z.string().min(1).optional(),
-  slug: z.string().min(1).max(60).optional(),
   description: z.string().nullable().optional(),
   subject: z.string().optional(),
   html: z.string().nullable().optional(),
   text: z.string().nullable().optional(),
 });
 
-/** GET /api/v1/templates/:id — by id or by slug, since both are names for it. */
+/** GET /api/v1/templates/:id */
 export const GET = apiRoute<{ id: string }>("templates:read", async ({ caller, params }) => {
   const row = await findTemplate(caller.orgId, params.id);
   if (!row) return fail("not_found", "No such template");
@@ -41,7 +39,6 @@ export const PATCH = apiRoute<{ id: string }>(
       return ok(serializeTemplate(row));
     } catch (error) {
       if (error instanceof TemplateNotFound) return fail("not_found", "No such template");
-      if (error instanceof TemplateConflict) return fail("conflict", error.message);
       if (error instanceof TemplateInvalid) return fail("invalid_request", error.message);
       throw error;
     }

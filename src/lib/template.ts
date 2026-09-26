@@ -140,19 +140,3 @@ export function escapeHtml(value: string) {
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
 }
-
-/* -------------------------------------------------------------------------- */
-/* Names                                                                      */
-/* -------------------------------------------------------------------------- */
-
-/** What a program will call the template, derived from what a person called it. */
-export function slugify(value: string) {
-  return value
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 60);
-}
-
-export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;

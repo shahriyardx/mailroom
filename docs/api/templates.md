@@ -1,6 +1,6 @@
 # Templates
 
-A saved subject and body with holes in it, sent by name.
+A saved subject and body with holes in it, sent by id.
 
 The point is that the wording stops living inside whatever service does the
 sending. Changing a receipt should not need a deploy, and the same receipt
@@ -8,7 +8,7 @@ should read the same whichever service sent it.
 
 ## Sending one
 
-Send a `template` — its slug or its id — instead of `html` and `text`, and a
+Send a `template` — its id — instead of `html` and `text`, and a
 `data` object holding the values it asks for.
 
 ```sh
@@ -18,7 +18,7 @@ curl -X POST https://mail.yourdomain.com/api/v1/emails \
   -d '{
     "from": "receipts@example.com",
     "to": "customer@example.net",
-    "template": "receipt",
+    "template": "tpl_…",
     "data": { "name": "Ada", "amount": "£10.00" }
   }'
 ```
@@ -74,7 +74,6 @@ curl -X POST https://mail.yourdomain.com/api/v1/templates \
 | Field | | |
 | --- | --- | --- |
 | `name` | **required** | What a person calls it |
-| `slug` | | What your code calls it. Derived from the name when left out |
 | `description` | | A note for whoever finds it later |
 | `subject` | | May contain placeholders |
 | `html`, `text` | | Send either, or both |
@@ -86,7 +85,6 @@ Returns `201` with the saved template and, usefully, everything it asks for:
   "object": "template",
   "id": "tpl_…",
   "name": "Receipt",
-  "slug": "receipt",
   "subject": "Your receipt, {{ name }}",
   "variables": ["name", "amount"],
   "created_at": "2026-09-21T10:00:00.000Z",
@@ -94,8 +92,8 @@ Returns `201` with the saved template and, usefully, everything it asks for:
 }
 ```
 
-A slug is lowercase letters, numbers and single hyphens, and has to be unique
-in the account. A clash answers `409`.
+The `id` is what your code sends by. It never changes, so renaming a template
+breaks nothing. Two templates may share a name.
 
 ## List them
 
@@ -115,7 +113,7 @@ GET /api/v1/templates/:id
 
 Scope: `templates:read`
 
-The id or the slug — both are names for it.
+By its id.
 
 ## Change one
 

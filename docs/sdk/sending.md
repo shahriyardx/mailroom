@@ -71,7 +71,7 @@ They work on a `queued` message too, not only a scheduled one.
 ## Templates
 
 ```ts
-await mail.templates.create({
+const receipt = await mail.templates.create({
   name: "Receipt",
   subject: "Your receipt, {{ name }}",
   html: "<p>Hello {{ name }}, you paid {{ amount }}.</p>",
@@ -80,7 +80,7 @@ await mail.templates.create({
 await mail.emails.send({
   from: "receipts@yourdomain.com",
   to: "customer@example.net",
-  template: "receipt",
+  template: receipt.id,
   data: { name: "Ada", amount: "£10.00" },
 });
 ```
@@ -94,7 +94,7 @@ rather than leaving a hole in the message. `templates.get()` tells you what a
 template asks for:
 
 ```ts
-const template = await mail.templates.get("receipt");
+const template = await mail.templates.get(receipt.id);
 console.log(template.variables); // ["name", "amount"]
 ```
 
